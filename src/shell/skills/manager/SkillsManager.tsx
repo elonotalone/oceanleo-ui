@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../AutoRecovery";
 // W09B · P1 — skills manager (personal / project scope). Contract §3.4; UI-DESIGN
 // "大弹窗 / 卡片网格 / Add ▾". Can live on a page or inside a `ConfigDialogShell`.
 //
@@ -415,16 +416,7 @@ export function SkillsManager({ scope, onOpenOfficialLibrary }: SkillsManagerPro
     );
   } else if (folders.status === "error") {
     body = (
-      <ConfigEmptyState
-        icon={<KitIconPuzzle className="h-8 w-8" />}
-        title={tt("技能列表加载失败")}
-        description={tt(folders.error)}
-        action={
-          <button type="button" onClick={folders.reload} className={`${CONFIG_TOOLBAR_ICON_BUTTON_CLASS} w-auto px-4`}>
-            {tt("重试")}
-          </button>
-        }
-      />
+      <AutoRecovery identity="src/shell/skills/manager/SkillsManager.tsx:0" error={folders.error} recover={folders.reload} />
     );
   } else if (folders.items.length === 0) {
     body = (

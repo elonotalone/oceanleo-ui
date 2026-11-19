@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "./AutoRecovery";
 import { useCallback, useEffect, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { Button } from "../ui/Button";
@@ -104,16 +105,7 @@ export function InlineEditorMinePanel({
         </p>
       ) : null}
       {error ? (
-        <div className="grid gap-2 p-2 text-[12px] text-[var(--awb-danger,#dc2626)]">
-          <p title={error}>{error}</p>
-          <Button
-            variant="ghost"
-            data-inline-editor-mine-retry
-            onClick={() => void load()}
-          >
-            {tt("重试")}
-          </Button>
-        </div>
+        <AutoRecovery identity="src/shell/inline-editor-mine-panel.tsx:0" error={error} recover={() => load()} />
       ) : loading ? (
         <p className="sr-only" aria-busy="true">
           {tt("我的库")}

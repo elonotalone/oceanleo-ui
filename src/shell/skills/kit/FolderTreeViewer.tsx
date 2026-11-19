@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../AutoRecovery";
 // Skills overhaul 2026-10-24 — W09A：左树右文查看器（技能详情 / Library 文件夹 / 项目资产文件夹三处共用）。
 // 左：可折叠文件树（目录优先、字母序；默认展开第一层；默认选中 initialPath → SKILL.md → 第一个文件）。
 // 右：按 kind 渲染——markdown 走现有 `Markdown`（skipHtml），frontmatter 抽成「YAML」代码块 + 复制；
@@ -435,19 +436,7 @@ export function FolderTreeViewer({ tree, loadFile, initialPath, downloadUrl, roo
               ))}
             </div>
           ) : state.status === "error" ? (
-            <div className="flex flex-col items-start gap-3" role="alert" data-folder-tree-error="">
-              <div className="flex items-center gap-2 text-[13px] text-red-600 dark:text-red-400">
-                <KitIconAlert className="h-4 w-4" />
-                {tt("无法读取这个文件")}
-              </div>
-              <button
-                type="button"
-                onClick={() => void load(state.path)}
-                className="inline-flex h-11 items-center rounded-lg border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-              >
-                {tt("重试")}
-              </button>
-            </div>
+            <AutoRecovery identity="src/shell/skills/kit/FolderTreeViewer.tsx:0" recover={() => load(state.path)} />
           ) : state.status === "ready" ? (
             <FileBody key={state.path} file={state.file} downloadUrl={downloadUrl} onDownloadFile={onDownloadFile} />
           ) : (

@@ -1,5 +1,7 @@
 "use client";
 
+import { AutoRecovery } from "./AutoRecovery";
+
 // ============================================================================
 // Library「文件夹」类别（skills-overhaul W17，2026-10-24，合同 §0 D5 / §3.2 / §3.4）
 // ----------------------------------------------------------------------------
@@ -788,17 +790,8 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
             ))}
           </CollectionCardGrid>
         ) : error && folders.length === 0 ? (
-          <FoldersEmpty
-            title={authRequired ? "登录后查看我的文件包" : "文件包暂时无法加载"}
-            description={authRequired ? "登录任意 OceanLeo 站点后，你的文件包与技能会在这里汇总。" : error.text}
-            action={
-              authRequired ? null : (
-                <button type="button" className={DETAIL_BTN} onClick={() => void load()}>
-                  {tt("重试")}
-                </button>
-              )
-            }
-          />
+          authRequired ? <FoldersEmpty title="登录后查看我的文件包" description="登录任意 OceanLeo 站点后，你的文件包与技能会在这里汇总。" />
+          : <AutoRecovery identity="library-folders" error={error} recover={() => load()} />
         ) : visible.length === 0 ? (
           <FoldersEmpty
             title={query.trim() ? "未找到匹配的内容" : "还没有文件包"}

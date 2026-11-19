@@ -1,4 +1,5 @@
 "use client";
+import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { gatewayBase } from "../../lib/auth/config";
@@ -55,7 +56,7 @@ function InspirationPanelContent({ siteKey: site, appId: app, browse }: { siteKe
   return <div ref={panel} data-inspiration-panel className="space-y-3 p-3">
     <p className="text-xs text-stone-500">{tt("平台灵感")}</p>
     {!browse && (!site || !app) ? <p>{tt("选择一个应用查看灵感。")}</p> : null}
-    {loading ? <span className="v-spinner" role="status" aria-label={tt("加载中")} /> : error ? <div role="alert">{tt("灵感暂时无法加载，请重试。")} <button type="button" onClick={() => setReload(n => n + 1)}>{tt("重试")}</button></div> : !items.length && (browse || (site && app)) ? <p className="text-sm text-stone-500">{tt("此应用暂无平台灵感。")}</p> : null}
+    {loading ? <span className="v-spinner" role="status" aria-label={tt("加载中")} /> : error ? <AutoRecovery identity="src/shell/inspirations/InspirationPanel.tsx:0" recover={() => setReload(n => n + 1)} /> : !items.length && (browse || (site && app)) ? <p className="text-sm text-stone-500">{tt("此应用暂无平台灵感。")}</p> : null}
     {items.map(item => browse ? <article key={item.id} className="rounded-xl border border-stone-200 p-3">
       <p className="text-xs text-stone-500">{item.site_key} / {item.app_id} · {item.section}</p>
       <h3 className="mt-1 text-sm font-medium">{item.title}</h3>

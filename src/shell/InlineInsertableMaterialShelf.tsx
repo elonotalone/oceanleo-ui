@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "./AutoRecovery";
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { listMyArtifacts } from "./artifact-client";
@@ -71,7 +72,7 @@ export function InlineInsertableMaterialShelf({ types, siteId, currentId, featur
     <input type="search" aria-label={tt("搜索素材")} placeholder={tt("搜索素材")} value={query} onChange={event => setQuery(event.target.value)}
       className="min-h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--fg)]" />
     {loading ? <p role="status" className="text-xs text-[var(--fg-2)]">{tt("加载中…")}</p> : null}
-    {error ? <p role="alert" className="text-xs text-[var(--fg-2)]">{tt(error)} <button type="button" className="min-h-11 px-3" onClick={() => setAttempt(value => value + 1)}>{tt("重试")}</button></p> : null}
+    {error ? <AutoRecovery identity="src/shell/InlineInsertableMaterialShelf.tsx:0" error={error} recover={() => setAttempt(value => value + 1)} /> : null}
     <div className="min-h-0 flex-1 overflow-y-auto" aria-busy={pending}>
       <div className="grid grid-cols-1 gap-2" inert={pending || undefined}>
         {entries.map(entry => {

@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "./AutoRecovery";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { listInheritedOrgAssets, orgApiCode, orgErrorCopy, type InheritedOrgAsset } from "../lib/org-api";
@@ -90,7 +91,7 @@ export function InheritedTeamLibrary({ ownerUserId, query = "" }: { ownerUserId:
       </li>;
     })}</ul>}
     {loading && <p role="status">{tt("加载中…")}</p>}
-    {error && <div role="status"><p>{tt(error)}</p><button type="button" className={COLLECTION_ACTION_BTN_GHOST} onClick={() => { if (failedRead === "preview") setOpenRevision((value) => value + 1); else { setOffset(0); setRevision((value) => value + 1); } }}>{tt("重试")}</button></div>}
+    {error && <AutoRecovery identity="src/shell/InheritedTeamLibrary.tsx:0" error={error} recover={() => { if (failedRead === "preview") setOpenRevision((value) => value + 1); else { setOffset(0); setRevision((value) => value + 1); } }} />}
     {snapshot.owner === ownerUserId && snapshot.more && !currentPreview && <button type="button" className={COLLECTION_ACTION_BTN_GHOST} disabled={loading} onClick={() => setOffset(rows.length)}>{tt("加载更多")}</button>}
   </section>;
 }

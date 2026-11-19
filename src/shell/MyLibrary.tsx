@@ -1,5 +1,7 @@
 "use client";
 
+import { AutoRecovery } from "./AutoRecovery";
+
 import {
   lazy,
   Suspense,
@@ -2098,18 +2100,9 @@ export function MyLibrary({
       void load();
     }
   };
-  const retryControlFor = (failure: LibraryLoadFailure) => (
-    <button
-      type="button"
-      data-library-retry={failure.stage}
-      onClick={() => retryFailure(failure)}
-      disabled={loading || loadingMore || uploading}
-      className="shrink-0 font-medium underline underline-offset-2 disabled:opacity-50"
-    >
-      {tt(libraryLoadFailureCopy(failure, hasUsableLibrarySnapshot).retryLabel)}
-    </button>
-  );
-  const retryControl = emptyFailure ? retryControlFor(emptyFailure) : undefined;
+  const recoveryFor = (failure: LibraryLoadFailure) => <AutoRecovery
+    identity={`library:${failure.stage}:${failure.collection || ""}:${failure.page || ""}`}
+    error={failure} recover={() => retryFailure(failure)} />;
 
   if (standaloneEditorItem) {
     const editorBinding = libraryStandaloneEditorBinding({
@@ -2229,9 +2222,7 @@ export function MyLibrary({
             role="status"
             className="mx-3 my-2 max-w-md shrink-0 self-start rounded-lg border border-amber-500/20 px-3 py-2 text-xs text-amber-700"
           >
-            <p className="font-medium">{tt(libraryLoadFailureCopy(failures.intent).title)}</p>
-            <p className="my-1">{tt(libraryLoadFailureCopy(failures.intent).description)}</p>
-            {retryControlFor(failures.intent)}
+            {recoveryFor(failures.intent)}
           </section>
         )}
         <div className="relative min-h-0 flex-1">
@@ -2268,16 +2259,18 @@ export function MyLibrary({
           emptyTitle={
             displayLoading
               ? "正在加载我的库…"
-              : authRequired || failed
+              : authRequired
                 ? failureCopy.title
+                : failed ? ""
                 : emptyCopy.title
           }
           emptyDescription={
-            authRequired || failed
+            authRequired
               ? failureCopy.description
+              : failed ? ""
               : emptyCopy.description
           }
-          emptyCta={failed && !authRequired ? retryControl : undefined}
+          emptyCta={failed && !authRequired && emptyFailure ? recoveryFor(emptyFailure) : undefined}
           hasMore={Boolean(
             !displayLoading &&
               (nextCursor ||
@@ -2295,7 +2288,6 @@ export function MyLibrary({
           {(["mine", "favorites", "pagination"] as const).map((stage) => {
             const failure = failures[stage];
             if (!failure || (stage === "mine" && entries.length === 0)) return null;
-            const copy = libraryLoadFailureCopy(failure, hasUsableLibrarySnapshot);
             return (
               <div
                 key={stage}
@@ -2304,8 +2296,7 @@ export function MyLibrary({
                 role={stage === "mine" && hasUsableLibrarySnapshot ? "status" : "alert"}
                 className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/20 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-amber-700 shadow-sm"
               >
-                <span>{tt(copy.title)}：{tt(copy.description)}</span>
-                {retryControlFor(failure)}
+                {recoveryFor(failure)}
               </div>
             );
           })}

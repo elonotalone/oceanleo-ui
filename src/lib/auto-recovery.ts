@@ -53,8 +53,9 @@ export function startAutoRecovery(
 }
 
 /** Callback identity changes must not reset the backoff or cancel a pending recovery. */
-export function useAutoRecovery(enabled: boolean, recover: () => void | Promise<unknown>, identity: unknown = "") {
-  const attempts = useRef(0);
+export function useAutoRecovery(enabled: boolean, recover: () => void | Promise<unknown>, identity: unknown = "", retainedAttempts?: { current: number }) {
+  const localAttempts = useRef(0);
+  const attempts = retainedAttempts ?? localAttempts;
   const key = useRef(identity);
   if (key.current !== identity) { key.current = identity; attempts.current = 0; }
   const latest = useRef(recover);

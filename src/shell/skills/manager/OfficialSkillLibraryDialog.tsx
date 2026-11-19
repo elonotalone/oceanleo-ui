@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../AutoRecovery";
 // W09B · P2 — official skill library browser (contract §3.4; UI-DESIGN). Category
 // category filter + search; cover card grid (3:4 cover, title, two-line description,
 // "Added" corner badge); click → `SkillDetailModal`; footer link to the portal `/skills`.
@@ -14,7 +15,6 @@ import {
   ConfigDialogShell,
   ConfigEmptyState,
   ConfigToolbar,
-  CONFIG_TOOLBAR_BUTTON_CLASS,
   KitIconCheck,
   KitIconPuzzle,
   SkillCover,
@@ -175,20 +175,7 @@ export function OfficialSkillLibraryDialog({ open, onClose, projectId, onAdded }
             ))}
           </div>
         ) : status === "error" ? (
-          <ConfigEmptyState
-            icon={<KitIconPuzzle className="h-8 w-8" />}
-            title={tt("官方技能库加载失败")}
-            description={tt(error)}
-            action={
-              <button
-                type="button"
-                onClick={() => setTick((v) => v + 1)}
-                className={CONFIG_TOOLBAR_BUTTON_CLASS}
-              >
-                {tt("重试")}
-              </button>
-            }
-          />
+          <AutoRecovery identity="src/shell/skills/manager/OfficialSkillLibraryDialog.tsx:0" error={error} recover={() => setTick((v) => v + 1)} />
         ) : visible.length === 0 ? (
           <ConfigEmptyState
             icon={<KitIconPuzzle className="h-8 w-8" />}

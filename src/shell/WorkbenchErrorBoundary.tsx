@@ -1,10 +1,10 @@
 "use client";
 
-import { Component, useMemo, type ErrorInfo, type ReactNode } from "react";
+import { AutoRecovery } from "./AutoRecovery";
+
+import { Component, type ErrorInfo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { useUiMessages } from "../i18n/ui/messages/context";
-import type { UITranslate } from "../i18n/ui/useUI";
 import { reportBoundaryError } from "../lib/telemetry/errors";
 import type { LibraryItem } from "./library-data";
 
@@ -44,17 +44,6 @@ interface WorkbenchErrorBoundaryProps {
 
 interface WorkbenchErrorBoundaryState {
   error: Error | null;
-  componentStack: string;
-}
-
-const COMPONENT_STACK_MAX_LINES = 40;
-
-function clippedComponentStack(stack: string): string {
-  return stack
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .slice(0, COMPONENT_STACK_MAX_LINES)
-    .join("\n");
 }
 
 /**
@@ -65,15 +54,14 @@ export class WorkbenchErrorBoundary extends Component<
   WorkbenchErrorBoundaryProps,
   WorkbenchErrorBoundaryState
 > {
-  state: WorkbenchErrorBoundaryState = { error: null, componentStack: "" };
+  state: WorkbenchErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): WorkbenchErrorBoundaryState {
-    return { error, componentStack: "" };
+    return { error };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     const componentStack = info.componentStack || "";
-    this.setState({ componentStack });
     console.error(
       "[advanced-workbench] editor crashed",
       error,
@@ -98,243 +86,20 @@ export class WorkbenchErrorBoundary extends Component<
       this.state.error &&
       previous.item.id !== this.props.item.id
     ) {
-      this.setState({ error: null, componentStack: "" });
+      this.setState({ error: null });
     }
   }
 
   render() {
-    const { children, item, onClose, contained, scope } = this.props;
-    const { error, componentStack } = this.state;
+    const { children, item, contained, scope } = this.props;
+    const { error } = this.state;
     if (!error) return children;
     if (typeof document === "undefined") return null;
 
-    const url = item.url || item.previewUrl || "";
-    const retry = () => this.setState({ error: null, componentStack: "" });
-
-    // 路由级：留在窗格内，措辞也不同 —— 坏掉的是这一件素材的编辑器，不是整个工作台。
-    //
-    // 这里是**就地占位**（`grid h-full`），不是 `absolute inset-0` 覆盖层：
-    // 边界一旦接到错误，children 整棵已经不渲染了，没有东西需要盖住。
-    // 于是既不需要「有定位的祖先」这个前提，也不必为此往 31 个站的 DOM 里
-    // 多插一层 wrapper。
-    if (scope === "route") {
-      return (
-        <RouteCrashFallback
-          error={error}
-          componentStack={componentStack}
-          url={url}
-          onRetry={retry}
-        />
-      );
-    }
-
-    const fallback = (
-      <WorkbenchCrashFallback
-        error={error}
-        componentStack={componentStack}
-        title={item.title}
-        url={url}
-        contained={Boolean(contained)}
-        onRetry={retry}
-        onClose={onClose}
-      />
-    );
-    return contained ? fallback : createPortal(fallback, document.body);
+    const fallback = <div data-workbench-route-error={scope === "route" || undefined}
+      className="grid h-full min-h-[18rem] w-full place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]">
+      <AutoRecovery identity={`workbench:${item.id}:${scope || "workbench"}`} recover={() => this.setState({ error: null })} />
+    </div>;
+    return contained || scope === "route" ? fallback : createPortal(fallback, document.body);
   }
-}
-
-// ---------------------------------------------------------------------------
-// 失败态本体（X4，2026-09-06）：**人话**。
-//
-// 之前正文是「这个编辑器出错了」+ 一块 `<pre>` 直接印 `error.message`，用户看到的是
-// 「Minified React error #185; visit https://react.dev/errors/185 …」。
-// 现在先说三件事：发生了什么、你的东西有没有事、下一步点哪里；原始错误消息收进
-// 「技术细节」折叠里——**不吞错误**（`componentDidCatch` 的 console + telemetry 照旧，
-// 消息也仍在 DOM 里可展开），只是不再当正文。
-//
-// 类组件拿不到 hook，所以两块失败态各自是函数组件，在这里过 `tt()`；
-// 16 语译文在 `src/i18n/ui/messages/advanced-route-copy.ts`。
-//
-// 这里的 `tt` **不走 `useUI()`**：它内部的 `useLocale()` 在没有 intl provider 时
-// 会直接抛。崩溃边界的失败态是最后一道兜底，自己再抛一次就是双重故障——
-// 于是只读词典 context（缺 provider 时是空表，回退中文原文），不碰 locale。
-// 词典查找与插值口径同 `useUI()`；这几句里没有「灵感 / 我的库」那类改名逻辑要跑。
-// ---------------------------------------------------------------------------
-
-function useCrashCopy(): UITranslate {
-  const dict = useUiMessages();
-  return useMemo(
-    () => (zh: string, vars?: Record<string, string | number>) => {
-      const hit = dict[zh];
-      const text = hit != null && hit !== "" ? hit : zh;
-      if (!vars) return text;
-      return text.replace(/\{(\w+)\}/g, (match, key) =>
-        key in vars ? String(vars[key]) : match,
-      );
-    },
-    [dict],
-  );
-}
-
-function CrashTechnicalDetails({
-  error,
-  componentStack,
-  className = "",
-}: {
-  error: Error;
-  componentStack?: string;
-  className?: string;
-}) {
-  const tt = useCrashCopy();
-  const stack = clippedComponentStack(componentStack || "");
-  const body = [
-    error.message || error.name || "Unknown editor error",
-    stack ? `${tt("组件栈")}\n${stack}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-  return (
-    <details
-      data-workbench-error-details
-      className={`text-left text-[11px] text-[var(--muted,#78716c)] ${className}`}
-    >
-      <summary className="cursor-pointer select-none">
-        {tt("技术细节（给开发者看）")}
-      </summary>
-      <pre
-        data-workbench-error-stack={stack ? "true" : undefined}
-        className="mt-2 max-h-80 max-w-full select-text overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--card,#fff)] p-3 font-mono"
-      >
-        {body}
-      </pre>
-    </details>
-  );
-}
-
-function RouteCrashFallback({
-  error,
-  componentStack,
-  url,
-  onRetry,
-}: {
-  error: Error;
-  componentStack?: string;
-  url: string;
-  onRetry: () => void;
-}) {
-  const tt = useCrashCopy();
-  return (
-    <div
-      role="alert"
-      data-workbench-route-error
-      data-chunk-failure-kind="crash"
-      className="grid h-full min-h-[18rem] w-full place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
-    >
-      <div className="w-full max-w-md text-center">
-        <p className="text-[15px] font-semibold">
-          {tt("编辑器刚才出了问题，已经停下")}
-        </p>
-        <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
-          {tt("你的素材没有被改动。点「重新载入」再试一次；也可以在左侧切到别的素材继续。")}
-        </p>
-        <div className="mt-5 flex flex-wrap justify-center gap-2">
-          {url && (
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-xl border border-[var(--border,#e7e5e4)] px-4 py-2 text-[12px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
-            >
-              {tt("打开原内容")}
-            </a>
-          )}
-          <button
-            type="button"
-            onClick={onRetry}
-            data-chunk-action="retry"
-            className="rounded-xl bg-[var(--fg,#292524)] px-4 py-2 text-[12px] font-semibold text-[var(--card,#fff)]"
-          >
-            {tt("重新载入")}
-          </button>
-        </div>
-        <CrashTechnicalDetails
-          error={error}
-          componentStack={componentStack}
-          className="mx-auto mt-4"
-        />
-      </div>
-    </div>
-  );
-}
-
-function WorkbenchCrashFallback({
-  error,
-  componentStack,
-  title,
-  url,
-  contained,
-  onRetry,
-  onClose,
-}: {
-  error: Error;
-  componentStack?: string;
-  title: string;
-  url: string;
-  contained: boolean;
-  onRetry: () => void;
-  onClose: () => void;
-}) {
-  const tt = useCrashCopy();
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={tt("{title} · 编辑器错误", { title })}
-      className={
-        contained
-          ? "absolute inset-0 z-10 grid place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
-          : "fixed inset-0 z-[2147483000] grid min-h-[100dvh] place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
-      }
-    >
-      <div className="w-full max-w-xl rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-6 shadow-xl">
-        <p className="text-[15px] font-semibold">
-          {tt("这件素材暂时打不开编辑器")}
-        </p>
-        <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
-          {tt("素材本身没有被改动。可以点「重新载入」再试，或先打开原内容确认文件还能用。")}
-        </p>
-        <div className="mt-5 flex flex-wrap justify-end gap-2">
-          {url && (
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-xl border border-[var(--border,#e7e5e4)] px-4 py-2 text-[12px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
-            >
-              {tt("打开原内容")}
-            </a>
-          )}
-          <button
-            type="button"
-            onClick={onRetry}
-            className="rounded-xl border border-[var(--border,#e7e5e4)] px-4 py-2 text-[12px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
-          >
-            {tt("重新载入")}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl bg-[var(--fg,#292524)] px-4 py-2 text-[12px] font-semibold text-[var(--card,#fff)]"
-          >
-            {tt("关闭")}
-          </button>
-        </div>
-        <CrashTechnicalDetails
-          error={error}
-          componentStack={componentStack}
-          className="mt-4"
-        />
-      </div>
-    </div>
-  );
 }

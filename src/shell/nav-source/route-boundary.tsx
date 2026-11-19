@@ -1,5 +1,7 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
+
 import { useEffect } from "react";
 import { SkeletonCard, SkeletonLine } from "../../ui";
 import { useUI } from "../../i18n/ui/useUI";
@@ -104,34 +106,14 @@ function RouteSkeletonShape({ variant }: { variant: RouteSkeletonVariant }) {
 export function RouteSegmentError({
   error,
   reset,
-  hint,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
   hint?: string;
 }) {
-  const tt = useUI();
   useEffect(() => {
     console.error("[route] render error:", error);
   }, [error]);
 
-  return (
-    <div className="flex min-h-[60vh] items-center justify-center px-6">
-      <div className="w-full max-w-md rounded-2xl border border-neutral-200 p-6 text-center">
-        <h1 className="text-lg font-semibold text-neutral-900">
-          {tt("页面暂时无法加载")}
-        </h1>
-        <p className="mt-2 text-sm text-neutral-600">
-          {hint ?? tt("请稍后重试。")}
-        </p>
-        <button
-          type="button"
-          onClick={() => reset()}
-          className="mt-5 inline-flex rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
-        >
-          {tt("重新加载")}
-        </button>
-      </div>
-    </div>
-  );
+  return <AutoRecovery identity="route-segment" recover={reset} />;
 }

@@ -10,6 +10,7 @@
  */
 import { memo, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { useAutoRecovery } from "../../lib/auto-recovery";
 import { PDFIUM_INIT_TIMEOUT_MS, pdfiumInitWatch } from "./pdf-next-runtime";
 import { pdfEngineBuffer, resolvePdfiumLoadPlan } from "./pdf-engine-host";
 import { buildPdfViewerConfig, pdfViewerTheme } from "./pdf-viewer-config";
@@ -153,6 +154,7 @@ export const PdfStage = memo(function PdfStage({
     setTimeoutError("");
     setAttempt((value) => value + 1);
   };
+  useAutoRecovery(Boolean(timeoutError && !revealed), reload, instanceId);
 
   useEffect(
     () => () => {
@@ -276,31 +278,13 @@ export const PdfStage = memo(function PdfStage({
           />
         </div>
       ) : null}
-      {!revealed && !timeoutError ? (
+      {!revealed ? (
         <p
           role="status"
           className="absolute inset-0 grid place-items-center text-xs text-[var(--awb-muted)]"
         >
           {tt("正在载入 PDF…")}
         </p>
-      ) : null}
-      {!revealed && timeoutError ? (
-        <div
-          role="alert"
-          data-pdf-init-slow=""
-          className="absolute inset-0 grid place-items-center p-6 text-center"
-        >
-          <div className="grid max-w-sm justify-items-center gap-3 text-[13px] text-[var(--awb-text)]">
-            <p>{timeoutError}</p>
-            <button
-              type="button"
-              onClick={reload}
-              className="min-h-11 rounded-lg border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-4 text-[13px] hover:bg-[var(--awb-hover)]"
-            >
-              {tt("重新载入")}
-            </button>
-          </div>
-        </div>
       ) : null}
     </div>
   );

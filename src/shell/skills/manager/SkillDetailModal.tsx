@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../AutoRecovery";
 // W09B · P3 — Manus-style skill detail (contract §3.4, D4; UI-DESIGN "技能详情").
 // Overview: title, author | updated, "+ Add to my skills" (or "✓ Added"), "View details";
 // tilted 3:4 cover on the right; description; recommended connectors / tools; licence.
@@ -229,12 +230,7 @@ export function SkillDetailModal({ open, onClose, skill, projectId, onAdded }: S
           <div className="h-24 w-full animate-pulse rounded-xl bg-neutral-200/70 dark:bg-neutral-800" />
         </div>
       ) : loaded.status === "error" ? (
-        <div className="flex flex-col items-start gap-3 pt-2">
-          <p className="text-[13px] text-rose-600 dark:text-rose-400">{tt(loaded.error)}</p>
-          <button type="button" className={CONFIG_TOOLBAR_BUTTON_CLASS} onClick={() => setTick((v) => v + 1)}>
-            {tt("重试")}
-          </button>
-        </div>
+        <AutoRecovery identity="src/shell/skills/manager/SkillDetailModal.tsx:0" error={loaded.error} recover={() => setTick((v) => v + 1)} />
       ) : view === "files" ? (
         <div className="h-full min-h-[420px]" data-skill-detail-files="">
           <FolderTreeViewer

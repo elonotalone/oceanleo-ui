@@ -1,5 +1,7 @@
 "use client";
 
+import { AutoRecovery } from "./AutoRecovery";
+
 /**
  * 素材货架工具条：层级标签、分区轴、`?app=` 锚点、次级类型筛选与重试。
  *
@@ -199,15 +201,9 @@ export function MaterialShelfToolbar({
       )}
       {facetControl}
       {retryable && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className={`${TOOLBAR_BUTTON} border-amber-500/30 text-amber-700`}
-        >
-          {tt("重试")}
-        </button>
+        <AutoRecovery identity={`material-shelf:${level}`} recover={onRetry} />
       )}
-      {inlineFailure && (
+      {inlineFailure && !retryable && (
         <span role="alert" className="max-w-md text-[11px] text-rose-700">
           {tt(inlineFailure.title)}：{tt(inlineFailure.description)}
         </span>
