@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentAttachment } from "./agent";
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
+import { resolveGatewayUrl } from "./gateway-url";
 import type { FileItem, MediaType } from "./database";
 import { hasTaskAttachmentPath, taskAttachmentPath } from "./task-content-path";
 import { loadTaskAttachmentBlobUrl, TASK_IMAGE_MAX_BYTES } from "../shell/access/task-content-client";
@@ -81,9 +82,9 @@ function isLocalUrl(url: string): boolean {
   return url.startsWith("blob:") || url.startsWith("data:");
 }
 
-/** 旧公开对象经网关同源代理读；不是原始存储地址时原样返回。 */
+/** 旧公开对象经网关代理读；网关相对路径补全 origin。 */
 export function gatewayProxiedUrl(url: string): string {
-  if (!isRawStorageUrl(url)) return url;
+  if (!isRawStorageUrl(url)) return resolveGatewayUrl(url);
   return `${GATEWAY_BASE}${MEDIA_PROXY_PATH}?url=${encodeURIComponent(url)}`;
 }
 
@@ -105,7 +106,6 @@ export function attachmentDisplayUrl(att: AttachmentLike | null | undefined): st
   if (attachmentRef(att)) return undefined;
   const remote = candidates.find((value) => /^https?:\/\//i.test(value) || value.startsWith("/v1/"));
   if (!remote) return undefined;
-  if (remote.startsWith("/v1/")) return `${GATEWAY_BASE}${remote}`;
   return gatewayProxiedUrl(remote);
 }
 
@@ -139,7 +139,7 @@ async function issueRenditionUrl(
   // Only a gateway-relative opaque grant is accepted; never a storage URL.
   if (!access.startsWith(ACCESS_PREFIX)) return undefined;
   const expires = Date.parse(String(raw.expiresAt || raw.expires_at || ""));
-  const url = `${GATEWAY_BASE}${access}`;
+  const url = resolveGatewayUrl(access);
   grantCache.set(`${ref.artifactId}:${ref.revisionId}:${purpose}`, {
     url,
     // Refresh 30 s early; an unparsable expiry is treated as a 2-minute grant.

@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveGatewayUrl } from "../lib/gateway-url";
+
 import { sharedGatewayFetch } from "../lib/shared-get";
 import { artifactDisplayRendition } from "./artifact-contract";
 
@@ -409,10 +411,7 @@ function qualifyUrlField(entry: string): string {
   const sourceTreeRelative = artifactSourceTreeRelativePath(entry);
   if (sourceTreeRelative) return sourceTreeRelative;
   if (!isGatewayRelativeArtifactAccessUrl(entry)) return entry;
-  const qualified = new URL(
-    entry,
-    `${GATEWAY_BASE.replace(/\/+$/, "")}/`,
-  ).toString();
+  const qualified = resolveGatewayUrl(entry);
   return trustedHttpsUrl(qualified) || entry;
 }
 

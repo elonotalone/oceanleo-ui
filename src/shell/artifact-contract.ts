@@ -5,6 +5,8 @@
  * carried across Preview, Edit, Insert, Replace, favorites and bindings.
  */
 
+import { resolveGatewayUrl } from "../lib/gateway-url";
+
 /**
  * Built-in shelf choices. This is presentation data, not an allowlist:
  * transport accepts any non-empty self-reported artifact type.
@@ -1311,7 +1313,7 @@ function trustedRenditionUrl(value: unknown): string {
   const sourceTreeRelative = artifactSourceTreeRelativePath(candidate);
   if (sourceTreeRelative) return sourceTreeRelative;
   if (isAllowlistedGatewayRelativeRenditionUrl(candidate)) {
-    return candidate;
+    return resolveGatewayUrl(candidate);
   }
   try {
     const parsed = new URL(candidate);
