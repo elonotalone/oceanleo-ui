@@ -158,23 +158,16 @@ test("探测器放过所有第一方 `confirm`（反面自测，证明它不是�
   }
 });
 
-test("探测器在仓里那 4 处真的第一方 `confirm` 上一处都不响", () => {
-  // 这两份文件是「grep 会误伤、AST 不会」的活样本，见文件头的说明。
-  for (const rel of ["src/lib/fn-agent.ts", "src/shell/FunctionAgentChat.tsx"]) {
-    const full = join(REPO, rel);
-    const text = readFileSync(full, "utf8");
-    // 先证明这份文件里确实有 `confirm` 这个词，否则「零命中」是白跑的。
-    assert.ok(
-      /\bconfirm\s*\(/.test(text),
-      `${rel} 里没有 confirm( —— 样本失效，这条自测等于没跑`,
-    );
-    const hits = findNativeDialogCalls(text, rel);
-    assert.deepEqual(
-      hits,
-      [],
-      `${rel} 的第一方 confirm 被误判成原生弹窗：${JSON.stringify(hits)}`,
-    );
-  }
+test("探测器区分第一方 confirm 与同一份 TSX 中的原生弹窗", () => {
+  // The old FunctionAgentChat/fn-agent confirmation APIs have been retired.
+  // Keep a stable mixed sample so both false positives and missed calls fail.
+  const source = `
+    interface Session { confirm(): Promise<void>; }
+    async function confirm() { await session.confirm(); }
+    const button = <button onClick={() => confirm()}>Confirm</button>;
+    window.confirm("native");
+  `;
+  assert.deepEqual(findNativeDialogCalls(source, "probe.tsx"), [{ name: "confirm", line: 5 }]);
 });
 
 // ------------------------------------------------------------------ 全 src 闸

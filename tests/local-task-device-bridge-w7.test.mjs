@@ -180,11 +180,11 @@ test("sanitizer 保留 fs.read_summary 的顶层 kind 并截到 64 字符", () =
   );
 });
 
-test("all deny reasons render a human action on 那台电脑", () => {
+test("all deny reasons render the current device permission explanation", () => {
   const expectations = new Map([
-    ["local_exec_disabled", /开关只能在那台电脑上打开/],
-    ["grant_missing", /需要在那台电脑上授权/],
-    ["path_outside_grant", /请在那台电脑上选择已授权目录/],
+    ["local_exec_disabled", /书房电脑尚未授权此操作。/],
+    ["grant_missing", /书房电脑尚未授权这类操作。/],
+    ["path_outside_grant", /所选目录未获授权。/],
     ["confirm_timeout", /90 秒.*那台电脑上重新发起/],
     ["user_denied", /你在书房电脑上拒绝了这一步。/],
     ["command_unsupported", /请拆成单条命令/],
