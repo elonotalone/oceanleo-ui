@@ -34,7 +34,10 @@ async function bench(missing = false, collection = {}) {
   const timers=new Map(), originalSet=globalThis.setTimeout, originalClear=globalThis.clearTimeout;
   globalThis.setTimeout=(fn,ms)=>{ const key=++id;timers.set(key,{fn,ms});return key; };
   globalThis.clearTimeout=key=>timers.delete(key);
-  globalThis.__retryRendition={url:'',version:0,loading:false,error:'',rendition:null,resourceFailed(){failures++;},retry(){retries++;}};
+  globalThis.__retryRendition={url:'',version:0,loading:false,error:'',rendition:null,
+    resourceFailed(){failures++;if(collection.terminal) this.error='连不上素材服务，请检查网络后重试。';},
+    retry(){retries++;this.error='';},
+  };
   const host=document.createElement('div');
   document.body.appendChild(host);
   let root, opened=0, starred=0;
@@ -84,11 +87,43 @@ test('an actually missing cover keeps its explanation instead of timing out to a
   const b=await bench(true);try{
     assert.ok(b.host.querySelector('[role="alert"]'));
     assert.equal(b.hasTimer(15000),false);
+    assert.equal(b.host.querySelector('button[aria-label="重试"]'),null,'no retry when there is no cover resource');
   }finally{await b.close();}
 });
 
 for (const Item of [CollectionItemCard, CollectionItemRow]) {
   for (const href of [undefined, '/library/site']) {
+    test(`${Item.name}: terminal cover failure retains a working independent retry with ${href ? 'link' : 'button'} primary action`, async(t)=>{
+      const errors=[];
+      t.mock.method(console,'error',(...args)=>errors.push(args));
+      const b=await bench(false,{Item,href,errors,terminal:true});
+      try{
+        for(const delay of [1000,2000,4000]){
+          await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
+          await b.tick(delay);
+        }
+        await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
+        assert.equal(b.failures,1);
+        assert.equal(b.host.querySelector('[data-cover-state]').dataset.coverState,'error');
+        assert.match(b.host.querySelector('[role="alert"]').textContent,/封面不可用.*连不上素材服务，请检查网络后重试。/);
+        const image=b.host.querySelector('img');
+        const retry=b.host.querySelector('button[aria-label="重试"]');
+        assert.ok(retry,'terminal failure still offers the promised retry');
+        assert.equal(retry.parentElement.closest('button, a'),null);
+        await act(async()=>retry.click());
+        assert.equal(b.retries,1);assert.equal(b.opened,0);
+        assert.equal(b.host.querySelector('[role="alert"]'),null,'retry clears terminal error');
+        assert.notEqual(b.host.querySelector('img'),image,'retry remounts the actual cover resource');
+        await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
+        await b.tick(1000);
+        await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('load',{bubbles:true})));
+        assert.equal(b.host.querySelector('[data-cover-state]').dataset.coverState,'ready');
+        assert.equal(b.host.querySelector('button[aria-label="重试"]'),null);
+        assert.equal(b.host.querySelector('button button, button a, a button, a a'),null);
+      }finally{await b.close();}
+      assert.deepEqual(errors,[],'no console.error or recoverable hydration error');
+    });
+
     test(`${Item.name}: failed real cover hydrates with independent retry and ${href ? 'link' : 'button'} primary action`, async(t)=>{
       const errors=[];
       t.mock.method(console,'error',(...args)=>errors.push(args));

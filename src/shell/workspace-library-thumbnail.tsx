@@ -505,7 +505,7 @@ export function WorkspaceThumbnail({
           }}
         />
       )}
-      {(loading || failed || timedOut) && !ready && !solidRejected && !failureMessage && (
+      {(loading || failed || timedOut || failureMessage) && !ready && !provenPlaceholder && !documentShelfCover && (!failureMessage || Boolean(plan.url || artifactRendition.rendition)) && (
         <button type="button" onClick={() => { setRetryCount(0); setRetryCycle(value => value + 1); setFailed(false); setTimedOut(false); artifactRendition.retry(); }}
           className="absolute bottom-1 right-1 z-10 rounded bg-[var(--card,#fff)] px-2 py-1 text-xs" aria-label={tt("重试")}>{tt("重试")}</button>
       )}
