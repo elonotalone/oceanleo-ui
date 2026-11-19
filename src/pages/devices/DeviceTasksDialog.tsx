@@ -1,9 +1,10 @@
 "use client";
 
+import { AutoRecovery } from "../../shell/AutoRecovery";
 import { useEffect, useState } from "react";
 import type { DeviceSettingsClient, DeviceTaskSummary } from "../../api/device-settings";
 import { useUI } from "../../i18n/ui/useUI";
-import { DEVICE_BUTTON, DeviceDialog } from "./DeviceDialog";
+import { DeviceDialog } from "./DeviceDialog";
 import { deviceSettingsErrorCopy } from "./device-settings-state";
 
 const STATUS: Record<string, string> = { queued: "等待中", claimed: "执行中", running: "执行中", succeeded: "已完成", failed: "失败", denied: "已拒绝", cancelled: "已取消", canceled: "已取消", expired: "已超时" };
@@ -33,7 +34,7 @@ export function DeviceTasksDialog({ deviceId, deviceName, client, onClose }: { d
     return () => { controller.abort(); clearTimeout(timer); };
   }, [client, deviceId, revision]);
   return <DeviceDialog title={tt("{name} · 任务", { name: deviceName })} onClose={onClose} testId="tasks">
-    {error && <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-red-50 p-3 text-sm text-red-600" role="alert">{tt(error)}<button type="button" className={DEVICE_BUTTON} onClick={() => setRevision((value) => value + 1)}>{tt("重试")}</button></div>}
+    {error && <AutoRecovery identity="src/pages/devices/DeviceTasksDialog.tsx:0" error={error} recover={() => setRevision((value) => value + 1)} />}
     {loading ? <p role="status" className="py-8 text-center text-sm text-neutral-500">{tt("正在加载…")}</p> : tasks.length === 0 ? <p className="py-16 text-center text-sm text-neutral-400">{tt("暂无任务")}</p> : <ul className="divide-y divide-neutral-200">
       {tasks.map((task) => <li key={task.task_id} className="flex items-center justify-between gap-4 py-4">
         <div className="min-w-0"><p className="text-sm font-medium text-neutral-800">{tt(ACTION[task.action_kind] ?? "设备任务")}</p><p className="mt-1 text-xs text-neutral-400">{formatDeviceTime(task.created_at)}</p>{task.deny_reason && <p className="mt-1 text-xs text-neutral-500">{tt(deviceSettingsErrorCopy(task.deny_reason))}</p>}</div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../shell/AutoRecovery";
 // 设置页「连接器」→「+ 添加连接器 ▾」→「从连接器目录添加」打开的大弹窗（skills-overhaul W10）。
 // 分类页签 + 搜索 + 卡片网格。点注册表卡片 → 原来的连接对话框（一键授权 / 令牌 / 探活全部照旧，
 // 由 useConnectorController 提供）。国内版把阿里云市场目录并成其中一个页签：卡片点开显示说明与
@@ -99,19 +100,7 @@ export function ConnectorCatalogDialog({
     tab === CATALOG_MARKETPLACE ? null : controller.registryStatus === "loading" ? (
       <p className="py-10 text-center text-[13px] text-neutral-500">{tt("连接器目录加载中…")}</p>
     ) : controller.registryStatus === "error" ? (
-      <div className="rounded-2xl border border-dashed border-red-200 bg-red-50 p-8 text-center">
-        <p className="text-[13px] text-red-800">{tt("连接器目录加载失败")}</p>
-        {controller.registryError ? (
-          <p className="mt-1 text-[12px] text-red-700">{controller.registryError}</p>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => void controller.loadRegistry()}
-          className="mt-3 rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
-        >
-          {tt("重试")}
-        </button>
-      </div>
+      <AutoRecovery identity="connector-registry" error={controller.registryError} recover={() => controller.loadRegistry()} />
     ) : registryItems.length > 0 ? (
       <div data-mcp-catalog-registry className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {registryItems.map((c) => (
@@ -127,16 +116,7 @@ export function ConnectorCatalogDialog({
     ) : null;
 
   const marketBody = !showMarketBlock ? null : marketplace.error ? (
-    <div className="rounded-2xl border border-dashed border-neutral-300 p-6 text-center">
-      <p className="text-[13px] text-neutral-500">{marketplace.error}</p>
-      <button
-        type="button"
-        onClick={marketplace.reload}
-        className="mt-3 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50"
-      >
-        {tt("重试")}
-      </button>
-    </div>
+    <AutoRecovery identity="src/pages/plugins/ConnectorCatalogDialog.tsx:1" error={marketplace.error} recover={marketplace.reload} />
   ) : marketplace.loading ? (
     <div data-mcp-catalog className="grid grid-cols-1 gap-4 md:grid-cols-2">
       {Array.from({ length: 4 }).map((_, i) => (

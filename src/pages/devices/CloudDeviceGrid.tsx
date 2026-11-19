@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../shell/AutoRecovery";
 import { useEffect, useRef, useState } from "react";
 import { cloudComputerApi, type CloudComputerClient, type Computer } from "../../lib/cloud-computer-api";
 import { useUI } from "../../i18n/ui/useUI";
@@ -76,7 +77,7 @@ export function CloudDeviceGrid({ client = cloudComputerApi, activityClient = co
   function updated() { setRevision((value) => value + 1); }
   return <>
     {loginRequired && <div role="status" className="col-span-full flex items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm"><span>{tt("请先登录")}</span><button type="button" className={DEVICE_PRIMARY_BUTTON} onClick={() => setShowAuth(true)}>{tt("登录")}</button></div>}
-    {error && <p role="alert" className="col-span-full rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(error)} <button type="button" onClick={updated} className="underline underline-offset-2">{tt("重试")}</button></p>}
+    {error && <AutoRecovery identity="src/pages/devices/CloudDeviceGrid.tsx:0" error={error} recover={updated} />}
     {computers.map((computer, index) => {
       const state = computerDisplayState(computer);
       const live = activity[computer.id]?.online ? activity[computer.id] : null;

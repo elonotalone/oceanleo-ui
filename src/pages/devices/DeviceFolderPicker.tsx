@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { AutoRecovery } from "../../shell/AutoRecovery";
 import type { DeviceFolderListing, DeviceSettingsClient } from "../../api/device-settings";
 import { useUI } from "../../i18n/ui/useUI";
 import { DEVICE_BUTTON, DEVICE_PRIMARY_BUTTON, DeviceDialog } from "./DeviceDialog";
@@ -24,8 +25,10 @@ export function DeviceFolderPicker({ deviceId, deviceName, title, client, onSele
   const [granting, setGranting] = useState(false);
   const inputPathRef = useRef("");
   const request = useRef<AbortController | null>(null);
+  const lastPath = useRef<string | null>(null);
 
   async function navigate(path: string | null, { offerGrant = true }: { offerGrant?: boolean } = {}) {
+    lastPath.current = path;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -110,7 +113,7 @@ export function DeviceFolderPicker({ deviceId, deviceName, title, client, onSele
       <button type="submit" className={DEVICE_BUTTON} disabled={loading || !inputPath.trim()}>{tt("前往")}</button>
     </form>
     <div className="min-h-[260px] rounded-2xl border border-neutral-200 bg-white p-2" aria-busy={loading || granting} data-device-folder-list>
-      {loading || granting ? <p role="status" className="p-4 text-sm text-neutral-500">{tt(granting ? "正在授权这个文件夹…" : "正在读取文件夹…")}</p> : error ? <div className="p-4"><p role="alert" className="text-sm text-red-600">{tt(error)}</p>{grantPath && <button type="button" className={`${DEVICE_PRIMARY_BUTTON} mt-3`} onClick={() => void grantFolder()}>{tt("授权这个文件夹")}</button>}<button type="button" className={`${DEVICE_BUTTON} mt-3 ml-2`} onClick={() => void navigate(null)}>{tt("重试")}</button></div> : <>
+      {loading || granting ? <p role="status" className="p-4 text-sm text-neutral-500">{tt(granting ? "正在授权这个文件夹…" : "正在读取文件夹…")}</p> : error ? <div className="p-4">{grantPath ? <><p role="alert" className="text-sm text-red-600">{tt(error)}</p><button type="button" className={`${DEVICE_PRIMARY_BUTTON} mt-3`} onClick={() => void grantFolder()}>{tt("授权这个文件夹")}</button></> : <AutoRecovery identity={`device-folders:${deviceId}:${lastPath.current || ""}`} error={error} recover={() => navigate(lastPath.current)} />}</div> : <>
         {listing?.path && <div className="mb-1 flex items-center gap-2 rounded-xl bg-neutral-100 px-3 py-3 text-sm font-medium"><FolderIcon />{listing.path.split(/[\\/]/).filter(Boolean).at(-1) ?? listing.path}</div>}
         {listing?.entries.map((entry) => <button type="button" key={entry.path} onClick={() => void navigate(entry.path)} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-neutral-700 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2" data-device-folder-path={entry.path}>
           <span aria-hidden="true" className="text-neutral-400">›</span><FolderIcon /><span className="truncate">{entry.name}</span>

@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../shell/AutoRecovery";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { CloudComputerError } from "../../lib/cloud-computer-api";
@@ -17,10 +18,11 @@ export function serverErrorText(error: unknown, tt: ReturnType<typeof useUI>): s
   return failure?.message ? tt(failure.message) : tt("操作未完成，请重试。");
 }
 
-export function ErrorNotice({error, retry}: {error: unknown; retry: () => void}) {
+export function ErrorNotice({error, retry}: {error: unknown; retry?: () => void}) {
   const tt = useUI();
   if ((error as Partial<CloudComputerError> | null)?.code === "metering_unavailable") return <p role="status" className="my-3 text-sm text-neutral-500">{tt("此功能尚未在当前服务端开通")}</p>;
-  return <div role="alert" className="my-3 break-words rounded-xl bg-red-50 p-3 text-sm text-red-700">{serverErrorText(error, tt)} <button type="button" className="underline" onClick={retry}>{tt("重试")}</button></div>;
+  if (retry) return <AutoRecovery identity="server-resource" error={error} recover={retry} />;
+  return <p role="alert" className="my-3 text-sm text-red-700">{serverErrorText(error, tt)}</p>;
 }
 
 export function useServerResource<T>(load: () => Promise<T>) {
@@ -67,12 +69,10 @@ export function useServerAction(done: () => void = () => {}) {
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const lock = useRef(false);
   const alive = useRef(true);
-  const retry = useRef<() => void>(() => {});
   useEffect(() => {alive.current = true; return () => {alive.current = false;};}, []);
   async function execute(request: Request, confirmed = false, dedicatedGroupConfirmed = false) {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError(null);
-    retry.current = () => {void execute(request, confirmed, dedicatedGroupConfirmed);};
     try {await request(confirmed, dedicatedGroupConfirmed); if (alive.current) {setConfirmation(null); done();}}
     catch (cause) {
       if (!alive.current) return;
@@ -92,7 +92,7 @@ export function useServerAction(done: () => void = () => {}) {
     if (confirm) setConfirmation({...confirm, request, confirmed: true, dedicatedGroupConfirmed: false}); else void execute(request);
   }
   const feedback = <>
-    {error != null && <ErrorNotice error={error} retry={() => retry.current()} />}
+    {error != null && <ErrorNotice error={error} />}
     {confirmation && <DeviceDialog compact title={confirmation.title} testId="server-confirm" onClose={() => {if (!lock.current) setConfirmation(null);}}>
       <p className="whitespace-pre-wrap text-sm">{confirmation.body}</p>
       <div className="mt-5 flex flex-wrap justify-end gap-2"><button type="button" className={DEVICE_BUTTON} disabled={busy} onClick={() => setConfirmation(null)}>{tt("取消")}</button><button type="button" data-server-confirm className={DEVICE_PRIMARY_BUTTON} disabled={busy} onClick={() => void execute(confirmation.request, confirmation.confirmed, confirmation.dedicatedGroupConfirmed)}>{tt("确认")}</button></div>

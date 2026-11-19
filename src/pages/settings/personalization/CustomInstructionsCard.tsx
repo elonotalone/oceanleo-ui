@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../../shell/AutoRecovery";
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
@@ -10,7 +11,7 @@ import {
   type PersonalizationPrefs,
 } from "../../../lib/personalization-api";
 import { ButtonSpinner, SkeletonLine } from "../../../ui";
-import { CARD, FIELD, Note, PRIMARY, QUIET, accentStyle, errorCopy, notAvailableCopy } from "./parts";
+import { CARD, FIELD, Note, PRIMARY, accentStyle, errorCopy, notAvailableCopy } from "./parts";
 import type { PrefsState } from "./state";
 
 type PrefsUpdate = (update: (current: PersonalizationPrefs) => PersonalizationPrefs) => void;
@@ -48,12 +49,7 @@ export function CustomInstructionsCard({
           </div>
         ) : null}
         {prefs.status === "failed" && prefs.code !== "not_available" ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Note kind="error" text={errorCopy(prefs.code, tt)} />
-            <button type="button" className={QUIET} onClick={onRetry}>
-              {tt("重试")}
-            </button>
-          </div>
+          <AutoRecovery identity="src/pages/settings/personalization/CustomInstructionsCard.tsx:0" error={{code:prefs.code}} recover={onRetry} />
         ) : null}
         {prefs.status === "ready" ? (
           <InstructionsEditor

@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../../shell/AutoRecovery";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
@@ -102,12 +103,7 @@ export function MailSection({ variant = "page" }: { variant?: "page" | "pane" } 
 
   if (state.status === "failed") {
     return (
-      <div className="space-y-3" data-settings-pane="mail" data-variant={pane ? "pane" : "page"}>
-        <Note kind="error" text={errorCopy(tt, state.code)} />
-        <button type="button" className={QUIET_BTN} onClick={() => setReload((n) => n + 1)}>
-          {tt("重试")}
-        </button>
-      </div>
+      <AutoRecovery identity="src/pages/settings/mail/MailSection.tsx:0" error={{code:state.code}} recover={() => setReload((n) => n + 1)} />
     );
   }
 

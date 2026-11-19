@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../shell/AutoRecovery";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { AgentApiResult } from "../../lib/agent";
@@ -225,10 +226,7 @@ export function CloudBrowserSettingsSection({ flows }: { flows?: ReactNode } = {
       </div>
 
       {loading && <p role="status" className="text-[13px] text-neutral-500">{tt("正在读取登录与授权…")}</p>}
-      {errorStatus !== null && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">
-        <span>{browserTrustErrorCopy(errorStatus, tt)}</span>
-        <button type="button" className={button} disabled={busy || loading} onClick={() => { const controller = lifetime.current; if (controller) void refresh(controller.signal); }}>{tt("重试")}</button>
-      </div>}
+      {errorStatus !== null && <AutoRecovery identity="cloud-browser-settings" error={{ status: errorStatus }} recover={() => { const controller = lifetime.current; if (controller) return refresh(controller.signal); }} />}
       {notice && <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-700">{notice}</p>}
 
       <div className={card} data-cloud-browser-saved-logins>

@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../../shell/AutoRecovery";
 import { useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
@@ -11,16 +12,7 @@ import {
   type PersonalizationApiCode,
 } from "../../../lib/personalization-api";
 import { ConfirmDialog, SkeletonLine, Switch } from "../../../ui";
-import {
-  CARD,
-  CARD_TITLE,
-  FIELD,
-  KIND_BADGE,
-  Note,
-  QUIET,
-  errorCopy,
-  kindLabel,
-} from "./parts";
+import { CARD, CARD_TITLE, FIELD, KIND_BADGE, Note, errorCopy, kindLabel } from "./parts";
 import type { MemoriesState } from "./state";
 
 export function MemoryListCard({
@@ -114,12 +106,7 @@ export function MemoryListCard({
       ) : null}
 
       {memories.status === "failed" ? (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Note kind="error" text={errorCopy(memories.code, tt)} />
-          <button type="button" className={QUIET} onClick={onRetry}>
-            {tt("重试")}
-          </button>
-        </div>
+        <AutoRecovery identity="src/pages/settings/personalization/MemoryListCard.tsx:0" error={{code:memories.code}} recover={onRetry} />
       ) : null}
 
       {memories.status === "ready" && items.length === 0 ? (

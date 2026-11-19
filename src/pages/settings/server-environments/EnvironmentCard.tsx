@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../../shell/AutoRecovery";
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { CARD, CARD_DESC, CARD_TITLE, QUIET } from "../personalization/parts";
@@ -93,7 +94,7 @@ export function EnvironmentCard({ computerId, online, api = environmentApi }: {
     </div>
     {!online && <p className="mt-4 rounded-xl bg-neutral-50 px-3 py-2 text-[13px] text-neutral-500">{tt(copy("offline"))}</p>}
     {loading && <p role="status" className="mt-4 text-sm text-neutral-400">{tt(copy("loading"))}</p>}
-    {!loading && error && <div role="alert" className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-red-50 px-3 py-2 text-[13px] text-red-700"><span>{error}</span><button type="button" className={QUIET} onClick={() => void load()}>{tt(copy("retry"))}</button></div>}
+    {!loading && error && <AutoRecovery identity="src/pages/settings/server-environments/EnvironmentCard.tsx:0" error={error} recover={() => load()} />}
     {!loading && online && !error && groups.length === 0 && <p className="mt-4 text-sm text-neutral-400">{tt(copy("empty"))}</p>}
     <div className="mt-4 space-y-5">{groups.map((group) => <div key={group.id} data-environment-group={group.id}>
       <h4 className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-neutral-400">{tt(group.title)}</h4>

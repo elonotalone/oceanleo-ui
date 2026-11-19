@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../../shell/AutoRecovery";
 import { useCallback, useEffect, useState } from "react";
 import type { ActionGrant } from "../../../api/action-grants";
 import { listActionGrants, revokeActionGrant } from "../../../api/action-grants";
@@ -128,12 +129,7 @@ function DeliveryPrefsBlock() {
         </p>
       ) : null}
       {status === "failed" ? (
-        <div className="mt-3 space-y-2">
-          <Note kind="error" text={tt("网络失败，请稍后再试。")} />
-          <button type="button" className={QUIET} onClick={() => setReload((n) => n + 1)}>
-            {tt("重试")}
-          </button>
-        </div>
+        <AutoRecovery identity="src/pages/settings/sections/AutomationSettingsSection.tsx:0" recover={() => setReload((n) => n + 1)} />
       ) : null}
       {status === "ready" && prefs ? (
         <div className="mt-1 divide-y divide-neutral-100">
@@ -214,12 +210,7 @@ function ActionGrantsBlock() {
         </p>
       ) : null}
       {status === "failed" ? (
-        <div className="mt-3 space-y-2">
-          <Note kind="error" text={tt("网络失败，请稍后再试。")} />
-          <button type="button" className={QUIET} onClick={() => setReload((n) => n + 1)}>
-            {tt("重试")}
-          </button>
-        </div>
+        <AutoRecovery identity="src/pages/settings/sections/AutomationSettingsSection.tsx:1" recover={() => setReload((n) => n + 1)} />
       ) : null}
       {status === "ready" && items.length === 0 ? (
         <p className={`${CARD_DESC} mt-3`}>
@@ -334,12 +325,7 @@ function HostedSitesBlock() {
         </p>
       ) : null}
       {status === "failed" ? (
-        <div className="mt-3 space-y-2">
-          <Note kind="error" text={tt("网络失败，请稍后再试。")} />
-          <button type="button" className={QUIET} onClick={() => setReload((n) => n + 1)}>
-            {tt("重试")}
-          </button>
-        </div>
+        <AutoRecovery identity="src/pages/settings/sections/AutomationSettingsSection.tsx:2" recover={() => setReload((n) => n + 1)} />
       ) : null}
       {status === "ready" && items.length === 0 ? (
         <p className={`${CARD_DESC} mt-3`}>{tt('还没有。让 agent 做一个网站，然后说"发布"。')}</p>

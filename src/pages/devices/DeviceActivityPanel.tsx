@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../shell/AutoRecovery";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { portalHref } from "../../contracts/domain-family";
@@ -152,7 +153,7 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
   const at = now();
 
   const content = <>
-    {error && <div role="alert" className="mb-4 break-words rounded-xl bg-red-50 p-3 text-sm text-red-600"><p data-device-activity-error>{error}</p><button type="button" className="underline" onClick={() => void act("refresh", () => client.getActivity(computerId))}>{tt("重试")}</button></div>}
+    {error && <AutoRecovery identity="src/pages/devices/DeviceActivityPanel.tsx:0" error={error} recover={() => act("refresh", () => client.getActivity(computerId))} />}
     {!activity ? (!error && <p role="status" className="py-8 text-center text-sm text-neutral-500">{tt("正在加载…")}</p>) : <>
       <section className="flex flex-wrap items-start justify-between gap-4 pb-6" data-device-activity-machine>
         <div className="min-w-0 text-sm text-neutral-700">

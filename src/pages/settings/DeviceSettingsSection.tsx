@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../shell/AutoRecovery";
 import { useEffect, useRef, useState } from "react";
 import { deviceSettingsClient as defaultSettingsClient, type DeviceControllerGrant, type DevicePreferences, type DeviceRemoteAccessSettings, type DeviceRemoteSettingsOperation, type DeviceSettings, type DeviceSettingsClient } from "../../api/device-settings";
 import { devicesFacade, type Device, type DevicesFacade } from "../../facades/devices";
@@ -183,7 +184,7 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
     </section>
 
     {availabilityNotice && availabilityNotice !== error && <p role="status" className="text-[12px] text-neutral-500">{tt(availabilityNotice)}</p>}
-    {error && <div role="alert" className="mb-5 flex items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(error)}<button type="button" className={QUIET} disabled={controlsBusy} onClick={() => void refresh(lifetime.current!.signal)}>{tt("重试")}</button></div>}
+    {error && <AutoRecovery identity="src/pages/settings/DeviceSettingsSection.tsx:0" error={error} recover={() => refresh(lifetime.current!.signal)} />}
     {notice && <p role="status" className="rounded-lg bg-neutral-50 px-3 py-2 text-[13px] text-neutral-600">{tt(notice)}</p>}
 
     {isComputer(device) && <section className={CARD} data-device-access-settings>
@@ -362,7 +363,7 @@ export function DeviceSettingsSection({ client = devicesFacade, settingsClient =
 
   return <div className="space-y-5" data-settings-pane="device-settings">
     <ServerBudgetPanel key={`budget-${accountRevision}`} client={serverClient} onPurchased={() => setRevision((value) => value + 1)} />
-    {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">{tt(error)}<button type="button" className={QUIET} onClick={() => setRevision((value) => value + 1)}>{tt("重试")}</button></div>}
+    {error && <AutoRecovery identity="src/pages/settings/DeviceSettingsSection.tsx:1" error={error} recover={() => setRevision((value) => value + 1)} />}
     {loading ? <p role="status" className="py-4 text-[13px] text-neutral-400">{tt("正在加载设备")}</p> : devices.length + servers.length > 0 ? <>
       <div className={SETTINGS_ROW}>
         <h3 className={CARD_TITLE}>{tt("选择设备")}</h3>

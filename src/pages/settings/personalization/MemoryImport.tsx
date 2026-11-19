@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../../shell/AutoRecovery";
 import { useEffect, useId, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { normalizeLocale, type Locale } from "../../../i18n/config";
@@ -177,12 +178,7 @@ export function MemoryImportDialog({
                 <p className="mt-2 text-[12px] text-neutral-500">{tt("加载中…")}</p>
               ) : null}
               {prompt.status === "failed" ? (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Note kind="error" text={errorCopy(prompt.code, tt)} />
-                  <button type="button" className={QUIET} onClick={() => setAttempt((n) => n + 1)}>
-                    {tt("重试")}
-                  </button>
-                </div>
+                <AutoRecovery identity="src/pages/settings/personalization/MemoryImport.tsx:0" error={{code:prompt.code}} recover={() => setAttempt((n) => n + 1)} />
               ) : null}
               {prompt.status === "ready" ? (
                 <div className="mt-2 space-y-2">
