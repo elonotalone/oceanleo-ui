@@ -40,6 +40,7 @@ import {
   workspaceSlotForLegacyId,
   workspaceMaterialsActionFromSearch,
   dispatchWorkspaceAction,
+  workspaceMaterialAssetRef,
   type WorkspaceActionEnvelope,
   type WorkspaceSlotId,
 } from "./workspace-actions";
@@ -142,11 +143,12 @@ export interface TaskWorkspaceOpenState {
 const NO_PAGE_ACTIONS = { bay: ["bay"], leochat: ["leochat"], both: ["bay", "leochat"] } as const;
 
 export interface ResultCanvasProps {
+  workspaceInstanceId?: string;
   /** The LeoChat page already owns chat and must not offer it again. */
   showLeoChat?: boolean;
   /** Page hosts can omit their own destination from the sidebar. */
   showBay?: boolean;
-  /** Browse existing tasks and start at the home composer without creating a row. */
+  /** Browse and open task conversations in this sidebar, including a new draft. */
   showMyTasks?: boolean;
   /**
    * Compatibility input. Existing pages can keep declaring their domain tabs;
@@ -249,6 +251,7 @@ function PluginModuleMount({
  * 右侧栏顶上不再有标签，层由 `useWorkspaceViewState` 决定。
  */
 export function ResultCanvas({
+  workspaceInstanceId,
   tabs,
   active,
   onChange,
@@ -299,6 +302,12 @@ export function ResultCanvas({
   const rightSlot = useRightPaneSlot();
   const workspacePane = useWorkspacePane();
   const libraryPanelInstanceId = useId();
+  const instanceId = workspaceInstanceId || libraryPanelInstanceId;
+  const [tasksVisited, setTasksVisited] = useState(false);
+  const [taskDetailOpen, setTaskDetailOpen] = useState(false);
+  const taskPageReturnRef = useRef(false);
+  const [taskEntryRequest, setTaskEntryRequest] = useState<TaskWorkspaceOpenEntry | null>(null);
+  const taskOpenSequence = useRef(0);
   const libraryPanelOwnerRef = useRef(
     `result-canvas-library:${libraryPanelInstanceId}`,
   );
@@ -569,6 +578,7 @@ export function ResultCanvas({
     panelAction,
     pageAction,
   } = useWorkspaceSlotState({
+    instanceId,
     active,
     showTemplate,
     focusNonce,
@@ -662,7 +672,35 @@ export function ResultCanvas({
     latestEntryRequest.current.item = openItem?.nonce;
     if (openItem) latestEntryRequest.current.request = null;
   }
-  const entryRequest = useWorkspaceEntryRequest(latestEntryRequest.current.request, openResolvedEntry);
+  const entryRequest = useWorkspaceEntryRequest(taskEntryRequest || latestEntryRequest.current.request, openResolvedEntry);
+  const returnToTask = useCallback(() => {
+    if (!taskPageReturnRef.current) return false;
+    taskPageReturnRef.current = false;
+    setTaskEntryRequest(null);
+    setActiveCanvasEntry(null);
+    setActiveActionContext(undefined);
+    setForegroundSuspended(true);
+    setArtifactSaveError("");
+    openPanel("tasks");
+    return true;
+  }, [openPanel]);
+  const openTaskAction = useCallback((envelope: WorkspaceActionEnvelope) => {
+    taskPageReturnRef.current = true;
+    const ref = envelope.action.tab === "mine" ? workspaceMaterialAssetRef(envelope.action) : null;
+    if (ref) {
+      setTaskEntryRequest({ nonce: `task-entry:${++taskOpenSequence.current}`, mode: envelope.action.intent === "edit" ? "edit" : "preview", ref, surface: "task" });
+    } else {
+      setTaskEntryRequest(null);
+      setForegroundSuspended(true);
+      dispatchWorkspaceAction({ ...envelope, instanceId });
+    }
+  }, [instanceId]);
+  const openTaskItem = useCallback((item: LibraryItem, mode: "preview" | "edit" = "preview") => {
+    taskPageReturnRef.current = true;
+    setTaskEntryRequest(null);
+    if (mode === "edit") openCanvasItem(item);
+    else openCanvasEntry(workspaceEntryFromLibraryItem(item));
+  }, [openCanvasEntry, openCanvasItem]);
   const bayBackRef = useRef<(() => void) | null>(null);
   const chatBackRef = useRef<(() => void) | null>(null);
   const projectsBackRef = useRef<(() => void) | null>(null);
@@ -690,6 +728,7 @@ export function ResultCanvas({
     if (view !== "mine") projectLibraryReturnRef.current = false;
   }, [view, projectRequest?.nonce]);
   const handleBack = useCallback(() => {
+    if (returnToTask()) return;
     if (view === "mine" && projectLibraryReturnRef.current) {
       projectLibraryReturnRef.current = false;
       setForegroundSuspended(true);
@@ -699,14 +738,15 @@ export function ResultCanvas({
     const inner = view === "bay" ? (bayRequest?.view === "materials" ? null : bayBackRef.current) : view === "leochat" ? chatBackRef.current : view === "projects" ? projectsBackRef.current : null;
     if (inner) inner();
     else goHome();
-  }, [goHome, openPanel, view, bayRequest?.view]);
+  }, [goHome, openPanel, view, bayRequest?.view, returnToTask]);
   const [bayVisited, setBayVisited] = useState(false);
   const [chatVisited, setChatVisited] = useState(false);
   const [projectsVisited, setProjectsVisited] = useState(false);
+  useEffect(() => { if (view === "tasks") setTasksVisited(true); }, [view]);
   useEffect(() => { if (view === "bay") setBayVisited(true); }, [view]);
   useEffect(() => { if (view === "leochat") setChatVisited(true); }, [view]);
   useEffect(() => { if (view === "projects") setProjectsVisited(true); }, [view]);
-  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("项目配置") : view === "settings" ? tt("Settings") : view === "tasks" ? tt("我的任务") : tt(WORKSPACE_SLOT_LABELS[view]);
+  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("项目配置") : view === "settings" ? tt("Settings") : view === "tasks" ? tt("侧栏任务") : tt(WORKSPACE_SLOT_LABELS[view]);
 
   const selectedTemplateTab = workspaceSurfacePrimaryTab(
     surfaceModel,
@@ -738,7 +778,7 @@ export function ResultCanvas({
   const managedPageAction = pageAction?.action && "version" in pageAction.action && pageAction.action.version === 2 ? pageAction.action : null;
   const RegisteredProjectsPanel = getWorkspacePanel("projects");
   const managedContent: Record<"devices" | "projects" | "settings" | "tasks", ReactNode> = {
-    tasks: <MyTasksWorkspacePanel />,
+    tasks: <MyTasksWorkspacePanel host={{ instanceId, onOpenAction: openTaskAction, onOpenItem: openTaskItem }} onTaskOpenChange={setTaskDetailOpen} />,
     devices: <DevicesWorkspacePanel section={managedPageAction?.tab === "devices" ? managedPageAction.section : undefined} deviceId={managedPageAction?.deviceId} taskId={effectiveTaskId} />,
     projects: RegisteredProjectsPanel ? <RegisteredProjectsPanel taskId={effectiveTaskId}
       projectId={projectRequest?.action.projectId} requestNonce={projectRequest?.nonce}
@@ -882,6 +922,7 @@ export function ResultCanvas({
       embedded
       onSavedItem={recordSavedEditorItem}
       onClose={() => {
+        if (returnToTask()) return;
         // Keep the exact revision accepted from this editor's commit chain.
         // Returning to a cached library card would reopen its older pin.
         if (hasCommittedEditorRevision) setActiveCanvasMode("preview");
@@ -906,7 +947,7 @@ export function ResultCanvas({
   const viewerContent =
     activeCanvasEntry && activeCanvasMode === "preview" ? (
       activeActionContext ? <AssetDetail entry={activeCanvasEntry} actionContext={activeActionContext} accent={accent} plain
-        onBack={() => { setActiveCanvasEntry(null); setActiveActionContext(undefined); }}
+        onBack={() => { if (!returnToTask()) { setActiveCanvasEntry(null); setActiveActionContext(undefined); } }}
         actions={<BayAssetActions entry={activeCanvasEntry} actionContext={activeActionContext}
           onResolved={(next) => { setActiveCanvasEntry(next.entry); setActiveActionContext(next.actionContext); }}
           onEdit={(entry) => openResolvedEntry({ entry, actionContext: activeActionContext }, "edit", bindEditorToTask)}
@@ -925,6 +966,7 @@ export function ResultCanvas({
         onOpenItem={openCanvasItem}
         onDetailOpenChange={(open) => {
           if (open) return;
+          if (returnToTask()) return;
           setActiveCanvasEntry(null);
           setHasCommittedEditorRevision(false);
           setArtifactSaveError("");
@@ -980,9 +1022,9 @@ export function ResultCanvas({
     <div className="relative h-full min-h-0 overflow-hidden" data-workspace-view={view}>
       <div
         data-result-canvas-slot-stack
-        className={`h-full min-h-0 ${foregroundVisible ? "hidden" : "block"}`}
-        aria-hidden={foregroundVisible || undefined}
-        inert={foregroundVisible || undefined}
+        className={`h-full min-h-0 ${foregroundVisible || openingEntry ? "hidden" : "block"}`}
+        aria-hidden={foregroundVisible || openingEntry || undefined}
+        inert={foregroundVisible || openingEntry || undefined}
       >
         <div data-workspace-home data-workspace-home-active={!foregroundVisible && view === "home"}
              hidden={view !== "home"} inert={view !== "home" || undefined} className="h-full min-h-0 overflow-y-auto">
@@ -1034,7 +1076,12 @@ export function ResultCanvas({
             {managedContent.projects}
           </div>
         ) : null}
-        {(view === "devices" || view === "settings" || view === "tasks") ? (
+        {tasksVisited || view === "tasks" ? (
+          <div data-workspace-managed-panel="tasks" hidden={view !== "tasks"} inert={view !== "tasks" || undefined} className="h-full min-h-0 overflow-hidden">
+            {managedContent.tasks}
+          </div>
+        ) : null}
+        {(view === "devices" || view === "settings") ? (
           <div data-workspace-managed-panel={view} className="h-full min-h-0 overflow-auto">
             {managedContent[view]}
           </div>
@@ -1042,9 +1089,9 @@ export function ResultCanvas({
       </div>
       {openingEntry && <div className="absolute inset-0 z-10 bg-[var(--card,#fff)]" data-workspace-entry-open={entryRequest.status}>
         {entryRequest.status === "loading"
-          ? <WorkspacePaneSkeleton action={<button type="button" onClick={entryRequest.dismiss}>{tt("返回")}</button>} />
+          ? <WorkspacePaneSkeleton action={<button type="button" onClick={() => { entryRequest.dismiss(); returnToTask(); }}>{tt("返回")}</button>} />
           : <CanvasEmpty title="无法打开这份素材" description={entryRequest.reason}
-              action={<><button type="button" onClick={entryRequest.dismiss}>{tt("返回")}</button><button type="button" onClick={entryRequest.retry}>{tt("重试")}</button></>} />}
+              action={<><button type="button" onClick={() => { entryRequest.dismiss(); returnToTask(); }}>{tt("返回")}</button><button type="button" onClick={entryRequest.retry}>{tt("重试")}</button></>} />}
       </div>}
       {foregroundContent && (
         <div
@@ -1071,6 +1118,12 @@ export function ResultCanvas({
   // insertion drawers own their data/UI independently of this sidebar.
   useLayoutEffect(() => {
     if (!rightSlot) return;
+    if (view === "tasks" && taskDetailOpen && !foregroundVisible && !openingEntry) {
+      rightSlot.setRightEditorHeader(false);
+      rightSlot.setRightLabel(null);
+      rightSlot.setRightFrameless(true);
+      return () => { rightSlot.setRightLabel(null); rightSlot.setRightFrameless(false); };
+    }
     if (foregroundSuspended && !activeCapability) {
       rightSlot.setRightEditorHeader(false);
       rightSlot.setRightFrameless(view === "home");
@@ -1109,6 +1162,9 @@ export function ResultCanvas({
       rightSlot.setRightFrameless(false);
     };
   }, [
+    taskDetailOpen,
+    foregroundVisible,
+    openingEntry,
     foregroundSuspended,
     activeCapability,
     activeCanvasEntry,
@@ -1131,7 +1187,7 @@ export function ResultCanvas({
 
   return (
     <StandaloneWorkspaceFrame
-      header={view === "home" ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />}
+      header={view === "home" || (view === "tasks" && taskDetailOpen) ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />}
       className={className}
     >
       {rightMainContent}

@@ -920,3 +920,74 @@ test("reopened task menu offers session copy only when the persisted session adv
     } finally { await view.unmount(); }
   }
 });
+
+test("embedded sidebar task keeps its frames and draft alive while covered, owns no split and leaves the host URL alone", async () => {
+  const actions = [];
+  const host = { instanceId: "sidebar-owner", onOpenAction: action => actions.push(action), onOpenItem() {}, onNavigateTask() {} };
+  const view = await mount({taskId:"t1",sidebarHost:host,onBack(){}}, {
+    task:computerTask(), sessions:codexSessions, url:"/leochat?computerSession=unrelated-host-choice",
+  });
+  try {
+    assert.ok(view.host.querySelector('[data-agent-chat-embedded]'));
+    assert.equal(view.host.querySelectorAll('[data-agent-chat-header]').length,1);
+    assert.equal(view.host.querySelector('button[aria-label="更多操作"]'),null);
+    assert.equal(globalThis.__canvasProps,null,"embedded task must not mount an inner ResultCanvas");
+    assert.equal(window.location.pathname,"/leochat");
+    assert.equal(new URL(window.location.href).searchParams.get("computerSession"),"unrelated-host-choice");
+    await connect();
+    await type(view,"acp","an unsent draft");
+    const composer=view.composer("acp"); const connected=socket();
+    view.host.hidden=true;
+    await deliver(rows.prompt(1,"work while covered"),rows.chunk("still streaming"));
+    globalThis.__task = {...computerTask(), messages:[{id:100,role:"assistant",kind:"ui_action",content:"",meta:{verified:true,workspace_action:{version:2,tab:"settings",section:"profile"}}}]};
+    await deliver(rows.toolStart("embedded-open","oceanleo_open_page"),rows.toolDone("embedded-open"));
+    assert.equal(actions.length,1);
+    assert.equal(actions[0].instanceId,"sidebar-owner");
+    assert.equal(actions[0].action.tab,"settings");
+    await deliver(rows.done(1));
+    assert.equal(actions.length,1,"a repeated read must not replay the action");
+    const artifactId="11111111-1111-4111-8111-111111111111";
+    const revisionId="22222222-2222-4222-8222-222222222222";
+    globalThis.__task = {...computerTask(), messages:[
+      {id:101,role:"assistant",kind:"artifact",content:"generated",meta:{artifact:{type:"image",meta:{artifact_id:artifactId,revision_id:revisionId}}}},
+      {id:102,role:"assistant",kind:"ui_action",content:"",meta:{verified:true,workspace_action:{version:1,tab:"preview",itemId:"preview:artifact-101"}}},
+    ]};
+    await deliver(rows.toolStart("embedded-preview","oceanleo_open_page"),rows.toolDone("embedded-preview"));
+    assert.equal(actions.length,2); assert.equal(actions[1].action.tab,"mine");
+    assert.equal(actions[1].action.itemId,artifactId); assert.equal(actions[1].action.revisionId,revisionId);
+    assert.equal(connected.closed,false,"covering the task never closes its observer");
+    assert.equal(view.composer("acp"),composer);
+    assert.equal(composer.__props.value,"an unsent draft");
+    assert.match(view.host.querySelector('[data-acp-transcript]').textContent,/still streaming/);
+    view.host.hidden=false;
+    assert.equal(view.composer("acp"),composer);
+  } finally { await view.unmount(); }
+});
+
+
+test("sidebar file routing keeps exact Library revisions and never treats a legacy row id as an artifact root", async () => {
+  const { sidebarAttachmentAction, sidebarArtifactAction } = await import(await compileModule("src/shell/result-canvas-task-navigation.ts", OVERRIDES, {missingPackageStub:lazyStub}));
+  const artifactId="11111111-1111-4111-8111-111111111111";
+  const revisionId="22222222-2222-4222-8222-222222222222";
+  const action=sidebarAttachmentAction({name:"result.pdf",artifact_id:artifactId,revision_id:revisionId});
+  assert.equal(action.tab,"mine"); assert.equal(action.itemId,artifactId); assert.equal(action.revisionId,revisionId);
+  assert.equal(sidebarArtifactAction({id:artifactId,type:"image",url:"https://files.test/legacy.png"}),null);
+  assert.equal(sidebarArtifactAction({id:"legacy",type:"image",meta:{artifact_id:artifactId,revision_id:revisionId}}).revisionId,revisionId);
+  assert.equal(sidebarAttachmentAction({id:"local-draft",name:"draft.png",url:"blob:local"}),null);
+});
+
+
+test("embedded task routes ordinary workspace links to its host even when Markdown sets target blank", async () => {
+  const actions=[];
+  const task=cloudTask();
+  task.messages[1].content="[Open settings](/settings/profile)";
+  const view=await mount({taskId:"t1",sidebarHost:{instanceId:"links-host",onOpenAction:action=>actions.push(action),onOpenItem(){},onNavigateTask(){}}},{task});
+  try {
+    const link=view.host.querySelector('a[href="/settings/profile"]'); assert.ok(link);
+    const event=new window.MouseEvent("click",{bubbles:true,cancelable:true});
+    await act(async()=>link.dispatchEvent(event));
+    assert.equal(event.defaultPrevented,true);
+    assert.equal(actions.length,1); assert.equal(actions[0].instanceId,"links-host");
+    assert.equal(actions[0].action.tab,"settings");
+  } finally {await view.unmount();}
+});

@@ -93,7 +93,11 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
     export function useRouter(){ return { push(href){ globalThis.__historyPushed = href; }, replace(){}, prefetch(){} }; }
   `),
   "./WorkspaceSelection": dataModule(`
-    export function useWorkspaceSelection(){ return globalThis.React.useState(globalThis.__historySelected || null); }
+    export function useWorkspaceSelection(){
+      const [selected,setSelected]=globalThis.React.useState(globalThis.__historySelected || null);
+      const write=globalThis.React.useCallback(value=>{globalThis.__selectionWrites?.push(value);setSelected(value);},[]);
+      return [selected,write];
+    }
   `),
   "./AgentChat": dataModule(`export function AgentChat(){ return null; }`),
   "./library-task-history": dataModule(`export function LibraryTaskHistoryWorkspace(){return null;}`),
@@ -197,7 +201,7 @@ async function settle(ms = 0) {
   });
 }
 
-async function mount(siteId = "image", detail = false) {
+async function mount(siteId = "image", detail = false, props = {}) {
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
   document.body.append(container);
@@ -206,7 +210,7 @@ async function mount(siteId = "image", detail = false) {
   function Bed() {
     const [, bump] = React.useState(0);
     rerender = () => bump((value) => value + 1);
-    return React.createElement(detail ? HistoryDetail : HistoryInlineList, { siteId });
+    return React.createElement(detail ? HistoryDetail : HistoryInlineList, { siteId, ...props });
   }
   await act(async () => {
     root.render(React.createElement(Bed));
@@ -415,4 +419,21 @@ test("two rejected list APIs retain the first loading placeholder", async () => 
     delete globalThis.__historyTasksRead;
     delete globalThis.__historySessionsRead;
   }
+});
+
+
+test("sidebar history selection never writes the main navigation or follows its URL selection", async () => {
+  globalThis.__selectionWrites=[];
+  globalThis.__historyPath="/history/main-navigation-task";
+  const opened=[];
+  const panel=await mount("sidebar-selection",false,{onOpenEntry:entry=>{opened.push(entry.id);return true;}});
+  try {
+    await settle(20);
+    const row=panel.container.querySelector('[data-history-row]'); assert.ok(row);
+    const before=globalThis.__historyPushed;
+    await act(async()=>row.click());
+    assert.equal(opened.length,1);
+    assert.deepEqual(globalThis.__selectionWrites,[]);
+    assert.equal(globalThis.__historyPushed,before);
+  } finally { await panel.unmount(); delete globalThis.__selectionWrites; delete globalThis.__historyPath; }
 });

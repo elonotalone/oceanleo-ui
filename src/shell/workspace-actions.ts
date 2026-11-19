@@ -89,6 +89,8 @@ export type WorkspaceAction = WorkspaceActionV1;
 export type WorkspaceLibraryFilter = "uploaded";
 
 export interface WorkspaceActionEnvelope {
+  /** Omitted for existing page-wide callers; embedded tasks name their outer workspace. */
+  instanceId?: string;
   nonce: string;
   action: WorkspaceAction;
 }

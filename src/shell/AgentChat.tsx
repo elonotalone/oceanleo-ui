@@ -42,7 +42,9 @@ import {
   useTaskWorkspaceState,
   type TaskWorkspaceInitial,
 } from "./TaskWorkspaceShell";
-import { openTaskWorkspaceLibrary, useTaskAttachmentOpener, type TaskAttachmentTarget } from "./task-attachment-open";
+import { sidebarArtifactAction, sidebarAttachmentAction } from "./result-canvas-task-navigation";
+import type { SidebarTaskHost } from "./workspace-panels/MyTasksWorkspacePanel";
+import { openTaskWorkspaceLibrary, useTaskAttachmentOpener, type TaskAttachmentTarget, type TaskOpenableAttachment } from "./task-attachment-open";
 import { IconSearch } from "./icons";
 import { CollabTaskPresence } from "./collab/CollabActionSlot";
 import { type CanvasTab } from "./ResultCanvas";
@@ -53,7 +55,7 @@ import {
   ArtifactRenderer,
   artifactToLibraryItem,
 } from "./ArtifactRenderer";
-import { normalizeWorkspaceAction, type WorkspaceActionV1 } from "./workspace-actions";
+import { workspaceActionForHref, normalizeWorkspaceAction, type WorkspaceActionV1 } from "./workspace-actions";
 import { applyAgentPreset, openWorkspacePage } from "./agent-ui-presets";
 import {
   AgentTranscriptBubble,
@@ -553,6 +555,8 @@ export interface AgentChatProps {
    * its editor session bound to the task once it exists).
    */
   initialWorkspace?: TaskWorkspaceInitial | null;
+  /** Sidebar host owns navigation, workspace outlets and height. No nested split is mounted. */
+  sidebarHost?: SidebarTaskHost;
 }
 
 /** agent 右栏多标签库配置（宗旨 v19）。 */
@@ -598,6 +602,7 @@ export function AgentChat(props: AgentChatProps) {
   const pathname = usePathname() || "";
   const launchOnceRef = useRef(false);
   const startsFromHome =
+    !props.sidebarHost &&
     !inheritedWorkspace &&
     !props.taskId &&
     Boolean(
@@ -740,6 +745,7 @@ function AgentChatInner({
   editorContextSurface,
   agentStreamEndpoint,
   initialWorkspace,
+  sidebarHost,
 }: AgentChatInnerProps) {
   const tt = useUI();
   // `tt` 是 locale provider 所有的函数。它进下面那条 SSE effect 的依赖，会让
@@ -753,7 +759,7 @@ function AgentChatInner({
   const ARTIFACT_LABEL = agentArtifactLabels(tt);
   const workspaceValue = useOptionalWorkspaceSession();
   const workspace =
-    workspaceValue && (!siteId || workspaceValue.siteId === siteId)
+    !sidebarHost && workspaceValue && (!siteId || workspaceValue.siteId === siteId)
       ? workspaceValue
       : null;
   const hostReadOnly = readOnlyProp || Boolean(workspace?.readOnly);
@@ -1114,11 +1120,11 @@ function AgentChatInner({
               id: "get-help",
               label: tt("找人帮忙"),
               icon: <CallHumanIcon className="h-4 w-4" />,
-              onClick: () => openTaskHelpSidebar(taskId, setRightOpen, setWorkspaceAction),
+              onClick: () => sidebarHost ? sidebarHost.onOpenAction({ nonce: `get-help:${taskId}:${Date.now()}`, action: { version: 1, tab: "bay" } }) : openTaskHelpSidebar(taskId, setRightOpen, setWorkspaceAction),
             },
           ]
         : undefined,
-    [bayEnabled, taskId, readOnly, setRightOpen, setWorkspaceAction, tt],
+    [bayEnabled, taskId, readOnly, setRightOpen, setWorkspaceAction, tt, sidebarHost],
   );
 
   // Provider 可能先返回 session、随后才异步算出 task_id。task 真源变化时主动 refresh，
@@ -1265,7 +1271,7 @@ function AgentChatInner({
     let timer: ReturnType<typeof setTimeout> | undefined;
     // A session this tab was just handed (`?computerSession=` from the homepage) shows at once;
     // the list (and its computer) are read in parallel instead of one after the other.
-    const handed = knownComputerTaskSession(new URL(window.location.href).searchParams.get("computerSession") || "");
+    const handed = knownComputerTaskSession(sidebarHost ? "" : new URL(window.location.href).searchParams.get("computerSession") || "");
     // The list this tab read before (a revisit, or the sidebar's prefetch) picks the
     // conversation at once; the read below replaces it (2026-10-31 task switch speed).
     const listed = knownComputerTaskSessions(taskId);
@@ -1311,19 +1317,22 @@ function AgentChatInner({
   // to another `computerSession` of this task) switches it.
   const lastParamRef = useRef<string | null>(null);
   const writeSessionParam = useCallback((id: string | null) => {
+    if (sidebarHost) return;
     const url = new URL(window.location.href);
     if (id) url.searchParams.set("computerSession", id);
     else url.searchParams.delete("computerSession");
     lastParamRef.current = id ?? "";
     window.history.replaceState(window.history.state, "", url);
-  }, []);
+  }, [sidebarHost]);
   const [, setLocationTick] = useState(0);
   useEffect(() => {
+    if (sidebarHost) return;
     const changed = () => setLocationTick((tick) => tick + 1);
     window.addEventListener("popstate", changed);
     return () => window.removeEventListener("popstate", changed);
-  }, []);
+  }, [sidebarHost]);
   useEffect(() => {
+    if (sidebarHost) return;
     const param = new URL(window.location.href).searchParams.get("computerSession") || "";
     const normalizedParam = param;
     if (lastParamRef.current === null || lastParamRef.current === normalizedParam) { lastParamRef.current = normalizedParam; return; }
@@ -1341,7 +1350,7 @@ function AgentChatInner({
   useEffect(() => {
     if (!taskId) return;
     if (selectedSession.taskId === taskId && selectedSession.resolved) return;
-    const requested = new URL(window.location.href).searchParams.get("computerSession") || "";
+    const requested = sidebarHost ? "" : new URL(window.location.href).searchParams.get("computerSession") || "";
     const named = requested ? sessions.find((session) => session.id === requested) : undefined;
     if (!named) {
       if (!taskModeKnown) return;
@@ -2279,9 +2288,10 @@ function AgentChatInner({
     if (!taskId || !canManageTask || !sessionCanFork(acpControls.capabilities)) return;
     try {
       const result = await forkConversation(taskId);
-      window.location.assign(`/tasks/${encodeURIComponent(result.task_id)}`);
+      if (sidebarHost) sidebarHost.onNavigateTask(result.task_id);
+      else window.location.assign(`/tasks/${encodeURIComponent(result.task_id)}`);
     } catch (caught) { setAcpError({ taskId, text: acpErrorText(caught) }); }
-  }, [taskId, canManageTask, acpControls.capabilities]);
+  }, [taskId, canManageTask, acpControls.capabilities, sidebarHost]);
   const answerAcpRequest = useCallback((requestId: number | string, result: unknown) => {
     if (!taskId || readOnly) return;
     void answerAcp(taskId, requestId, result).catch((caught) => setAcpError({ taskId, text: acpErrorText(caught) }));
@@ -2394,6 +2404,7 @@ function AgentChatInner({
       setStatus("running");
       onTaskCreated?.(createdTaskId, createdSessionId || undefined);
       if (
+        !sidebarHost &&
         createdSessionId &&
         typeof window !== "undefined" &&
         window.location.pathname.includes("/history/")
@@ -2883,6 +2894,17 @@ function AgentChatInner({
         latestActionMessage.meta?.ui_action,
     );
     if (!action) return;
+    if (sidebarHost) {
+      const preview = action.tab === "preview" && action.itemId
+        ? artifactMessages.find((message) => action.itemId === `preview:artifact-${message.id}` || action.itemId === `artifact-${message.id}`)
+        : undefined;
+      if (preview?.meta?.artifact) {
+        const libraryAction = sidebarArtifactAction(preview.meta.artifact);
+        if (libraryAction) sidebarHost.onOpenAction({ nonce: `message:${latestActionMessage.id}`, action: libraryAction, instanceId: sidebarHost.instanceId });
+        else sidebarHost.onOpenItem(artifactToLibraryItem(preview.meta.artifact, preview.content, `artifact-${preview.id}`), "preview");
+      } else sidebarHost.onOpenAction({ nonce: `message:${latestActionMessage.id}`, action, instanceId: sidebarHost.instanceId });
+      return;
+    }
     openWorkspacePage(action);
     // 「找真人」的 action 不是槽位：不动受控值，把右侧栏打开，由右侧栏自己进到 LeoBay 那一块。
     if (action.tab === "bay") setRightOpen(true);
@@ -2891,7 +2913,7 @@ function AgentChatInner({
       nonce: `message:${latestActionMessage.id}`,
       action,
     });
-  }, [latestActionMessage, messagesTaskId, taskId]);
+  }, [latestActionMessage, messagesTaskId, taskId, sidebarHost, artifactMessages]);
 
   // 关键修（操作员 2026-07-09：「团队 app 一打开库是折叠的」）：团队对话的 renderOrgPanel
   // 往往是 **异步** 就绪的（宿主先 setSel({kind:"team"}) 建壳、再 await 拉成员补 members，
@@ -3058,7 +3080,7 @@ function AgentChatInner({
           onClick={onBack}
           title={backTitle}
           aria-label={backTitle}
-          className={HEADER_ICON_BUTTON_CLASS}
+          className={sidebarHost ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)]" : HEADER_ICON_BUTTON_CLASS}
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
@@ -3078,7 +3100,7 @@ function AgentChatInner({
         <TaskSharePanel key={taskId} taskId={taskId} taskUrl={taskQuoteHref(taskId)}
           access={{...accessState.access, can_manage: canManageTask}} share={share} />
       )}
-      {taskId && (
+      {taskId && !sidebarHost && (
         <TaskActionsMenu
           open={taskMenuOpen}
           onOpenChange={setTaskMenuOpen}
@@ -3131,6 +3153,13 @@ function AgentChatInner({
   };
 
   const openArtifactMessage = useCallback((message: AgentMessage) => {
+    if (sidebarHost && message.meta?.artifact) {
+      const item = artifactToLibraryItem(message.meta.artifact, message.content, `artifact-${message.id}`);
+      const action = sidebarArtifactAction(message.meta.artifact);
+      if (action) sidebarHost.onOpenAction({ nonce: `artifact-click:${message.id}:${Date.now()}`, action });
+      else sidebarHost.onOpenItem(item, "preview");
+      return;
+    }
     setRightOpen(true);
     setLibTab("preview");
     setWorkspaceAction({
@@ -3142,7 +3171,7 @@ function AgentChatInner({
         url: message.meta?.artifact?.url,
       },
     });
-  }, []);
+  }, [sidebarHost]);
 
   // W7 + W6: every file on the task page (composer tile, sent attachment, a computer
   // task's inbox file; cloud AND native pane) opens in this task's own right sidebar,
@@ -3151,20 +3180,30 @@ function AgentChatInner({
   const openWorkspaceItem = taskWorkspace.openWorkspaceItem;
   const [fileOverWorkspace, setFileOverWorkspace] = useState(false);
   const hasWorkspaceContent = Boolean(workspaceContent);
-  const openTaskAttachment = useTaskAttachmentOpener(
+  const openTaskAttachmentPreview = useTaskAttachmentOpener(
     siteId || "oceanleo",
     useCallback((target: TaskAttachmentTarget) => {
       if (hasWorkspaceContent) setFileOverWorkspace(true);
       onWorkspaceOpenChange?.(true);
-      openWorkspaceItem(target.item, target.mode);
-    }, [hasWorkspaceContent, onWorkspaceOpenChange, openWorkspaceItem]),
+      if (sidebarHost) sidebarHost.onOpenItem(target.item, target.mode);
+      else openWorkspaceItem(target.item, target.mode);
+    }, [hasWorkspaceContent, onWorkspaceOpenChange, openWorkspaceItem, sidebarHost]),
     // A file already in the Library opens the sidebar's Library at it (Uploaded filter).
     useCallback((action: WorkspaceActionV1) => {
       if (hasWorkspaceContent) setFileOverWorkspace(true);
       onWorkspaceOpenChange?.(true);
-      openTaskWorkspaceLibrary({ setRightOpen, setLibTab, setWorkspaceAction }, action);
-    }, [hasWorkspaceContent, onWorkspaceOpenChange, setLibTab, setRightOpen, setWorkspaceAction]),
+      if (sidebarHost) sidebarHost.onOpenAction({ nonce: `attachment:${Date.now()}`, action });
+      else openTaskWorkspaceLibrary({ setRightOpen, setLibTab, setWorkspaceAction }, action);
+    }, [hasWorkspaceContent, onWorkspaceOpenChange, setLibTab, setRightOpen, setWorkspaceAction, sidebarHost]),
   );
+  const openTaskAttachment = useCallback((attachment: TaskOpenableAttachment) => {
+    const action = sidebarHost ? sidebarAttachmentAction(attachment) : null;
+    if (action && sidebarHost) {
+      sidebarHost.onOpenAction({ nonce: `attachment:${Date.now()}`, action });
+      return Promise.resolve(true);
+    }
+    return openTaskAttachmentPreview(attachment);
+  }, [sidebarHost, openTaskAttachmentPreview]);
   const workspacePaneOpen = workspaceOpen ?? rightOpen;
   useEffect(() => {
     if (!workspacePaneOpen) setFileOverWorkspace(false);
@@ -3610,6 +3649,24 @@ function AgentChatInner({
   // 就在 SplitWorkspace 左栏里，所以 SplitWorkspace 永远 fillParent 填满宿主给的高度。
   // SplitWorkspace + ResultCanvas are assembled by the shared TaskWorkspaceShell (W7),
   // the same shell the home page hosts its column in.
+  if (sidebarHost) return (
+    <StepsFoldPreferenceProvider taskId={taskId}>
+      <div data-agent-chat-embedded data-workspace-instance={sidebarHost.instanceId}
+        onClickCapture={(event) => {
+          if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+          if (!(anchor instanceof window.HTMLAnchorElement) || anchor.hasAttribute("download")) return;
+          const action = workspaceActionForHref(anchor.href, window.location.origin);
+          if (!action) return;
+          event.preventDefault();
+          event.stopPropagation();
+          sidebarHost.onOpenAction({ nonce: `task-link:${Date.now()}`, action, instanceId: sidebarHost.instanceId });
+        }} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+        <div className="shrink-0 px-3 py-2">{headerNode}</div>
+        <div className="min-h-0 min-w-0 flex-1">{leftPane}</div>
+      </div>
+    </StepsFoldPreferenceProvider>
+  );
   const split = (
     // Steps fold follows the person's last toggle on a running block, per task (W9).
     <StepsFoldPreferenceProvider taskId={taskId}>

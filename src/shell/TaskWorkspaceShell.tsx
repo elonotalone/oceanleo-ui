@@ -13,6 +13,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type Dispatch,
@@ -268,6 +269,8 @@ export function TaskWorkspaceShell({
   className = "",
   ...split
 }: TaskWorkspaceShellProps) {
+  const generatedInstanceId = useId();
+  const workspaceInstanceId = split.workspaceInstanceId || generatedInstanceId;
   const effectiveLibrary: SplitLibraryConfig | undefined =
     library === null
       ? undefined
@@ -286,6 +289,7 @@ export function TaskWorkspaceShell({
     ) : (
       <ResultCanvas
         {...canvas}
+        workspaceInstanceId={workspaceInstanceId}
         tabs={tabs}
         active={state.libTab}
         onChange={state.setLibTab}
@@ -302,6 +306,7 @@ export function TaskWorkspaceShell({
   return (
     <SplitWorkspace
       {...split}
+      workspaceInstanceId={workspaceInstanceId}
       className={`${className} ${closedPlain ? TASK_WORKSPACE_PLAIN_CLOSED_CLASS : ""}`.trim()}
       left={left}
       right={<Suspense fallback={<WorkspacePaneSkeleton />}>{renderRight ? renderRight(canvasNode) : canvasNode}</Suspense>}

@@ -897,7 +897,12 @@ function useHoverPrefetch() {
 // ----------------------------------------------------------------------------
 // 主侧栏内联区：我的任务列表（可删除）。v5 起不再覆盖主导航。
 // ----------------------------------------------------------------------------
-export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
+export function HistorySubNav({ siteId, accent = "#0ea5e9", onOpenEntry }: {
+  siteId?: string;
+  accent?: string;
+  /** A sidebar owns its selection and may handle an ordinary conversation in place. */
+  onOpenEntry?: (entry: HistoryListEntry) => boolean;
+}) {
   const tt = useUI();
   const { items, loading, error, notice, remove, mutate } = useMyTasksHistory(siteId);
   const local = useLocalTasks(true);
@@ -908,7 +913,10 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
     !task.remoteTaskId || !cloudTaskIds.has(task.remoteTaskId) || task.canCancel || task.stage === "waiting_for_network",
   ) : [];
   const localRemoteIds = new Set(localTasks.map((task) => task.remoteTaskId).filter(Boolean));
-  const [sel, setSel] = useWorkspaceSelection("history");
+  const [globalSelection, setGlobalSelection] = useWorkspaceSelection("history");
+  const [localSelection, setLocalSelection] = useState<string | null>(null);
+  const sel = onOpenEntry ? localSelection : globalSelection;
+  const setSel = onOpenEntry ? setLocalSelection : setGlobalSelection;
   const pathname = usePathname() || "";
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -942,6 +950,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   // URL 是任务选择的单一事实源。动态 session path 可刷新/复制；legacy task 暂以 query
   // 保留，因为它没有足够 app/snapshot 身份，不能伪装成完整 workspace。
   useEffect(() => {
+    if (onOpenEntry) return;
     const pathSession = historySessionIdFromPath(pathname);
     if (pathSession) {
       setSel(pathSession);
@@ -963,9 +972,10 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
         ? new URLSearchParams(window.location.search).get("task")
         : "";
     setSel(taskId || null);
-  }, [pathname, setSel]);
+  }, [pathname, setSel, onOpenEntry]);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (onOpenEntry) return;
     const syncLegacySelection = () => {
       if (historySessionIdFromPath(window.location.pathname)) return;
       if (
@@ -977,12 +987,13 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
     };
     window.addEventListener("popstate", syncLegacySelection);
     return () => window.removeEventListener("popstate", syncLegacySelection);
-  }, [setSel]);
+  }, [setSel, onOpenEntry]);
 
   // The shell opens this subnav with ?search=1. Keep the small search surface
   // URL-addressable so it survives a refresh and back/forward navigation.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (onOpenEntry) return;
     const syncSearch = () => {
       const params = new URLSearchParams(window.location.search);
       setSearchOpen(params.get("search") === "1");
@@ -991,7 +1002,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
     syncSearch();
     window.addEventListener("popstate", syncSearch);
     return () => window.removeEventListener("popstate", syncSearch);
-  }, [pathname, searchParams]);
+  }, [pathname, searchParams, onOpenEntry]);
 
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
   const visibleItems = useMemo(() => {
@@ -1014,7 +1025,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   const closeSearch = () => {
     setSearchOpen(false);
     setSearchQuery("");
-    router.replace("/history");
+    if (!onOpenEntry) router.replace("/history");
   };
 
   // 模型选择已移到主区右上角（HistoryDetail），侧栏子栏只列任务本身。
@@ -1059,6 +1070,12 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
         const renaming = !sharedBy && renameFor === entry.id;
         const project = historyEntryProject(entry);
         const openEntry = () => {
+          if (onOpenEntry) {
+            prefetchHistoryOpen(historyOpenHint(entry));
+            setSel(entry.id);
+            if (!onOpenEntry(entry)) router.push(historyHrefFor(entry, pathname));
+            return;
+          }
           if (mountedHistoryDetails > 0 && typeof window !== "undefined") {
             const current = new URL(window.location.href);
             const currentSelection = historySessionIdFromPath(current.pathname) ||
@@ -1184,7 +1201,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 canDelete={canDeleteHistoryEntry(entry)}
                 inProject={Boolean(project)}
                 href={historyHrefFor(entry, pathname)}
-                taskId={entry.kind === "task" ? entry.id : entry.session.task_id || undefined}
+                taskId={onOpenEntry ? undefined : entry.kind === "task" ? entry.id : entry.session.task_id || undefined}
                 taskTitle={title}
                 onRename={() => {
                   setRenameDraft(title);

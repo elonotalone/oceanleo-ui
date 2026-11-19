@@ -23,6 +23,7 @@ import {
 import type { RuntimeHydrationValue } from "./workspace-runtime-hydration";
 
 export interface WorkspaceSlotStateInput {
+  instanceId?: string;
   ignoredTabs?: readonly WorkspaceActionTab[];
   active?: string;
   showTemplate: boolean;
@@ -63,6 +64,7 @@ export interface WorkspaceSlotState {
 }
 
 export function useWorkspaceSlotState({
+  instanceId,
   active,
   ignoredTabs,
   showTemplate,
@@ -291,6 +293,7 @@ export function useWorkspaceSlotState({
   useEffect(() => {
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<WorkspaceActionEnvelope>).detail;
+      if (detail?.instanceId && detail.instanceId !== instanceId) return;
       const action = normalizeWorkspaceAction(detail?.action);
       if (!action || ignoredTabs?.includes(action.tab)) return;
       const envelope = {

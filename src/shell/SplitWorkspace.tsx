@@ -194,6 +194,7 @@ export function useWorkspacePane(): WorkspacePaneController | null {
 }
 
 export interface SplitWorkspaceProps {
+  workspaceInstanceId?: string;
   /** A host may reserve a panel for its own main content. */
   ignoredWorkspaceTabs?: readonly WorkspaceActionTab[];
   /** Keep the conversation mounted while a Library editor initially fills the workspace. */
@@ -292,6 +293,7 @@ function visibleComposerTextbox(root: HTMLElement | null): HTMLElement | null {
 }
 
 export function SplitWorkspace({
+  workspaceInstanceId,
   left,
   right,
   defaultRatio = 1 / 3,
@@ -717,6 +719,7 @@ export function SplitWorkspace({
     if (!library) return;
     const openForWorkspaceAction = (event: Event) => {
       const detail = (event as CustomEvent<WorkspaceActionEnvelope>).detail;
+      if (detail?.instanceId && detail.instanceId !== workspaceInstanceId) return;
       if (ignoredWorkspaceTabs?.includes(detail?.action?.tab)) return;
       event.preventDefault(); // A message link can tell that this workspace received it.
       setLibraryOpen(true);
@@ -727,7 +730,7 @@ export function SplitWorkspace({
         WORKSPACE_ACTION_EVENT,
         openForWorkspaceAction,
       );
-  }, [library, setLibraryOpen, ignoredWorkspaceTabs]);
+  }, [library, setLibraryOpen, ignoredWorkspaceTabs, workspaceInstanceId]);
 
   const persist = useCallback(
     (v: number) => {
