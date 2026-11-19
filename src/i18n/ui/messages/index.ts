@@ -1,3 +1,8 @@
+import { UF1_MISSING_COPY_A } from "./uf1-missing-copy-a";
+import { UF1_MISSING_COPY_B } from "./uf1-missing-copy-b";
+import { UF1_MISSING_COPY_C } from "./uf1-missing-copy-c";
+import { PROGRAM_ACCESS_REPAIR_MESSAGES } from "./program-access-repair-copy";
+import { WEBSITE_SERVICE_TIERS_COPY } from "./website-service-tiers-copy";
 import { STEP_UP_MESSAGES } from "./step-up-copy";
 import { SERVER_PAGE_MESSAGES } from "./server-services-copy";
 import { SHEET_NAMING_MESSAGES } from "./sheet-naming-copy";
@@ -542,6 +547,11 @@ export const UI_MESSAGES = Object.fromEntries(
       ...MATERIAL_TAXONOMY_MESSAGES[language],
       ...SHEET_NAMING_MESSAGES[language],
       ...SERVER_PAGE_MESSAGES[language],
+      ...PROGRAM_ACCESS_REPAIR_MESSAGES[language],
+      ...WEBSITE_SERVICE_TIERS_COPY[language],
+      ...UF1_MISSING_COPY_A[language],
+      ...UF1_MISSING_COPY_B[language],
+      ...UF1_MISSING_COPY_C[language],
       ...STEP_UP_MESSAGES[language],
     }];
   }),

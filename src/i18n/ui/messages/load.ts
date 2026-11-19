@@ -1,4 +1,9 @@
 import { STEP_UP_MESSAGES } from "./step-up-copy";
+import { UF1_MISSING_COPY_A } from "./uf1-missing-copy-a";
+import { UF1_MISSING_COPY_B } from "./uf1-missing-copy-b";
+import { UF1_MISSING_COPY_C } from "./uf1-missing-copy-c";
+import { PROGRAM_ACCESS_REPAIR_MESSAGES } from "./program-access-repair-copy";
+import { WEBSITE_SERVICE_TIERS_COPY } from "./website-service-tiers-copy";
 import { SERVER_PAGE_MESSAGES } from "./server-services-copy";
 import { LIBRARY_PREVIEW_MESSAGES } from "./library-preview-copy";
 import { SHEET_NAMING_MESSAGES } from "./sheet-naming-copy";
@@ -179,6 +184,11 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...MATERIAL_TAXONOMY_MESSAGES[locale],
     ...SHEET_NAMING_MESSAGES[locale],
     ...SERVER_PAGE_MESSAGES[locale],
+    ...PROGRAM_ACCESS_REPAIR_MESSAGES[locale],
+    ...WEBSITE_SERVICE_TIERS_COPY[locale],
+    ...UF1_MISSING_COPY_A[locale],
+    ...UF1_MISSING_COPY_B[locale],
+    ...UF1_MISSING_COPY_C[locale],
     ...STEP_UP_MESSAGES[locale],
   };
 };
