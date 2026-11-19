@@ -6,7 +6,7 @@ import { listBayApps, type BayApp } from "../../../lib/bay/apps";
 import type { BayFeedFilter } from "../shell/bay-state";
 
 const PAGE_SIZE = 24;
-const LIST_ERROR = "列表没读出来，请稍后点「重试」。";
+const LIST_ERROR = "内容暂时无法加载，正在自动恢复。";
 
 export interface BayAppsView {
   items: BayApp[];

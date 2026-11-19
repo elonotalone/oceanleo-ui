@@ -1,5 +1,8 @@
 "use client";
 
+import { bayFailureKind, useBayAutoRetry } from "../shell/use-bay-auto-retry";
+import { BayRecovery } from "../shell/BayRecovery";
+
 // 发布 / 编辑一门课：资料、定价、章节。本文件归 V3 单元；组件名与 props 是合同，不许改。
 import { deadlineFromRow, deadlineToPayload, formatDeadline } from "../form/bay-deadline";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
@@ -67,7 +70,10 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
   const [draft, setDraft] = useState<LessonDraft>(emptyLessonDraft);
   const [load, setLoad] = useState({ loading: true, error: "" });
   const [actionError, setActionError] = useState("");
+  const [loadNonce, setLoadNonce] = useState(0);
+  const [recoverSave, setRecoverSave] = useState(false);
   const [busy, setBusy] = useState<"save" | "publish" | "create" | "">("");
+  useBayAutoRetry(recoverSave && !busy && signedIn && props.target.kind === "lesson-editor", saveDraft);
   const [showProblems, setShowProblems] = useState(false);
 
   const applyLesson = useCallback((row: BayLessonMine, nextChapters?: BayLessonChapter[]) => {
@@ -104,7 +110,7 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
     return () => {
       alive = false;
     };
-  }, [signedIn, routeId, props.target.kind, applyLesson]);
+  }, [signedIn, routeId, props.target.kind, applyLesson, loadNonce]);
 
   if (props.target.kind !== "lesson-editor") return null;
   if (!signedIn) return <BaySignInPrompt text={tt("登录后才能发布课程")} />;
@@ -162,11 +168,13 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
   async function saveDraft() {
     if (!lesson || busy) return;
     setShowProblems(true);
+    setRecoverSave(false);
     setBusy("save");
     setActionError("");
     try {
       await persistDraft();
     } catch (error) {
+      setRecoverSave(Boolean(lesson) && bayFailureKind(error) === "temporary" && ![400, 409, 422].includes(Number((error as { status?: number })?.status)));
       setActionError(errorText(error, tt("保存失败，请稍后再试。")));
     } finally {
       setBusy("");
@@ -199,13 +207,7 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
       </section>
     );
   }
-  if (load.error && !lesson) {
-    return (
-      <section data-bay-pane="lesson-editor" className="space-y-3 p-4">
-        <SellerNotice tone="error">{tt(load.error)}</SellerNotice>
-      </section>
-    );
-  }
+  if (load.error) return <BayRecovery scope="lessons/LessonEditorPane.tsx" error={load.error} reload={() => setLoadNonce(value => value + 1)} />;
 
   const creating = !routeId;
   const subcategorySelect = (

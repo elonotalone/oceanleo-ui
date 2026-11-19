@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 设置 → 账户 → 「用 OceanLeo 账号登录的应用」：我同意过用 OceanLeo 账号登录的应用，随时可以撤回。
 // 每行：应用名、主机、首次 / 最近登录时间、撤回授权（要二次确认）。境内外一致，不按域名分叉。
 // 应用详情在 LeoBay 里，境内没有 LeoBay：那边名字只是文字，不给一个点了没反应的按钮。
@@ -144,12 +145,7 @@ export function MyAppLoginGrants(): ReactElement {
   if (!resource.data) {
     const signedOut = resource.status === 401;
     return (
-      <div data-bay-login-grants-error className="space-y-2">
-        <p className="text-[13px] text-neutral-700">{signedOut ? tt("登录后查看你授权过的应用") : tt("授权列表没读出来，请稍后点「重试」。")}</p>
-        <button type="button" onClick={resource.reload} className={PILL}>
-          {tt("重试")}
-        </button>
-      </div>
+      <BayRecovery scope="applogin/MyAppLoginGrants.tsx:148" reload={resource.reload} error={{ status: resource.status, message: resource.error }} />
     );
   }
 

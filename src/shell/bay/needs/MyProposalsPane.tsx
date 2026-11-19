@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 「我的报价」：调用 GET /v1/talent/proposals/mine。整行可点，打开对应需求。不自带返回栏。
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -39,16 +40,7 @@ function MyProposalsBody() {
   if (!list.data) {
     return (
       <PaneBody pane="my-proposals">
-        <PaneNotice
-          tone="error"
-          action={
-            <button type="button" className={BTN_SECONDARY} onClick={list.reload}>
-              {tt("重试")}
-            </button>
-          }
-        >
-          {errorText(tt, list.error, tt("报价没读出来，请稍后再试。"))}
-        </PaneNotice>
+        <BayRecovery scope="needs/MyProposalsPane.tsx:44" reload={list.reload} error={list.error} />
       </PaneBody>
     );
   }

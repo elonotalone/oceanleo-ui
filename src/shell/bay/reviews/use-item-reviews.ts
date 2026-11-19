@@ -12,7 +12,7 @@ import {
 } from "../../../lib/bay/item-reviews";
 
 const PAGE_SIZE = 10;
-const LIST_ERROR = "评价列表没读出来，请稍后点「重试」。";
+const LIST_ERROR = "内容暂时无法加载，正在自动恢复。";
 
 export const EMPTY_REVIEW_SUMMARY: BayItemReviewSummary = {
   total: 0,

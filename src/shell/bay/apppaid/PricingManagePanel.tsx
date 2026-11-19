@@ -49,7 +49,7 @@ export function PricingManagePanel({ appId }: { appId: string }): ReactElement |
 
   if (resource.loading) return <PaneLoading />;
   if (!app) {
-    return <PaneMessage text={resource.error ? tt(resource.error) : tt("找不到这件东西，可能已下架。")} onRetry={resource.reload} />;
+    return <PaneMessage text={resource.error ? tt(resource.error) : tt("找不到这件东西，可能已下架。")} status={resource.status} onRetry={resource.reload} />;
   }
 
   async function save() {

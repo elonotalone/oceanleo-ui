@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { CollectionView } from "../../collection-chrome";
@@ -78,16 +79,7 @@ export function MineTradeList({
   }
   if (error && rows.length === 0) {
     return (
-      <section data-bay-pane={pane} className="rounded-xl border border-neutral-200 bg-white px-4 py-12 text-center">
-        <p className="text-[14px] font-medium text-stone-800">{tt(error)}</p>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="mt-4 inline-flex items-center justify-center rounded-full border border-neutral-200 bg-white px-4 py-2 text-[13px] font-medium text-neutral-900"
-        >
-          {tt("重试")}
-        </button>
-      </section>
+      <BayRecovery scope={`mine:${pane}`} error={error} reload={onRetry} />
     );
   }
   if (visibleRows.length === 0) {
@@ -101,7 +93,7 @@ export function MineTradeList({
   }
   return (
     <section data-bay-pane={pane} data-bay-mine-view={display}>
-      {error ? <p role="alert" className="mb-3 rounded-xl bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{tt(error)}</p> : null}
+      {error ? <BayRecovery scope={`mine:${pane}`} error={error} reload={onRetry} /> : null}
       <ul
         className={grid ? "grid gap-4" : "flex flex-col gap-2.5"}
         style={grid ? { gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,220px),1fr))" } : undefined}

@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 import { useEffect, useState, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -97,7 +98,7 @@ export function LoginManagePanel({ appId }: { appId: string }): ReactElement {
       applyClient(result.client);
       usersRes.reload();
     } catch (error) {
-      setFormError(errorText(error) || tt("登录设置没读出来，请稍后点「重试」。"));
+      setFormError(errorText(error) || tt("内容暂时无法加载，正在自动恢复。"));
     } finally {
       setBusy(false);
     }
@@ -116,12 +117,7 @@ export function LoginManagePanel({ appId }: { appId: string }): ReactElement {
   if (clientRes.loading && !client) return <PaneLoading />;
   if (!client) {
     return (
-      <div data-bay-login-manage>
-        <p className="text-[13px] text-rose-600">{clientRes.error || tt("登录设置没读出来，请稍后点「重试」。")}</p>
-        <button type="button" onClick={clientRes.reload} className="mt-2 text-[12px] text-neutral-600 hover:underline">
-          {tt("重试")}
-        </button>
-      </div>
+      <BayRecovery scope="applogin/LoginManagePanel.tsx:120" reload={clientRes.reload} error={{ status: clientRes.status, message: clientRes.error }} />
     );
   }
 
@@ -242,12 +238,7 @@ export function LoginManagePanel({ appId }: { appId: string }): ReactElement {
             })}
           </p>
         ) : (
-          <div>
-            <p className="text-[13px] text-rose-600">{usersRes.error || tt("登录人数没读出来，请稍后点「重试」。")}</p>
-            <button type="button" onClick={usersRes.reload} className="mt-2 text-[12px] text-neutral-600 hover:underline">
-              {tt("重试")}
-            </button>
-          </div>
+          <BayRecovery scope="applogin/LoginManagePanel.tsx:246" reload={usersRes.reload} error={{ status: usersRes.status, message: usersRes.error }} />
         )}
       </Section>
     </div>

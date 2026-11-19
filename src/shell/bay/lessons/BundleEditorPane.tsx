@@ -1,5 +1,8 @@
 "use client";
 
+import { bayFailureKind, useBayAutoRetry } from "../shell/use-bay-auto-retry";
+import { BayRecovery } from "../shell/BayRecovery";
+
 // 发布 / 编辑一个套餐：选课、套餐价。本文件归 V3 单元；组件名与 props 是合同，不许改。
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -53,7 +56,10 @@ export function BundleEditorPane(props: BayPaneProps): ReactElement | null {
   const [draft, setDraft] = useState<BundleDraft>(emptyBundleDraft);
   const [load, setLoad] = useState({ loading: true, error: "" });
   const [actionError, setActionError] = useState("");
+  const [loadNonce, setLoadNonce] = useState(0);
+  const [recoverSave, setRecoverSave] = useState(false);
   const [busy, setBusy] = useState<"save" | "publish" | "">("");
+  useBayAutoRetry(recoverSave && !busy && signedIn && props.target.kind === "bundle-editor", saveDraft);
   const [showProblems, setShowProblems] = useState(false);
 
   const applyBundle = useCallback((row: BayLessonBundleMine) => {
@@ -97,7 +103,7 @@ export function BundleEditorPane(props: BayPaneProps): ReactElement | null {
     return () => {
       alive = false;
     };
-  }, [signedIn, routeId, props.target.kind, applyBundle]);
+  }, [signedIn, routeId, props.target.kind, applyBundle, loadNonce]);
 
   const listed = useMemo(
     () => mine.filter((row) => row.status === "published" && !row.moderation_hidden),
@@ -165,11 +171,13 @@ export function BundleEditorPane(props: BayPaneProps): ReactElement | null {
   async function saveDraft() {
     if (busy) return;
     setShowProblems(true);
+    setRecoverSave(false);
     setBusy("save");
     setActionError("");
     try {
       if (!bundle) {
         const created = await createBayLessonBundle(bundleInput());
+        setBundle(created.bundle);
         if (selectedIds.length >= 2) {
           await setBayLessonBundleLessons(created.bundle.id, selectedIds);
         }
@@ -178,6 +186,7 @@ export function BundleEditorPane(props: BayPaneProps): ReactElement | null {
       }
       await persist(bundle);
     } catch (error) {
+      setRecoverSave(Boolean(bundle) && bayFailureKind(error) === "temporary" && ![400, 409, 422].includes(Number((error as { status?: number })?.status)));
       setActionError(errorText(error, tt("保存失败，请稍后再试。")));
     } finally {
       setBusy("");
@@ -219,13 +228,7 @@ export function BundleEditorPane(props: BayPaneProps): ReactElement | null {
       </section>
     );
   }
-  if (load.error && !bundle) {
-    return (
-      <section data-bay-pane="bundle-editor" className="space-y-3 p-4">
-        <SellerNotice tone="error">{tt(load.error)}</SellerNotice>
-      </section>
-    );
-  }
+  if (load.error) return <BayRecovery scope="lessons/BundleEditorPane.tsx" error={load.error} reload={() => setLoadNonce(value => value + 1)} />;
 
   const items = [
     {

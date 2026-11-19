@@ -55,7 +55,7 @@ export function MyFollowedAppsPane(): ReactElement | null {
   if (resource.loading && !resource.data) return <PaneLoading />;
   if (!resource.data) {
     const text = resource.error || tt("没读到你关注的网站或软件，请稍后再试。");
-    return <PaneMessage text={tt(text)} onRetry={resource.reload} />;
+    return <PaneMessage text={tt(text)} status={resource.status} onRetry={resource.reload} />;
   }
 
   return (

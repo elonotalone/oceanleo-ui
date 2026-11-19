@@ -52,7 +52,7 @@ export function CheckoutPane({ target, layout }: BayPaneProps) {
   if (service.loading) return <PaneLoading />;
   if (!service.data) {
     const text = service.status === 404 || !service.error ? tt("这件商品不存在或已经下架") : tt(service.error);
-    return <PaneMessage text={text} onRetry={service.reload} />;
+    return <PaneMessage text={text} status={service.status} onRetry={service.reload} />;
   }
   if (isOwnService(service.data, viewer.data)) return <PaneMessage text={tt("这是你发布的商品")} />;
   return <CheckoutView service={service.data} initialTier={tier} payment={payment.data} layout={layout} />;

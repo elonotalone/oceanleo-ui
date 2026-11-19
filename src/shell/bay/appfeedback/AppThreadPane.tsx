@@ -55,7 +55,7 @@ export function AppThreadPane(props: BayPaneProps): ReactElement | null {
         setDetail(null);
         return;
       }
-      setError(actionErrorText(caught, tt("留言没读出来，请稍后点「重试」。")));
+      setError(actionErrorText(caught, tt("内容暂时无法加载，正在自动恢复。")));
     } finally {
       setLoading(false);
     }
@@ -114,7 +114,7 @@ export function AppThreadPane(props: BayPaneProps): ReactElement | null {
   if (error || !detail) {
     return (
       <div data-bay-pane="app-thread" className="p-4">
-        <PaneMessage text={error || tt("留言没读出来，请稍后点「重试」。")} onRetry={() => void load()} />
+        <PaneMessage text={error || tt("内容暂时无法加载，正在自动恢复。")} onRetry={() => void load()} />
       </div>
     );
   }

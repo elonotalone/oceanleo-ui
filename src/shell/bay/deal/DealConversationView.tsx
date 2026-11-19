@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 一笔交易一个会话（契约 §0 第 9、13 条）：消息窗的交易会话与 Bay 里的会话是同一个界面。
 // 头部：对方、回到主题（商品 / 需求 / 求助 / 订单）、举报与拉黑；顶上固定交易卡；中间消息（文字、文件、报价、灰字）；
 // 底部输入框（文字、文件、卖家可发报价）。签约后输入框换成「在项目群里沟通」，合同取消或完成后恢复。
@@ -346,16 +347,9 @@ export function DealConversationView({ threadId, layout, onBack }: DealConversat
   } else if (state.error) {
     body = (
       <div data-deal-error={state.error} className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-[13px] text-neutral-500">
-        <p>{state.error === "gone" ? tt("这个会话不存在，或你不在其中。") : tt("没能加载这个会话。")}</p>
+        {state.error === "gone" ? <p>{tt("这个会话不存在，或你不在其中。")}</p> : null}
         {state.error === "load" ? (
-          <button
-            type="button"
-            data-action="retry"
-            onClick={() => void reload(false)}
-            className="rounded-full border border-neutral-900 px-3 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
-          >
-            {tt("重试")}
-          </button>
+          <BayRecovery scope="deal/DealConversationView.tsx:350" reload={() => void reload(false)} />
         ) : null}
       </div>
     );

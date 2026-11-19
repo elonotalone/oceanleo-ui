@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import Link from "next/link";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -160,12 +161,7 @@ export function EndpointPicker({
 
   if (loadError) {
     return (
-      <div data-bay-endpoint-picker className="space-y-2">
-        <SellerNotice tone="error">{loadError}</SellerNotice>
-        <button type="button" className={SECONDARY_BUTTON} onClick={() => void reload()}>
-          {tt("重试")}
-        </button>
-      </div>
+      <BayRecovery scope="appendpoint/EndpointPicker.tsx:164" reload={() => void reload()} />
     );
   }
 

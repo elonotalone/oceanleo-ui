@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "./BayRecovery";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -145,8 +146,11 @@ export function ReadyMaterialCatalog({ siteKey, appId, query, view, sellers, onl
     </div> : null}
     {online ? children : <>
       {selectedCategory && shelf ? <header className="mb-5 space-y-3">
-        <a href={`?${backSearch}`} className="text-sm text-neutral-600 hover:text-neutral-900" onClick={(event) => { event.preventDefault(); choose(shelf); }}>‹ {materialLabel(shelf, locale)}</a>
+        <div data-bay-category-title className="flex items-center justify-between gap-3 text-lg font-semibold">
+        <a href={`?${backSearch}`} className="text-lg font-semibold hover:text-neutral-900" onClick={(event) => { event.preventDefault(); choose(shelf); }}>‹ {materialLabel(shelf, locale)}</a>
+        <span aria-hidden="true">/</span>
         <h2 className="text-lg font-semibold">{materialLabel(selectedCategory, locale)}</h2>
+        </div>
         <div data-bay-taxonomy-filters className="flex flex-wrap gap-2">
           {contentTypes.length ? <BayFilterSelect name="contentType" label={tt("内容类型")} value={filters.contentType} allLabel={tt("全部内容类型")}
             options={contentTypes.map((row) => ({ value: row.id, label: materialLabel(row, locale) }))} onChange={(contentType) => changeFilter({ contentType })} /> : null}
@@ -159,10 +163,7 @@ export function ReadyMaterialCatalog({ siteKey, appId, query, view, sellers, onl
           })}
         </div>
       </header> : null}
-      {unavailable ? <div role="status" data-bay-asset-error className="mb-4 flex items-center gap-3 text-sm">
-        <p>{tt(taxonomyError ? "素材分类未能加载，请重试。" : "部分素材未能加载，请重试。")}</p>
-        <button type="button" className={COLLECTION_ACTION_BTN_GHOST} onClick={() => setRetry((value) => value + 1)}>{tt("重试")}</button>
-      </div> : null}
+      {unavailable ? <BayRecovery scope="shell/ReadyMaterialCatalog.tsx:163" reload={() => setRetry((value) => value + 1)} /> : null}
       {!selectedCategory ? <div data-bay-ready-categories className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, max(15rem, calc((100% - 3rem) / 4))), 1fr))" }}>
         {categories.map((row, index) => {
           const cover = page.categoryCovers[row.id];

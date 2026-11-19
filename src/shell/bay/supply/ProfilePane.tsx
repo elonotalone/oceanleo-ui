@@ -1,5 +1,8 @@
 "use client";
 
+import { bayFailureKind, useBayAutoRetry } from "../shell/use-bay-auto-retry";
+import { BayFollowButton } from "../following/BayFollowButton";
+
 // 个人主页窗格：别人的主页（`profile:<handle>`）与我自己的主页（`profile:me`）。
 // 版面由 `page/ProfilePage` 按 `page_doc` 画；我的主页入口直接打开带真实预览的编辑器。
 // 公开主页保持只读，只有本人可点「编辑主页」。资料与版面共用一份编辑状态。
@@ -117,7 +120,7 @@ export function ProfilePane({ target }: BayPaneProps) {
   if (page.loading) return <PaneLoading />;
   if (!page.data?.profile) {
     const text = page.status === 404 || !page.error ? tt("这个主页不存在或尚未公开") : tt(page.error);
-    return <PaneMessage text={text} onRetry={page.reload} />;
+    return <PaneMessage text={text} status={page.status} onRetry={page.reload} />;
   }
   return <ProfileDetailView page={page.data} viewerId={viewer.data} onChanged={page.reload} startEditing={mine} />;
 }
@@ -135,6 +138,9 @@ export function ProfileDetailView({ page, viewerId, onChanged, startEditing = fa
   const [savedIdentity, setSavedIdentity] = useState<BayPageIdentity | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [pendingSave, setPendingSave] = useState<{ doc: BayPageDoc; identity: BayPageIdentity } | null>(null);
+  const [recoverSave, setRecoverSave] = useState(false);
+  useBayAutoRetry(recoverSave && own && editing && !saving && Boolean(pendingSave), () => pendingSave && save(pendingSave.doc, pendingSave.identity, true));
   const [talkError, setTalkError] = useState("");
   const [blockState, setBlockState] = useState<"idle" | "done" | "busy">("idle");
 
@@ -157,6 +163,8 @@ export function ProfileDetailView({ page, viewerId, onChanged, startEditing = fa
   }, [own, published]);
 
   function leaveEditing() {
+    setRecoverSave(false);
+    setPendingSave(null);
     setVettingFocus(0);
     setEditing(false);
   }
@@ -183,8 +191,10 @@ export function ProfileDetailView({ page, viewerId, onChanged, startEditing = fa
     }
   }
 
-  async function save(next: BayPageDoc, identity: BayPageIdentity) {
+  async function save(next: BayPageDoc, identity: BayPageIdentity, recovering = false) {
     if (saving || !own) return;
+    setPendingSave({ doc: next, identity });
+    setRecoverSave(false);
     setSaving(true);
     setSaveError("");
     try {
@@ -213,9 +223,10 @@ export function ProfileDetailView({ page, viewerId, onChanged, startEditing = fa
       setSavedDoc(normalizePageDoc(result.profile?.page_doc) ?? docToSave);
       setSavedIdentity({ ...identity, handle: identity.handle.trim().toLowerCase(), display_name: identity.display_name.trim() });
       setPublished(identity.published);
-      leaveEditing();
-      onChanged?.();
+      setPendingSave(null);
+      if (!recovering) { leaveEditing(); onChanged?.(); }
     } catch (error) {
+      setRecoverSave(bayFailureKind(error) === "temporary" && ![400, 409, 422].includes(Number((error as { status?: number })?.status)));
       setSaveError(errorText(error) || tt("没保存成功，请稍后再试。"));
     } finally {
       setSaving(false);
@@ -291,6 +302,7 @@ export function ProfileDetailView({ page, viewerId, onChanged, startEditing = fa
       <button type="button" data-bay-talk onClick={() => void talk()} className={ACTION_PRIMARY}>
         {tt("先聊聊")}
       </button>
+      <BayFollowButton userId={profile.user_id} username={profile.handle} />
       <FavoriteButton kind="profile" refId={profile.user_id} />
     </>
   ) : null;

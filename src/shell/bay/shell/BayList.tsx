@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "./BayRecovery";
 // LeoBay 页的信息流部件：五个种类标签、出售/求购开关、紧凑站点筛选与信息流。
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
@@ -387,12 +388,7 @@ export function BayFeed({
       ) : null}
       {firstLoad ? <FeedSkeleton variant={variant} /> : null}
       {errorText ? (
-        <div className="flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-feed-error>
-          <p className="text-[13px] text-neutral-500">{tt(errorText)}</p>
-          <button type="button" onClick={feed.retry} className={`mt-3 ${QUIET_BUTTON}`}>
-            {tt("重试")}
-          </button>
-        </div>
+        <BayRecovery scope="shell/BayList.tsx:391" reload={feed.retry} error={errorText} />
       ) : null}
       {empty ? (
         <div data-bay-empty={pristine ? "pristine" : "filtered"}>

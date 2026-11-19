@@ -26,7 +26,7 @@ export function LessonPane(props: BayPaneProps): ReactElement | null {
   if (resource.loading) return <PaneLoading />;
   if (!resource.data) {
     const text = resource.status === 404 || !resource.error ? tt("这个课程不存在或已下架") : tt(resource.error);
-    return <PaneMessage text={text} onRetry={resource.reload} />;
+    return <PaneMessage text={text} status={resource.status} onRetry={resource.reload} />;
   }
   return <LessonDetailView payload={resource.data} onReload={resource.reload} />;
 }

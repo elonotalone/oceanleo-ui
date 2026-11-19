@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // LeoBay「网站与软件服务」栏的货架：卡片网格。组件名与 props 是合同，不许改。
 // 先排站点上架来的应用与网站（bay_apps），再接卖家按「网站与软件服务」发布的条目（信息流 listing_kind=app），
 // 同一张网格 / 同一种卡片；两边都空才显示空态。
@@ -77,19 +78,10 @@ export function BayAppShelf({ filter, siteKey, view = "grid" }: BayAppShelfProps
       ) : null}
       {firstLoad ? <ShelfSkeleton view={view} /> : null}
       {failure ? (
-        <div className="flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-app-error>
-          <p className="text-[13px] text-neutral-500">{tt(failure)}</p>
-          <button
-            type="button"
-            onClick={() => {
+        <BayRecovery scope="apps/BayAppShelf.tsx:81" reload={() => {
               if (feed.error) feed.reload();
               if (posted.error) posted.retry();
-            }}
-            className={`mt-3 ${QUIET_BUTTON}`}
-          >
-            {tt("重试")}
-          </button>
-        </div>
+            }} error={failure} />
       ) : null}
       {empty ? <div data-bay-app-empty /> : null}
       {hasMore || (busy && count > 0) ? (

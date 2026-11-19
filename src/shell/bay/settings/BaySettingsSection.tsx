@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 设置窗「LeoBay」栏：只有一页，两块——「付款卡」（买家下单托管扣款用的卡）和「收款账户」（卖家收钱的账户）。
 // 所有启用 Bay 的版本共用；隔离的境内开发通道可显式模拟开户和付款设置。原来的四个页签搬走了：
 //   卖家资料、资质审核 → 我的 → 我的主页；买家花销 → 我的 → 我买到的；
@@ -102,14 +103,7 @@ function BaySettingsPage() {
   }
   if (!data) {
     return (
-      <div className="space-y-2" data-bay-settings-section="">
-        <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-400">
-          {tt(error || "加载失败，请稍后再试。")}
-        </p>
-        <button type="button" onClick={reload} className="text-[13px] font-medium text-stone-800 underline underline-offset-2 hover:text-stone-950 dark:text-neutral-200">
-          {tt("重试")}
-        </button>
-      </div>
+      <BayRecovery scope="settings/BaySettingsSection.tsx:108" reload={reload} error={error || "加载失败，请稍后再试。"} />
     );
   }
   if (data.guest || !data.payout) {

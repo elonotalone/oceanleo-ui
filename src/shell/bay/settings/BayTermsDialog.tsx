@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 条款弹窗：第一次发需求、下单、报价、发布服务时由 ensureBayTerms 弹出。
 // 买家、卖家签的是同一份条款（网关只有一份），scope 只决定说明那一行。
 import { useEffect, useId, useRef, useState } from "react";
@@ -139,9 +140,7 @@ export function BayTermsDialog({ scope, initialStatus, locale, onCancel, onAccep
               <BayTermsSections document={current} />
             </>
           ) : (
-            <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-              {tt(error || LOAD_FAILED)}
-            </p>
+            <p role="status" className="text-sm text-neutral-500">{tt("正在加载…")}</p>
           )}
         </div>
 
@@ -179,15 +178,7 @@ export function BayTermsDialog({ scope, initialStatus, locale, onCancel, onAccep
                 {busy === "accept" ? tt("正在记录…") : tt("同意并继续")}
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => void reload()}
-                disabled={busy !== null}
-                data-bay-terms-reload=""
-                className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:cursor-wait disabled:opacity-60 dark:bg-white dark:text-neutral-900"
-              >
-                {tt("重试")}
-              </button>
+              <BayRecovery scope="settings/BayTermsDialog.tsx:181" reload={() => void reload()} />
             )}
           </div>
         </footer>

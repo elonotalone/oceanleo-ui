@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 右侧栏里的「与我的问题相关的服务」。agent 的找真人请求来了就画这一块。
 import { useEffect, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -79,12 +80,7 @@ export function RelatedServices({ siteKey, request, active, onBrowseAll }: Relat
         </div>
       ) : null}
       {status === "error" ? (
-        <div role="status" data-bay-related-error className="mt-6 flex flex-col items-center px-4 py-8 text-center">
-          <p className="text-[13px] text-stone-600">{tt("相关服务没读出来，请稍后再试。")}</p>
-          <button type="button" data-bay-related-retry onClick={() => setRetryTick((n) => n + 1)} className={`mt-4 ${BTN_SECONDARY}`}>
-            {tt("重试")}
-          </button>
-        </div>
+        <BayRecovery scope="panel/RelatedServices.tsx:83" reload={() => setRetryTick((n) => n + 1)} error={"相关服务没读出来，请稍后再试。"} />
       ) : null}
       {status === "ok" && page && page.items.length === 0 ? <div data-bay-related-empty /> : null}
       {status === "ok" && page && page.items.length > 0 ? (

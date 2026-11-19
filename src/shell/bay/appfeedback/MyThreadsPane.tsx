@@ -41,7 +41,7 @@ export function MyThreadsPane(): ReactElement | null {
         setError("");
       } catch (caught) {
         if (request !== requestRef.current || isAbort(caught) || controller?.signal.aborted) return;
-        setError(actionErrorText(caught, tt("留言没读出来，请稍后点「重试」。")));
+        setError(actionErrorText(caught, tt("内容暂时无法加载，正在自动恢复。")));
       } finally {
         if (request === requestRef.current) setLoading(false);
       }

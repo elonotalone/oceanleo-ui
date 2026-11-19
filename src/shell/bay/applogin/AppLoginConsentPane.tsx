@@ -97,7 +97,7 @@ export function AppLoginConsentPane(_props: BayPaneProps): ReactElement {
   if (!preview.data) {
     return (
       <div data-bay-pane="app-login">
-        <PaneMessage text={preview.error || tt("登录请求不完整，请回到原来的网站或软件重新点登录。")} onRetry={preview.reload} />
+        <PaneMessage text={preview.error || tt("登录请求不完整，请回到原来的网站或软件重新点登录。")} status={preview.status} onRetry={preview.reload} />
       </div>
     );
   }

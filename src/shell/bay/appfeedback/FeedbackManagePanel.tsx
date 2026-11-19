@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
@@ -125,7 +126,7 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
         setError("");
       } catch (caught) {
         if (request !== requestRef.current || isAbort(caught) || controller?.signal.aborted) return;
-        setError(actionErrorText(caught, "留言没读出来，请稍后点「重试」。"));
+        setError(actionErrorText(caught, "内容暂时无法加载，正在自动恢复。"));
       } finally {
         if (request === requestRef.current) setLoading(false);
       }
@@ -273,12 +274,7 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
           </div>
           {loading && items.length === 0 ? <p className="text-[12.5px] text-neutral-500">{tt("正在读取留言…")}</p> : null}
           {error ? (
-            <div className="space-y-2">
-              <p className="text-[12.5px] text-rose-600">{tt(error)}</p>
-              <button type="button" onClick={() => void loadInbox(0, true, status)} className="text-[12px] text-neutral-600 hover:underline">
-                {tt("重试")}
-              </button>
-            </div>
+            <BayRecovery scope="appfeedback/FeedbackManagePanel.tsx:277" reload={() => void loadInbox(0, true, status)} error={error} />
           ) : null}
           {!loading && !error && items.length === 0 ? (
             <p className="text-[13px] text-neutral-500">{tt("还没有收到留言")}</p>

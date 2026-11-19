@@ -1,5 +1,7 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
+
 // 订单列表与订单页共用的小件：状态标签、日期、按钮样式、读取中/出错/请登录的提示。全部按纯文本渲染。
 
 import { useCallback, type ReactNode } from "react";
@@ -93,19 +95,8 @@ export function OrderLoading({ pane }: { pane: string }) {
 }
 
 export function OrderLoadError({ pane, message, onRetry }: { pane: string; message: string; onRetry: () => void }) {
-  const tt = useUI();
-  return (
-    <section data-bay-pane={pane} data-bay-error className="p-4">
-      <OrderNote kind="error">
-        <p>{tt(message || "订单信息暂时取不到。")}</p>
-        <button type="button" data-bay-action="retry" onClick={onRetry} className="mt-1.5 font-medium underline underline-offset-2">
-          {tt("重试")}
-        </button>
-      </OrderNote>
-    </section>
-  );
+  return <BayRecovery scope={`order:${pane}`} error={message} reload={onRetry} />;
 }
-
 export function OrderSignIn({ pane, text }: { pane: string; text: string }) {
   const tt = useUI();
   return (

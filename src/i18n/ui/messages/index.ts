@@ -1,3 +1,4 @@
+import { swBdCopy } from "./sw-bd-copy";
 import { UF1_MISSING_COPY_A } from "./uf1-missing-copy-a";
 import { UF1_MISSING_COPY_B } from "./uf1-missing-copy-b";
 import { UF1_MISSING_COPY_C } from "./uf1-missing-copy-c";
@@ -555,6 +556,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...UF1_MISSING_COPY_B[language],
       ...UF1_MISSING_COPY_C[language],
       ...STEP_UP_MESSAGES[language],
+      ...swBdCopy(language),
     }];
   }),
 ) as Record<Locale, Record<string, string>>;

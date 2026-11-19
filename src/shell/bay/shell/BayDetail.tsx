@@ -1,5 +1,7 @@
 "use client";
 
+import { importWithChunkReload } from "../../../lib/lazy-with-retry";
+
 // LeoBay 的详情正文：按当前目标渲染需求、供给、订单、卖家几块的窗格；「我的」三块（交易 / 我的主页 / 数据面板）；设置交给共用设置窗。
 // 返回键与标题在 `/bay` 页的页头那一行（见 LeoBayPage），这里只出正文，所以页面上不会出现两个返回键、两个标题。
 // 交易会话不在这里：它在 LeoChat 小窗里开。
@@ -13,16 +15,16 @@ import type { BayPaneProps, BayTarget } from "./bay-state";
 import { BayMine } from "./BayMine";
 
 // 不走 apps/index 桶：桶会把货架和「我的网站与软件服务」一起拉进来，测试编译台的 BayMine 桩没有 BaySignInPrompt。
-const AppPane = lazy(() => import("../apps/AppPane").then((mod) => ({ default: mod.AppPane })));
-const AppEditorPane = lazy(() => import("../apps/AppEditorPane").then((mod) => ({ default: mod.AppEditorPane })));
-const LessonPane = lazy(() => import("../lessons/LessonPane").then((mod) => ({ default: mod.LessonPane })));
-const BundlePane = lazy(() => import("../lessons/BundlePane").then((mod) => ({ default: mod.BundlePane })));
-const LessonEditorPane = lazy(() => import("../lessons/LessonEditorPane").then((mod) => ({ default: mod.LessonEditorPane })));
-const BundleEditorPane = lazy(() => import("../lessons/BundleEditorPane").then((mod) => ({ default: mod.BundleEditorPane })));
-const AppManagePane = lazy(() => import("../apps/AppManagePane").then((mod) => ({ default: mod.AppManagePane })));
-const AppThreadPane = lazy(() => import("../appfeedback/AppThreadPane").then((mod) => ({ default: mod.AppThreadPane })));
-const DashboardPane = lazy(() => import("../dashboard/DashboardPane").then((mod) => ({ default: mod.DashboardPane })));
-const AppLoginConsentPane = lazy(() => import("../applogin/AppLoginConsentPane").then((mod) => ({ default: mod.AppLoginConsentPane })));
+const AppPane = lazy(() => importWithChunkReload(() => import("../apps/AppPane").then((mod) => ({ default: mod.AppPane }))));
+const AppEditorPane = lazy(() => importWithChunkReload(() => import("../apps/AppEditorPane").then((mod) => ({ default: mod.AppEditorPane }))));
+const LessonPane = lazy(() => importWithChunkReload(() => import("../lessons/LessonPane").then((mod) => ({ default: mod.LessonPane }))));
+const BundlePane = lazy(() => importWithChunkReload(() => import("../lessons/BundlePane").then((mod) => ({ default: mod.BundlePane }))));
+const LessonEditorPane = lazy(() => importWithChunkReload(() => import("../lessons/LessonEditorPane").then((mod) => ({ default: mod.LessonEditorPane }))));
+const BundleEditorPane = lazy(() => importWithChunkReload(() => import("../lessons/BundleEditorPane").then((mod) => ({ default: mod.BundleEditorPane }))));
+const AppManagePane = lazy(() => importWithChunkReload(() => import("../apps/AppManagePane").then((mod) => ({ default: mod.AppManagePane }))));
+const AppThreadPane = lazy(() => importWithChunkReload(() => import("../appfeedback/AppThreadPane").then((mod) => ({ default: mod.AppThreadPane }))));
+const DashboardPane = lazy(() => importWithChunkReload(() => import("../dashboard/DashboardPane").then((mod) => ({ default: mod.DashboardPane }))));
+const AppLoginConsentPane = lazy(() => importWithChunkReload(() => import("../applogin/AppLoginConsentPane").then((mod) => ({ default: mod.AppLoginConsentPane }))));
 
 /** 网站与软件服务、课程的窗格是按需加载的；加载那一下给一块骨架，别让页面白一下。 */
 function LazyPaneLoading() {

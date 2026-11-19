@@ -1,5 +1,7 @@
 "use client";
 
+import { bayFailureKind, useBayAutoRetry } from "../shell/use-bay-auto-retry";
+import { BayRecovery } from "../shell/BayRecovery";
 // 发布：一进就是填写表（封面图在最前），类别只是表上的选择器。一张表三块（产品信息 / 价格 / 交付条款）。
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -142,6 +144,8 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   });
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [recoverSave, setRecoverSave] = useState(false);
+  useBayAutoRetry(recoverSave && !saving && signedIn, () => persist("draft"));
   const [rejection, setRejection] = useState("");
   const [hiddenMessage, setHiddenMessage] = useState("");
   const [load, setLoad] = useState<{ loading: boolean; error: string }>({ loading: Boolean(routeId), error: "" });
@@ -512,6 +516,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       }
       termsOk.current = true;
     }
+    setRecoverSave(false);
     setSaving(true);
     setRejection("");
     try {
@@ -552,6 +557,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       }
       setDirty(false);
     } catch (error) {
+      setRecoverSave(mode === "draft" && Boolean(draft.serviceId) && bayFailureKind(error) === "temporary" && ![400, 409, 422].includes(Number((error as { status?: number })?.status)));
       reportFailure(error, mode === "publish" ? tt("上架没有通过，请按提示修改后再试。") : "保存失败，请稍后再试。");
     } finally {
       setSaving(false);
@@ -627,12 +633,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   if (load.loading) return <section data-bay-pane="service-editor" className="p-4 text-[13px] text-stone-500">{tt("正在打开…")}</section>;
   if (load.error) {
     return (
-      <section data-bay-pane="service-editor" className="space-y-3 p-4">
-        <SellerNotice tone="error">{tt(load.error)}</SellerNotice>
-        <button type="button" onClick={() => setNonce((value) => value + 1)} className={SECONDARY_BUTTON}>
-          {tt("重试")}
-        </button>
-      </section>
+      <BayRecovery scope="seller/ServiceEditorPane.tsx:631" reload={() => setNonce((value) => value + 1)} error={load.error} />
     );
   }
 

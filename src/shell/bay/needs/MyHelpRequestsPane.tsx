@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 「我的求助」：我发出的求助列表。整行可点，打开 Bay 里那条求助。不自带返回栏。
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -40,16 +41,7 @@ function MyHelpBody() {
   if (!list.data) {
     return (
       <PaneBody pane="my-help">
-        <PaneNotice
-          tone="error"
-          action={
-            <button type="button" className={BTN_SECONDARY} onClick={list.reload}>
-              {tt("重试")}
-            </button>
-          }
-        >
-          {errorText(tt, list.error, tt("求助没读出来，请稍后再试。"))}
-        </PaneNotice>
+        <BayRecovery scope="needs/MyHelpRequestsPane.tsx:45" reload={list.reload} error={list.error} />
       </PaneBody>
     );
   }

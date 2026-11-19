@@ -1,5 +1,8 @@
 "use client";
 
+import { useBayAutoRetry } from "../shell/use-bay-auto-retry";
+import { BayRecovery } from "../shell/BayRecovery";
+
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { LIVE_MATERIAL_LABELS, LIVE_MATERIAL_TYPES, materialHttpUrl, searchLiveMaterials, useLiveMaterial,
@@ -58,6 +61,8 @@ export function LiveMaterialSearch({ types = LIVE_MATERIAL_TYPES, initialQuery =
     return () => controller.abort();
   }, [type, query, page, retry, typeKey]);
 
+  useBayAutoRetry(partial && !loading, () => setRetry(value => value + 1));
+
   async function choose(asset: LiveMaterial) {
     const key = `${asset.id}\u0000${variants[asset.id] || ""}`;
     if (busy.current.has(key)) return;
@@ -100,8 +105,8 @@ export function LiveMaterialSearch({ types = LIVE_MATERIAL_TYPES, initialQuery =
         onChange={event => setDraft(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm" />
       <button type="submit" className={buttonClass}>{tt("搜索")}</button>
     </form>
-    {error ? <p role="alert">{tt(error)} <button type="button" className={buttonClass} onClick={() => setRetry(value => value + 1)}>{tt("重试")}</button></p> : null}
-    {partial ? <p role="status" className="text-xs text-[var(--fg-2)]">{tt("部分来源暂不可用，可重试获取更多素材")}</p> : null}
+    {error.startsWith("在线素材") ? <BayRecovery scope="live-material-search" reload={() => setRetry(value => value + 1)} /> : error ? <p role="alert">{tt(error)}</p> : null}
+    {partial ? <p role="status" className="text-xs text-[var(--fg-2)]">{tt("内容暂时无法加载，正在自动恢复。")}</p> : null}
     {message ? <p role="status">{tt(message)}</p> : null}
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy={loading}>
       {items.map(asset => {
@@ -129,7 +134,7 @@ export function LiveMaterialSearch({ types = LIVE_MATERIAL_TYPES, initialQuery =
           </select></label> : null}
           {state ? <p role={state === "failed" ? "alert" : "status"} className="text-xs">{tt(state === "pending" ? "正在存入我的库…" : state === "done" ? "已存到我的库" : failures[key] || "素材未能存入我的库，请重试")}</p> : null}
           {((asset.needs_connection === "sketchfab" && !sketchfabReady) || connectionNeeded === asset.id) ? <SketchfabConnection compact onConnected={() => { setSketchfabReady(true); setConnectionNeeded(""); }} />
-            : <button type="button" disabled={state === "pending"} className={buttonClass} onClick={() => void choose(asset)}>{tt(state === "pending" ? "正在存入我的库…" : state === "failed" ? "重试" : ["texture", "hdri", "font"].includes(asset.type) ? "存到我的库" : actionLabel)}</button>}
+            : <button type="button" disabled={state === "pending"} className={buttonClass} onClick={() => void choose(asset)}>{tt(state === "pending" ? "正在存入我的库…" : ["texture", "hdri", "font"].includes(asset.type) ? "存到我的库" : actionLabel)}</button>}
         </article>;
       })}
     </div>

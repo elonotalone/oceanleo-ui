@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 现成文件 · 来源「卖家在售」：卖家按「现成文件」发布的条目（信息流 listing_kind=digital）。
 // 与别的来源同一种卡片 / 列表行、同一套加载与空态；点开进这一条的详情（买了就拿到文件）。
 import { useMemo, type ReactElement } from "react";
@@ -81,12 +82,7 @@ export function BayAssetSellers({
         </Items>
       ) : null}
       {errorText ? (
-        <div className="flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-asset-error>
-          <p className="text-[13px] text-neutral-500">{tt(errorText)}</p>
-          <button type="button" onClick={feed.retry} className={`mt-3 ${QUIET_BUTTON}`}>
-            {tt("重试")}
-          </button>
-        </div>
+        <BayRecovery scope="asset/BayAssetSellers.tsx:85" reload={feed.retry} error={errorText} />
       ) : null}
       {empty ? <div data-bay-asset-empty /> : null}
       {feed.hasMore || (feed.loading && feed.items.length > 0) ? (

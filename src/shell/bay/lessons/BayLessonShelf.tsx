@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // LeoBay「课程」栏的货架：课程与套餐的卡片网格。组件名与 props 是合同，不许改。
 // 「课程」页签先排站点开的课，再接卖家按「课程」发布的条目（信息流 listing_kind=lesson），同一张网格；两边都空才显示空态。
 import { useState, type ReactElement } from "react";
@@ -73,19 +74,10 @@ function LessonGrid({ filter, siteKey, view = "grid" }: BayLessonShelfProps): Re
       ) : null}
       {firstLoad ? <ShelfSkeleton view={view} /> : null}
       {failure ? (
-        <div className="flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-lesson-error>
-          <p className="text-[13px] text-neutral-500">{tt(failure)}</p>
-          <button
-            type="button"
-            onClick={() => {
+        <BayRecovery scope="lessons/BayLessonShelf.tsx:77" reload={() => {
               if (feed.error) feed.reload();
               if (posted.error) posted.retry();
-            }}
-            className={`mt-3 ${QUIET_BUTTON}`}
-          >
-            {tt("重试")}
-          </button>
-        </div>
+            }} error={failure} />
       ) : null}
       {empty ? <div data-bay-lesson-empty /> : null}
       {hasMore || (busy && count > 0) ? (
@@ -125,12 +117,7 @@ function BundleGrid({ filter, view = "grid" }: { filter: BayFeedFilter; view?: "
       ) : null}
       {firstLoad ? <ShelfSkeleton view={view} /> : null}
       {feed.error ? (
-        <div className="flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-lesson-error>
-          <p className="text-[13px] text-neutral-500">{tt(feed.error)}</p>
-          <button type="button" onClick={feed.reload} className={`mt-3 ${QUIET_BUTTON}`}>
-            {tt("重试")}
-          </button>
-        </div>
+        <BayRecovery scope="lessons/BayLessonShelf.tsx:129" reload={feed.reload} error={feed.error} />
       ) : null}
       {empty ? <div data-bay-lesson-empty /> : null}
       {feed.hasMore || (feed.loading && feed.items.length > 0) ? (

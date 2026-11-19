@@ -1,5 +1,8 @@
 "use client";
 
+import { BayFollowButton } from "../following/BayFollowButton";
+import { BayRecovery } from "../shell/BayRecovery";
+
 /* eslint-disable @next/next/no-img-element -- Library previews use signed or private URLs directly. */
 
 // supply 各窗格共用的小部件：加载/出错、收藏、举报、卖家卡、交付记录、评价列表。
@@ -37,18 +40,9 @@ export function PaneLoading() {
   );
 }
 
-export function PaneMessage({ text, onRetry }: { text: string; onRetry?: () => void }) {
-  const tt = useUI();
-  return (
-    <div data-bay-pane-message className="px-4 py-12 text-center">
-      <p className="text-[14px] font-medium text-neutral-800">{text}</p>
-      {onRetry ? (
-        <button type="button" onClick={onRetry} className="mt-4 inline-flex items-center justify-center rounded-full border border-neutral-900 bg-white px-4 py-2 text-[13px] font-medium text-neutral-900">
-          {tt("重试")}
-        </button>
-      ) : null}
-    </div>
-  );
+export function PaneMessage({ text, onRetry, status }: { text: string; onRetry?: () => void; status?: number | null }) {
+  if (onRetry) return <BayRecovery scope="pane-message" terminalText={text} error={{ status: status ?? undefined, message: text }} reload={onRetry} />;
+  return <div data-bay-pane-message className="px-4 py-12 text-center"><p className="text-[14px] font-medium text-neutral-800">{text}</p></div>;
 }
 
 /** 按类型写清商品种类；自定义条款原样显示。没有条款、截止日期或交付句就不画空块。 */
@@ -280,6 +274,7 @@ export function SellerCard({ seller }: { seller: BayPublicProfile }) {
   const name = profileDisplayName(seller);
   return (
     <section data-bay-seller-card className="space-y-2">
+      <BayFollowButton userId={seller.user_id} username={seller.handle} />
       <div className="flex items-start gap-3">
         <Avatar url={seller.avatar_url} name={name} />
         <div className="min-w-0 flex-1">

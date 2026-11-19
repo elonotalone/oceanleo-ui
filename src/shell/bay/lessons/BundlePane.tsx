@@ -23,7 +23,7 @@ export function BundlePane(props: BayPaneProps): ReactElement | null {
   if (resource.loading) return <PaneLoading />;
   if (!resource.data) {
     const text = resource.status === 404 || !resource.error ? tt("这个套餐不存在或已下架") : tt(resource.error);
-    return <PaneMessage text={text} onRetry={resource.reload} />;
+    return <PaneMessage text={text} status={resource.status} onRetry={resource.reload} />;
   }
   return <BundleDetailView payload={resource.data} onReload={resource.reload} />;
 }

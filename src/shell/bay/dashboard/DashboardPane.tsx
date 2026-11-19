@@ -49,7 +49,7 @@ export function DashboardPane(_props: BayPaneProps): ReactElement {
   if (!resource.data) {
     return (
       <div data-bay-pane="dashboard">
-        <PaneMessage text={resource.error || tt("这一段没加载出来，请刷新页面再试。")} onRetry={resource.reload} />
+        <PaneMessage text={resource.error || tt("这一段没加载出来，请刷新页面再试。")} status={resource.status} onRetry={resource.reload} />
       </div>
     );
   }

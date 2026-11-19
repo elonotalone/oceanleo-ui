@@ -1,5 +1,7 @@
 "use client";
 
+import { BayFollowing } from "../following/BayFollowing";
+
 // LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按种类逛（人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他，出售与求购两边）。
 // LeoChat 不在这张页上：和卖家说话时打开的是左下角那个小窗。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
@@ -94,6 +96,8 @@ function Hero({
   favoritesOnly,
   onFavoritesOnly,
   onLicenses,
+  following,
+  onFollowing,
   sidebarToggle,
 }: {
   filter: BayFeedFilter;
@@ -102,6 +106,8 @@ function Hero({
   onViewChange: (view: CollectionView) => void;
   favoritesOnly: boolean;
   onFavoritesOnly: (value: boolean) => void;
+  following: boolean;
+  onFollowing: () => void;
   onLicenses?: () => void;
   sidebarToggle: ReactNode;
 }) {
@@ -131,6 +137,7 @@ function Hero({
           <CollectionViewOptions options={viewOptions} />
           <CollectionViewToggle view={view} onChange={onViewChange} />
           <div className="flex shrink-0 items-center gap-2" data-bay-page-actions>
+            <button type="button" onClick={onFollowing} aria-pressed={following} data-bay-action="following" className={BTN_GHOST}>{tt("关注动态")}</button>
             <button type="button" onClick={openMine} data-bay-action="mine" className={BTN_GHOST}>
               {tt("我的")}
             </button>
@@ -162,6 +169,7 @@ function Browse({ filter, accent, visible, siteKey, sidebarToggle }: { filter: B
   const lesson = kind === "lesson";
   const [assetVisited, setAssetVisited] = useState(asset);
   const [view, setView] = useState<CollectionView>("grid");
+  const [following, setFollowing] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [licensesOpen, setLicensesOpen] = useState(false);
   const [favoriteKeys, setFavoriteKeys] = useState<ReadonlySet<string> | null>(null);
@@ -208,6 +216,8 @@ function Browse({ filter, accent, visible, siteKey, sidebarToggle }: { filter: B
         >
           {visible ? <Hero
             sidebarToggle={sidebarToggle}
+            following={following}
+            onFollowing={() => setFollowing(value => !value)}
             filter={filter}
             search={search}
             view={view}
@@ -216,9 +226,11 @@ function Browse({ filter, accent, visible, siteKey, sidebarToggle }: { filter: B
             onFavoritesOnly={setFavoritesOnly}
             onLicenses={asset ? () => setLicensesOpen(true) : undefined}
           /> : null}
-          {visible ? <CollectionFilterRow data-bay-page-toolbar="" data-bay-page-filters="">
+          {visible && !following ? <CollectionFilterRow data-bay-page-toolbar="" data-bay-page-filters="">
             <BayViewSwitch filter={filter} showSite />
           </CollectionFilterRow> : null}
+          {following ? <BayFollowing /> : null}
+          <div className={following ? "hidden" : "contents"}>
           {assetVisited ? (
             <div className={asset ? "flex min-h-[32rem] flex-1 flex-col" : "hidden"} data-bay-page-materials>
               <BayAssetLibrary filter={filter} siteKey={siteKey} accent={accent} view={view} detailInPage licensesOpen={licensesOpen && visible} onCloseLicenses={() => setLicensesOpen(false)} />
@@ -244,6 +256,7 @@ function Browse({ filter, accent, visible, siteKey, sidebarToggle }: { filter: B
               />
             </div>
           )}
+          </div>
         </div>
     </BayListingChromeContext.Provider>
   );

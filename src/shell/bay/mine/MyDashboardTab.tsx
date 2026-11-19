@@ -1,5 +1,7 @@
 "use client";
 
+import { importWithChunkReload } from "../../../lib/lazy-with-retry";
+
 // 「我的」→「数据面板」：顶上两个入口——收款设置（设置 → LeoBay：付款卡、收款账户）和资质核验（我的主页里的核验块，I-8），
 // 下面是数据面板本体（收入、收款状态、用户、增长、分商品、收入流水）。
 import { lazy, Suspense } from "react";
@@ -9,7 +11,7 @@ import { openBaySettings } from "../settings/settings-open";
 import { openBay, type BayPaneProps } from "../shell/bay-state";
 import { PaneLoading } from "../supply/parts";
 
-const DashboardPane = lazy(() => import("../dashboard/DashboardPane").then((mod) => ({ default: mod.DashboardPane })));
+const DashboardPane = lazy(() => importWithChunkReload(() => import("../dashboard/DashboardPane").then((mod) => ({ default: mod.DashboardPane }))));
 
 const QUIET_BTN =
   "rounded-lg px-3 py-1.5 text-[13px] text-stone-600 hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300";

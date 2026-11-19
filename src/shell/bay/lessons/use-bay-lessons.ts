@@ -11,8 +11,8 @@ import {
 import type { BayFeedFilter } from "../shell/bay-state";
 
 const PAGE_SIZE = 24;
-const LESSON_LIST_ERROR = "课程列表没读出来，请稍后点「重试」。";
-const BUNDLE_LIST_ERROR = "套餐列表没读出来，请稍后点「重试」。";
+const LESSON_LIST_ERROR = "内容暂时无法加载，正在自动恢复。";
+const BUNDLE_LIST_ERROR = "内容暂时无法加载，正在自动恢复。";
 
 export interface BayLessonsView {
   items: BayLesson[];

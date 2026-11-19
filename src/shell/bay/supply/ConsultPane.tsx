@@ -38,7 +38,7 @@ export function ConsultPane({ target }: BayPaneProps) {
   if (consult.loading) return <PaneLoading />;
   if (!consult.data) {
     const text = consult.status === 404 || !consult.error ? tt("这条答疑不存在或已下架") : tt(consult.error);
-    return <PaneMessage text={text} onRetry={consult.reload} />;
+    return <PaneMessage text={text} status={consult.status} onRetry={consult.reload} />;
   }
   if (consultUnavailable(consult.data)) return <PaneMessage text={tt("这个领域的答疑暂未开放")} />;
   const domain = (domains.data || []).find((item) => item.key === consult.data?.regulated_domain) || null;

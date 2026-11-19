@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useLocale } from "next-intl";
 
@@ -145,12 +146,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
       {loading ? <div data-bay-loading className="mt-2 h-4 w-24 animate-pulse rounded bg-neutral-100" /> : null}
 
       {loadError ? (
-        <div className="mt-3">
-          <p className="text-[12px] text-rose-600">{tt(loadError)}</p>
-          <button type="button" data-bay-action="retry" className={`${SECONDARY} mt-2`} onClick={() => void refreshAccess()}>
-            {tt("重试")}
-          </button>
-        </div>
+        <BayRecovery scope="apppaid/AppPurchaseBar.tsx:149" reload={() => void refreshAccess()} error={loadError} />
       ) : null}
 
       {view?.kind === "trialing" && trialEnd ? <p className="mt-2 text-[13px] text-neutral-700">{tt("试用中，{date} 到期", { date: trialEnd })}</p> : null}

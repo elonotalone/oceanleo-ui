@@ -1,5 +1,7 @@
 "use client";
 
+import { importWithChunkReload } from "../../../lib/lazy-with-retry";
+
 import { Suspense, lazy, useEffect, useMemo, useState, type CSSProperties, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { getCurrentArtifactItem } from "../../artifact-client";
@@ -7,7 +9,7 @@ import type { LibraryItem } from "../../library-data";
 import { BayImageStage } from "./BayImageGallery";
 import { kindFromUrl, slidesFrom, type PreviewFileKind } from "./bay-typed-preview";
 
-const LibraryItemViewer = lazy(() => import("../../library-viewers").then((m) => ({ default: m.LibraryItemViewer })));
+const LibraryItemViewer = lazy(() => importWithChunkReload(() => import("../../library-viewers").then((m) => ({ default: m.LibraryItemViewer }))));
 
 const KIND_LABEL: Record<PreviewFileKind, string> = {
   image: "图片",

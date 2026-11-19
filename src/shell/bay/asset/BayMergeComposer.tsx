@@ -1,10 +1,12 @@
 "use client";
 
+import { importWithChunkReload } from "../../../lib/lazy-with-retry";
+
 import { lazy, Suspense, useId, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { createTask } from "../../../lib/agent";
 import { Modal } from "../../../ui";
-const LeoComposer = lazy(() => import("../../LeoComposer").then((m) => ({ default: m.LeoComposer })));
+const LeoComposer = lazy(() => importWithChunkReload(() => import("../../LeoComposer").then((m) => ({ default: m.LeoComposer }))));
 
 export function bayMergePrompt(tt: (key: string, vars?: Record<string, string | number>) => string, listingId: string, title: string, copyId: string, revisionId: string): string {
   return tt("请把 LeoBay 商品「{title}」（{listingId}）的新版本 {revisionId} 合并到我改过的库中副本 {copyId}。保留我的修改；遇到冲突先说明并让我决定。", { title, listingId, copyId, revisionId });

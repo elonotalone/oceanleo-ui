@@ -1,5 +1,7 @@
 "use client";
 
+import { importWithChunkReload } from "../../../lib/lazy-with-retry";
+
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { getUserId } from "../../../lib/auth/client";
@@ -15,7 +17,7 @@ import { BayImageStage } from "../form/BayImageGallery";
 import { Markdown } from "../../Markdown";
 import { BayMergeComposer } from "./BayMergeComposer";
 
-const LibraryFolderDetail = lazy(() => import("../../library-folders").then((m) => ({ default: m.LibraryFolderDetail })));
+const LibraryFolderDetail = lazy(() => importWithChunkReload(() => import("../../library-folders").then((m) => ({ default: m.LibraryFolderDetail }))));
 
 const BUTTON = "rounded-lg border border-neutral-200 px-3 py-2 text-[13px] disabled:opacity-50";
 

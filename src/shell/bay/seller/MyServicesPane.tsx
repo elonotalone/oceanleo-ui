@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // Bay「我的」→ 我发布的现成文件、人工服务和其他。概况那一行可单独拿去「我卖出的」用。
 // 窗格不自带返回栏/标题栏/滚动。钱的数字不在这里出现，只给「收款账户」入口（设置 → LeoBay）；收入流水在数据面板。答疑挂牌只读。
 
@@ -156,10 +157,7 @@ export function MyServicesPane({
     return (
       <section data-bay-pane="mine-services" role="alert" className="space-y-4 p-4 text-[13px] text-rose-700">
         {overviewRow}
-        <p>{tt(loaded.error)}</p>
-        <button type="button" onClick={reload} className="mt-2 font-medium underline underline-offset-2">
-          {tt("重试")}
-        </button>
+        <BayRecovery scope="seller/MyServicesPane.tsx:159" reload={reload} />
       </section>
     );
   }

@@ -1,5 +1,7 @@
 "use client";
 
+import { importWithChunkReload } from "../../../lib/lazy-with-retry";
+
 // 「管理网站或软件」：作者在这里打理它的留言、登录、收费、更新日志、报错、来源、公开网址。
 // 本文件只是外壳（分页条 + 归属核对）；七个分页各是一个单元的组件，按需加载，按文件路径引用。
 import { lazy, Suspense, type ReactElement } from "react";
@@ -10,13 +12,13 @@ import { BAY_APP_MANAGE_TABS, openBay, type BayAppManageTab, type BayPaneProps }
 import { PaneLoading, PaneMessage } from "../supply/parts";
 import { useBayResource } from "../supply/use-bay-resource";
 
-const FeedbackManagePanel = lazy(() => import("../appfeedback/FeedbackManagePanel").then((mod) => ({ default: mod.FeedbackManagePanel })));
-const LoginManagePanel = lazy(() => import("../applogin/LoginManagePanel").then((mod) => ({ default: mod.LoginManagePanel })));
-const PricingManagePanel = lazy(() => import("../apppaid/PricingManagePanel").then((mod) => ({ default: mod.PricingManagePanel })));
-const ReleasesManagePanel = lazy(() => import("../appreleases/ReleasesManagePanel").then((mod) => ({ default: mod.ReleasesManagePanel })));
-const ErrorsManagePanel = lazy(() => import("../appinsights/ErrorsManagePanel").then((mod) => ({ default: mod.ErrorsManagePanel })));
-const SourcesManagePanel = lazy(() => import("../appinsights/SourcesManagePanel").then((mod) => ({ default: mod.SourcesManagePanel })));
-const EndpointManagePanel = lazy(() => import("../appendpoint/EndpointManagePanel").then((mod) => ({ default: mod.EndpointManagePanel })));
+const FeedbackManagePanel = lazy(() => importWithChunkReload(() => import("../appfeedback/FeedbackManagePanel").then((mod) => ({ default: mod.FeedbackManagePanel }))));
+const LoginManagePanel = lazy(() => importWithChunkReload(() => import("../applogin/LoginManagePanel").then((mod) => ({ default: mod.LoginManagePanel }))));
+const PricingManagePanel = lazy(() => importWithChunkReload(() => import("../apppaid/PricingManagePanel").then((mod) => ({ default: mod.PricingManagePanel }))));
+const ReleasesManagePanel = lazy(() => importWithChunkReload(() => import("../appreleases/ReleasesManagePanel").then((mod) => ({ default: mod.ReleasesManagePanel }))));
+const ErrorsManagePanel = lazy(() => importWithChunkReload(() => import("../appinsights/ErrorsManagePanel").then((mod) => ({ default: mod.ErrorsManagePanel }))));
+const SourcesManagePanel = lazy(() => importWithChunkReload(() => import("../appinsights/SourcesManagePanel").then((mod) => ({ default: mod.SourcesManagePanel }))));
+const EndpointManagePanel = lazy(() => importWithChunkReload(() => import("../appendpoint/EndpointManagePanel").then((mod) => ({ default: mod.EndpointManagePanel }))));
 
 /** 分页条上的字（中文原文，渲染时过 tt）。 */
 export const APP_MANAGE_TAB_LABELS: Readonly<Record<BayAppManageTab, string>> = {
@@ -62,7 +64,7 @@ export function AppManagePane(props: BayPaneProps): ReactElement | null {
   if (resource.loading) return <PaneLoading />;
   if (!resource.data) {
     const text = resource.status === 404 || !resource.error ? tt("这个网站或软件不存在或已下架") : tt(resource.error);
-    return <PaneMessage text={text} onRetry={resource.reload} />;
+    return <PaneMessage text={text} status={resource.status} onRetry={resource.reload} />;
   }
   if (!resource.data.viewer.is_owner) return <PaneMessage text={tt("只有作者本人能管理这个网站或软件")} />;
   const app = resource.data.app;

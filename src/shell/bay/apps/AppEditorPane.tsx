@@ -1,5 +1,8 @@
 "use client";
 
+import { bayFailureKind, useBayAutoRetry } from "../shell/use-bay-auto-retry";
+import { BayRecovery } from "../shell/BayRecovery";
+
 // 上架 / 编辑一个网站或软件。本文件归 U3 单元；组件名与 props 是合同，不许改。
 import { deadlineFromRow, deadlineToPayload, formatDeadline } from "../form/bay-deadline";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
@@ -86,7 +89,10 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
   const [draft, setDraft] = useState<AppDraft>(emptyDraft);
   const [load, setLoad] = useState<{ loading: boolean; error: string }>({ loading: Boolean(routeId), error: "" });
   const [actionError, setActionError] = useState("");
+  const [loadNonce, setLoadNonce] = useState(0);
+  const [recoverSave, setRecoverSave] = useState(false);
   const [busy, setBusy] = useState<"save" | "publish" | "">("");
+  useBayAutoRetry(recoverSave && !busy && signedIn && props.target.kind === "app-editor", saveDraft);
   const [attempted, setAttempted] = useState(false);
 
   const applyApp = useCallback((row: BayAppMine) => {
@@ -124,7 +130,7 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
     return () => {
       alive = false;
     };
-  }, [signedIn, routeId, props.target.kind, applyApp]);
+  }, [signedIn, routeId, props.target.kind, applyApp, loadNonce]);
 
   if (props.target.kind !== "app-editor") return null;
   if (!signedIn) return <BaySignInPrompt text={tt("登录后才能上架网站或软件")} />;
@@ -149,7 +155,7 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
         const body = await saveBayAppPricing(saved.id, pricing);
         saved = body.app;
       } catch (error) {
-        applyApp(saved);
+        setApp(saved);
         throw error;
       }
     }
@@ -159,11 +165,13 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
 
   async function saveDraft() {
     if (!app || busy) return;
+    setRecoverSave(false);
     setBusy("save");
     setActionError("");
     try {
       await persistDraft();
     } catch (error) {
+      setRecoverSave(Boolean(app) && bayFailureKind(error) === "temporary" && ![400, 409, 422].includes(Number((error as { status?: number })?.status)));
       setActionError(errorText(error, tt("保存失败，请稍后再试。")));
     } finally {
       setBusy("");
@@ -196,13 +204,7 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
       </section>
     );
   }
-  if (load.error && !app) {
-    return (
-      <section data-bay-pane="app-editor" className="space-y-3 p-4">
-        <SellerNotice tone="error">{tt(load.error)}</SellerNotice>
-      </section>
-    );
-  }
+  if (load.error) return <BayRecovery scope="apps/AppEditorPane.tsx" error={load.error} reload={() => setLoadNonce(value => value + 1)} />;
 
   const localProblems = draftProblems(draft);
   const knownSlugs = new Set(categoriesView.categories.map((row) => row.slug));

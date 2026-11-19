@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 /* eslint-disable @next/next/no-img-element -- Library previews use signed or private URLs directly. */
 
 // 服务向导的各步界面（移植自 talent `ServiceWizardFields.tsx`，外壳不搬）。只吃 props；用户内容一律纯文本。
@@ -145,12 +146,7 @@ export function DomainStep({
       {loading ? (
         <p className="text-[12.5px] text-stone-500">{tt("正在加载…")}</p>
       ) : domains.length === 0 ? (
-        <SellerNotice tone="warn">
-          {error ? tt(error) : tt("领域清单暂时取不到。")}{" "}
-          <button type="button" onClick={onReload} className="font-medium underline underline-offset-2">
-            {tt("重新加载")}
-          </button>
-        </SellerNotice>
+        <BayRecovery scope="seller/editor-steps.tsx:149" reload={onReload} />
       ) : (
         <div className="space-y-2" role="radiogroup" data-bay-domains>
           {domains.map((item) => (
@@ -211,12 +207,7 @@ export function PromptsStep({
       {loading ? (
         <p className="text-[12.5px] text-stone-500">{tt("正在加载…")}</p>
       ) : !prompts ? (
-        <SellerNotice tone="warn">
-          {error ? tt(error) : tt("这个领域的提问方式还没有下发，可以先继续填写，稍后再回来看。")}{" "}
-          <button type="button" onClick={onReload} className="font-medium underline underline-offset-2">
-            {tt("重新加载")}
-          </button>
-        </SellerNotice>
+        <BayRecovery scope="seller/editor-steps.tsx:215" reload={onReload} />
       ) : (
         <div className="space-y-3">
           <ReadOnlyBlock label={tt("买家会被这样引导提问")}>{prompts.ask_placeholder}</ReadOnlyBlock>
@@ -316,12 +307,7 @@ export function ModelStep({
       {loading ? (
         <p className="text-[12.5px] text-stone-500">{tt("正在加载…")}</p>
       ) : models.length === 0 ? (
-        <SellerNotice tone="warn">
-          {error ? tt(error) : tt("计费方式暂时取不到。")}{" "}
-          <button type="button" onClick={onReload} className="font-medium underline underline-offset-2">
-            {tt("重新加载")}
-          </button>
-        </SellerNotice>
+        <BayRecovery scope="seller/editor-steps.tsx:320" reload={onReload} />
       ) : (
         <div className="space-y-2">
           <BayMenuSelect

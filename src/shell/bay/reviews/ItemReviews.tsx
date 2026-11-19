@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 买家评论区（商品、课程、套餐共用）：评分汇总、筛选、列表、写评价、追评、卖家回复、有用。
 // 本文件归 V4 单元；组件名与 props 是合同，不许改。
 import { useEffect, useState, type ReactElement } from "react";
@@ -89,12 +90,7 @@ export function ItemReviews({ itemKind, itemId }: ItemReviewsProps): ReactElemen
 
       {view.loading && view.items.length === 0 ? <p className="text-[12.5px] text-neutral-500">{tt("正在读取评价…")}</p> : null}
       {view.error ? (
-        <div className="space-y-2">
-          <p className="text-[12.5px] text-rose-600">{tt(view.error)}</p>
-          <button type="button" onClick={view.reload} className="text-[12px] text-neutral-600 hover:underline">
-            {tt("重试")}
-          </button>
-        </div>
+        <BayRecovery scope="reviews/ItemReviews.tsx:93" reload={view.reload} error={view.error} />
       ) : null}
 
       {empty ? <p className="text-[13px] text-neutral-500">{tt("还没有评价")}</p> : null}

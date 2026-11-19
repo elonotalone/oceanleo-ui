@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 没同意当前条款时，先显示条款和「同意」；同意之后才渲染 children。
 import { useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -54,7 +55,7 @@ export function BayTermsGate({ scope, children }: { scope: "buyer" | "seller"; c
           <BayTermsFullTextLink />
         </p>
       </div>
-      {current ? <BayTermsSections document={current} /> : <p className="text-[13px] text-rose-600">{tt(error || "条款加载失败，请稍后重试")}</p>}
+      {current ? <BayTermsSections document={current} /> : null}
       {error && current ? <p className="text-[12px] text-rose-600">{tt(error)}</p> : null}
       <div className="flex gap-2">
         {current ? (
@@ -81,9 +82,7 @@ export function BayTermsGate({ scope, children }: { scope: "buyer" | "seller"; c
             {busy ? tt("正在记录…") : tt("同意并继续")}
           </button>
         ) : (
-          <button type="button" onClick={() => void refresh()} className="rounded-xl border border-neutral-300 px-4 py-2 text-[13px]">
-            {tt("重试")}
-          </button>
+          <BayRecovery scope="settings/BayTermsGate.tsx:83" reload={() => void refresh()} />
         )}
       </div>
     </div>

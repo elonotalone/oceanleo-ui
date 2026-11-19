@@ -44,7 +44,7 @@ export function ServicePane({ target, layout }: BayPaneProps) {
   if (service.loading) return <PaneLoading />;
   if (!service.data) {
     const text = service.status === 404 || !service.error ? tt("这件商品不存在或已经下架") : tt(service.error);
-    return <PaneMessage text={text} onRetry={service.reload} />;
+    return <PaneMessage text={text} status={service.status} onRetry={service.reload} />;
   }
   return <ServiceDetailView service={service.data} viewerId={viewer.data} layout={layout} />;
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { importWithChunkReload } from "../../../lib/lazy-with-retry";
+
 // 「我的」三块：交易 / 我的主页 / 数据面板。交易用库的搜索与网格/列表切换，各条目独立成卡。
 // 地址 `mine:published|sold|bought|favorites` 打开「交易」并选中对应列表，`mine:page`、`mine:dashboard` 原样（映射见 ../mine/mine-blocks.ts）。
 // 每一块的正文在 `../mine/` 里（主页与数据面板借用 `../supply/ProfilePane` 与 `../dashboard/DashboardPane`），
@@ -31,7 +33,7 @@ import { BayFilterSelect, type BayFilterOption } from "./BayFilterSelect";
 
 // 「我自己的主页」= profile:me。懒加载：ProfilePane 经 BayMine 绕回本文件（同 mine/MyPublishedPane 的做法）。
 const OWN_HANDLE = "me";
-const ProfilePane = lazy(() => import("../supply/ProfilePane").then((mod) => ({ default: mod.ProfilePane })));
+const ProfilePane = lazy(() => importWithChunkReload(() => import("../supply/ProfilePane").then((mod) => ({ default: mod.ProfilePane }))));
 
 const MINE_LABELS: Readonly<Record<BayMineTab, string>> = {
   published: "我发布的",

@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 需求详情。发布者：看报价（接受 / 拒绝 / 和 TA 聊）、编辑、关闭或重新开放、复制邀请链接；
 // 别人：报价、联系发布者、看附带作品的只读预览。没登录也能看，点动作先登录。
 // 逻辑照 talent 站 DemandDetailView，外壳不搬；用户文字一律纯文本。
@@ -126,18 +127,7 @@ function DemandPaneBody({ demandId, siteKey }: { demandId: string; siteKey: stri
     const gone = errorStatus(detail.error) === 404;
     return (
       <PaneBody pane="demand">
-        <PaneNotice
-          tone={gone ? "muted" : "error"}
-          action={
-            gone ? null : (
-              <button type="button" className={BTN_SECONDARY} onClick={detail.reload}>
-                {tt("重试")}
-              </button>
-            )
-          }
-        >
-          {gone ? tt("这条需求不存在或已下架。") : errorText(tt, detail.error, tt("需求没读出来，请稍后再试。"))}
-        </PaneNotice>
+        <BayRecovery scope="demand-detail" reload={detail.reload} error={detail.error || (gone ? "not_found" : undefined)} />
       </PaneBody>
     );
   }
@@ -520,16 +510,7 @@ function OwnerSection({
         </div>
         {proposals.loading && !proposals.data ? <PaneLoading /> : null}
         {proposals.error && !proposals.data ? (
-          <PaneNotice
-            tone="warn"
-            action={
-              <button type="button" className={BTN_SECONDARY} onClick={proposals.reload}>
-                {tt("重试")}
-              </button>
-            }
-          >
-            {errorText(tt, proposals.error, tt("报价没读出来，请稍后再试。"))}
-          </PaneNotice>
+          <BayRecovery scope="needs/DemandPane.tsx:525" reload={proposals.reload} error={proposals.error} />
         ) : null}
         {proposals.data && sorted.length === 0 ? (
           <p className="rounded-xl border border-dashed border-stone-200 py-6 text-center text-[12px] text-stone-500">

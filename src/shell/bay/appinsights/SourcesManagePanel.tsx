@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 import { useState, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -106,16 +107,7 @@ export function SourcesManagePanel({ appId }: { appId: string }): ReactElement {
           </div>
         )
       ) : (
-        <div>
-          <p className="text-[13px] text-rose-600">{resource.error || tt("访客来源没读出来，请稍后点「重试」。")}</p>
-          <button
-            type="button"
-            onClick={resource.reload}
-            className="mt-2 rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
-          >
-            {tt("重试")}
-          </button>
-        </div>
+        <BayRecovery scope="appinsights/SourcesManagePanel.tsx:110" reload={resource.reload} error={{ status: resource.status, message: resource.error }} />
       )}
 
       <ShareLinkButton appId={appId} />

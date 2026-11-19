@@ -47,7 +47,7 @@ export function EndpointManagePanel({ appId }: { appId: string }): ReactElement 
 
   if (resource.loading) return <PaneLoading />;
   if (!resource.data) {
-    return <PaneMessage text={resource.error || tt("公开网址没读出来，请稍后再试。")} onRetry={resource.reload} />;
+    return <PaneMessage text={resource.error || tt("公开网址没读出来，请稍后再试。")} status={resource.status} onRetry={resource.reload} />;
   }
 
   const app = resource.data.app;

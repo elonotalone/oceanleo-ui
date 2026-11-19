@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 数据面板里的「收入流水」：账本里逐笔的收入记录，可看单笔对账单、可导出 CSV。
 // 只读。金额是记账，不是可动用的钱：收款通道没开放时，卡片上的说明会写明。
 // 收入的数字只认面板上面那一套（已完成订单）；这里不再算第二个「累计收入」。
@@ -167,14 +168,7 @@ export function IncomeLedgerCard({ locale, sellerReady }: { locale: string; sell
         ) : null}
 
         {error ? (
-          <div data-bay-ledger-error="" className="space-y-2">
-            <p role="alert" className="text-[13px] text-rose-600">
-              {tt(error)}
-            </p>
-            <button type="button" onClick={() => setNonce((value) => value + 1)} className={GHOST_BUTTON}>
-              {tt("重试")}
-            </button>
-          </div>
+          <BayRecovery scope="dashboard/IncomeLedgerCard.tsx:173" reload={() => setNonce((value) => value + 1)} error={error} />
         ) : !state ? (
           <p className="py-6 text-center text-[12px] text-neutral-500">{tt("正在加载…")}</p>
         ) : (

@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 条款页（门户 /legal/marketplace）上公开展示的 LeoBay 使用规则（网关当前版本）。
 // 谁都能读，不用登录；只讲规则本身：版本号、生效日期、各节（每节带锚点），
 // 不讲「你同意过第几版」——那是弹窗里让人重新同意时才说的事。
@@ -69,22 +70,10 @@ export function BayTermsPublic({ className }: BayTermsPublicProps): ReactElement
 
   if (state.phase === "error") {
     return (
-      <div className={className} data-bay-terms-public="" data-state="error">
-        <p role="alert" className="text-[13px] text-rose-600">
-          {tt(state.message)}
-        </p>
-        <button
-          type="button"
-          onClick={() => {
+      <BayRecovery scope="settings/BayTermsPublic.tsx:75" reload={() => {
             setState({ phase: "loading" });
             setAttempt((value) => value + 1);
-          }}
-          data-bay-terms-retry=""
-          className="mt-2 text-[13px] font-medium text-neutral-800 underline underline-offset-2 hover:text-neutral-900"
-        >
-          {tt("重试")}
-        </button>
-      </div>
+          }} error={state.message} />
     );
   }
 

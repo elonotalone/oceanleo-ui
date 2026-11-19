@@ -26,7 +26,7 @@ export function MySoldAppsPane(): ReactElement | null {
 
   if (resource.loading) return <PaneLoading />;
   if (!resource.data) {
-    return <PaneMessage text={resource.error ? tt(resource.error) : tt("没读到订单，请稍后再试。")} onRetry={resource.reload} />;
+    return <PaneMessage text={resource.error ? tt(resource.error) : tt("没读到订单，请稍后再试。")} status={resource.status} onRetry={resource.reload} />;
   }
 
   const purchases = sortSoldPurchases(resource.data.purchases);

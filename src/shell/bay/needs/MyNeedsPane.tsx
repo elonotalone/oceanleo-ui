@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 「我发出的」：我发出的需求和求助按时间排在一起。整行可点。不自带返回栏。
 
 import { useEffect, useState } from "react";
@@ -86,16 +87,7 @@ function MyNeedsBody() {
   if (demands === null && helps === null) {
     return (
       <PaneBody pane="my-needs">
-        <PaneNotice
-          tone="error"
-          action={
-            <button type="button" className={BTN_SECONDARY} onClick={() => setTick((value) => value + 1)}>
-              {tt("重试")}
-            </button>
-          }
-        >
-          {errorText(tt, demandError || helpError, tt("需求没读出来，请稍后再试。"))}
-        </PaneNotice>
+        <BayRecovery scope="needs/MyNeedsPane.tsx:91" reload={() => setTick((value) => value + 1)} />
       </PaneBody>
     );
   }

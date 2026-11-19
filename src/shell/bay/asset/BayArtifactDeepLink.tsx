@@ -1,5 +1,9 @@
 "use client";
 
+import { importWithChunkReload } from "../../../lib/lazy-with-retry";
+
+import { bayFailureKind, useBayAutoRetry } from "../shell/use-bay-auto-retry";
+
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { AssetDetail } from "../../asset-detail/AssetDetail";
@@ -12,7 +16,7 @@ import { libraryStandaloneEditorBinding } from "../../library-edit-landing";
 import type { BayAsset } from "./library-client";
 import type { BayOfficialAsset } from "./catalog/official-catalog";
 
-const MaterialStandaloneEditor = lazy(() => import("../../material-library-standalone").then((m) => ({ default: m.MaterialStandaloneEditor })));
+const MaterialStandaloneEditor = lazy(() => importWithChunkReload(() => import("../../material-library-standalone").then((m) => ({ default: m.MaterialStandaloneEditor }))));
 const ROUTE_EVENT = "oceanleo:bay-asset-route";
 const HISTORY_KEY = "oceanleoBayAsset";
 const DETAIL_KEYS = ["asset", "artifactId", "revisionId", "listingId"];
@@ -132,7 +136,7 @@ export function BayArtifactDeepLink({ accent, target, onBack, onEdit, onUseInTas
   const selected = target === undefined ? route.target : target;
   const key = JSON.stringify(selected);
   const back = onBack || route.close;
-  const [state, setState] = useState<{ key: string; detail?: ResolvedAssetDetail; error?: boolean }>({ key: "" });
+  const [state, setState] = useState<{ key: string; detail?: ResolvedAssetDetail; error?: unknown }>({ key: "" });
   const [retry, setRetry] = useState(0);
   const [editing, setEditing] = useState<WorkspaceLibraryEntry | null>(null);
   useEffect(() => {
@@ -142,11 +146,14 @@ export function BayArtifactDeepLink({ accent, target, onBack, onEdit, onUseInTas
     setState({ key });
     resolve(selected, { signal: controller.signal, surface: "bay" }).then((detail) => {
       if (!controller.signal.aborted) setState({ key, detail });
-    }).catch(() => {
-      if (!controller.signal.aborted) setState({ key, error: true });
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setState({ key, error });
     });
     return () => controller.abort();
   }, [key, retry, resolve]); // Identity, not a freshly allocated ref object, controls resolution.
+  const failure = state.key === key ? state.error : undefined;
+  const failureKind = bayFailureKind(failure);
+  useBayAutoRetry(Boolean(selected && failure && failureKind === "temporary"), () => setRetry((value) => value + 1));
   if (!selected) return null;
   const detail = state.key === key ? state.detail : undefined;
   if (editing?.libraryItem && detail) {
@@ -159,13 +166,12 @@ export function BayArtifactDeepLink({ accent, target, onBack, onEdit, onUseInTas
       </Suspense>
     </div>;
   }
-  return <section className="flex min-h-[32rem] flex-1 flex-col" data-bay-asset-detail data-bay-artifact-link={detail ? "ready" : state.key === key && state.error ? "error" : "loading"}>
+  return <section className="flex min-h-[32rem] flex-1 flex-col" data-bay-asset-detail data-bay-artifact-link={detail ? "ready" : failure && failureKind !== "temporary" ? "unavailable" : "loading"}>
     {detail ? <AssetDetail {...detail} accent={accent} plain onBack={back} className="h-[70vh] min-h-[32rem]"
       actions={<BayAssetActions {...detail} services={{ resolve, ...services }} onResolved={(next) => setState({ key, detail: next })}
         onEdit={onEdit || setEditing} onUseInTask={onUseInTask} />} /> : <div className="px-3 py-5">
       <button type="button" onClick={back} className="text-sm underline">{tt("返回列表")}</button>
-      <p role="status" className="py-12 text-center text-sm text-stone-500">{tt(state.key === key && state.error ? "素材没读出来，请稍后再试。" : "正在打开这份素材…")}</p>
-      {state.key === key && state.error && <button type="button" onClick={() => setRetry((value) => value + 1)} className="text-sm underline">{tt("重试")}</button>}
+      <p role="status" className="py-12 text-center text-sm text-stone-500">{tt(failure && failureKind === "missing" ? "这项内容不存在或已下架。" : failure && failureKind === "denied" ? "你没有权限查看这项内容。" : "正在打开这份素材…")}</p>
     </div>}
   </section>;
 }

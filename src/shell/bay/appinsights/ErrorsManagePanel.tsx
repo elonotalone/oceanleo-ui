@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 import { useEffect, useState, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -207,7 +208,7 @@ export function ErrorsManagePanel({ appId }: { appId: string }): ReactElement {
       setMore((prev) => [...prev, ...next.items]);
       setMoreOffset(next.next_offset);
     } catch (error) {
-      setActionError(errorText(error) || tt("报错列表没读出来，请稍后点「重试」。"));
+      setActionError(errorText(error) || tt("内容暂时无法加载，正在自动恢复。"));
     } finally {
       setMoreBusy(false);
     }
@@ -236,12 +237,7 @@ export function ErrorsManagePanel({ appId }: { appId: string }): ReactElement {
       {setup.data ? (
         <SetupBlock snippet={setup.data.snippet} receiving={setup.data.receiving} lastEventAt={setup.data.last_event_at} />
       ) : (
-        <div>
-          <p className="text-[13px] text-rose-600">{setup.error || tt("接入说明没读出来，请稍后点「重试」。")}</p>
-          <button type="button" onClick={setup.reload} className={`mt-2 ${BTN}`}>
-            {tt("重试")}
-          </button>
-        </div>
+        <BayRecovery scope="appinsights/ErrorsManagePanel.tsx:240" reload={setup.reload} error={{ status: setup.status, message: setup.error }} />
       )}
 
       {page.data ? (
@@ -255,12 +251,7 @@ export function ErrorsManagePanel({ appId }: { appId: string }): ReactElement {
           <ErrorBars days={page.data.days} />
         </div>
       ) : (
-        <div>
-          <p className="text-[13px] text-rose-600">{page.error || tt("报错列表没读出来，请稍后点「重试」。")}</p>
-          <button type="button" onClick={page.reload} className={`mt-2 ${BTN}`}>
-            {tt("重试")}
-          </button>
-        </div>
+        <BayRecovery scope="appinsights/ErrorsManagePanel.tsx:259" reload={page.reload} error={{ status: page.status, message: page.error }} />
       )}
 
       <div className="flex flex-wrap gap-1" role="tablist" aria-label={tt("未处理")}>

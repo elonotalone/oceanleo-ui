@@ -1,5 +1,7 @@
 "use client";
 
+import { importWithChunkReload } from "../../../lib/lazy-with-retry";
+
 /* eslint-disable @next/next/no-img-element -- Library previews use signed or private URLs directly. */
 
 import { Suspense, lazy, useCallback, useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactElement } from "react";
@@ -10,9 +12,9 @@ import type { LibraryItem } from "../../library-data";
 import { kindFromUrl, type PreviewFileKind } from "./bay-typed-preview";
 import type { DigitalWorkRef } from "./bay-digital-works";
 
-const LibraryItemViewer = lazy(() => import("../../library-viewers").then((m) => ({ default: m.LibraryItemViewer })));
+const LibraryItemViewer = lazy(() => importWithChunkReload(() => import("../../library-viewers").then((m) => ({ default: m.LibraryItemViewer }))));
 
-const LibraryFolderDetail = lazy(() => import("../../library-folders").then((m) => ({ default: m.LibraryFolderDetail })));
+const LibraryFolderDetail = lazy(() => importWithChunkReload(() => import("../../library-folders").then((m) => ({ default: m.LibraryFolderDetail }))));
 
 const subscribeNever = () => () => {};
 

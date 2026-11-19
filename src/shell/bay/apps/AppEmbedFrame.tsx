@@ -1,5 +1,7 @@
 "use client";
 
+import { useBayAutoRetry } from "../shell/use-bay-auto-retry";
+
 // 详情页内窗口。不注入脚本、不 postMessage、不听 message。
 // sandbox 在 iframe 上写成字面量（跨仓扫描器要能静态读出它的值），并由源码级断言锁成与
 // app-embed.ts 的 BAY_APP_FRAME_SANDBOX 逐字相同：改一处不改另一处会变红。
@@ -36,6 +38,8 @@ export function AppEmbedFrame(props: {
     setFrameKey((value) => value + 1);
   }
 
+  useBayAutoRetry(timedOut, remount);
+
   function handleLoad() {
     loadedRef.current = true;
     setTimedOut(false);
@@ -48,37 +52,12 @@ export function AppEmbedFrame(props: {
         <span className="shrink-0 font-medium text-neutral-700">{host}</span>
         <span className="min-w-0 flex-1 truncate text-center">{tt("这是创作者提供的内容，请不要在里面输入你的 OceanLeo 密码")}</span>
         <span className="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={remount} className="text-neutral-600 hover:text-neutral-900 hover:underline">
-            {tt("重新加载")}
-          </button>
           <button type="button" onClick={onOpenExternal} className="text-neutral-600 hover:text-neutral-900 hover:underline">
             {tt("在新窗口打开")}
           </button>
         </span>
       </div>
-      {timedOut ? (
-        <div data-bay-app-fallback="timeout" className="grid min-h-[32rem] place-items-center bg-neutral-50 px-4 py-10 text-center">
-          <div>
-            <p className="text-[14px] font-medium text-neutral-800">{tt("页内窗口没有加载出来")}</p>
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
-              <button
-                type="button"
-                onClick={remount}
-                className="rounded-full border border-neutral-900 px-3 py-1.5 text-[13px] text-neutral-700 hover:bg-neutral-50"
-              >
-                {tt("再试一次")}
-              </button>
-              <button
-                type="button"
-                onClick={onOpenExternal}
-                className="rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-neutral-800"
-              >
-                {tt("打开网站")}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
+      {timedOut ? <p data-bay-app-fallback="timeout" role="status" className="p-4 text-sm text-neutral-500">{tt("正在加载…")}</p> : null}
         <iframe
           key={frameKey}
           src={src}
@@ -89,7 +68,6 @@ export function AppEmbedFrame(props: {
           onLoad={handleLoad}
           className="min-h-[32rem] w-full border-0 bg-white"
         />
-      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { BayRecovery } from "../shell/BayRecovery";
 // 「我的」→「我发布的」里的课程一段：只列我的课（没有套餐，卖出的订单在「我卖出的」）。本文件归 V3 单元；组件名与 props 是合同，不许改。
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -118,12 +119,7 @@ export function MyLessonsPane(_props: MyLessonsPaneProps): ReactElement | null {
   }
   if (load.error) {
     return (
-      <section data-bay-pane="mine-lessons" className="space-y-3 p-4">
-        <SellerNotice tone="error">{tt(load.error)}</SellerNotice>
-        <button type="button" className={SECONDARY_BUTTON} onClick={reload}>
-          {tt("重试")}
-        </button>
-      </section>
+      <BayRecovery scope="lessons/MyLessonsPane.tsx:122" reload={reload} error={load.error} />
     );
   }
 
