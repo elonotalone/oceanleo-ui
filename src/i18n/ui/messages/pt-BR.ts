@@ -366,7 +366,6 @@ const ptBR: Record<string, string> = {
   "结果文档": "Documento de resultado",
   "给 OceanLeo 布置一个任务...": "Atribua uma tarefa à OceanLeo...",
   "给商品做主图和卖点": "Criar imagem principal e argumentos de venda do produto",
-  "继续追问，或上传文件让 agent 分析…": "Continue perguntando ou envie um arquivo para o agent analisar…",
   "电脑": "Computador",
   "继续追问，或上传文件让 {agent} 分析…": "Continue perguntando ou envie um arquivo para {agent} analisar…",
   "编辑": "Editar",

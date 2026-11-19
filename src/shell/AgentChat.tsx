@@ -480,7 +480,7 @@ export interface AgentChatProps {
    * doctrine v6：本次会话的 skill-prompt 覆盖（用户编辑了 prompt 并选「用这段直接干活」）。
    * 只对本次会话生效，透传给 createTask，不写回 manifest。 */
   promptOverride?: string;
-  /** 输入框占位文案（默认「继续追问，或上传文件让 agent 分析…」）。 */
+  /** 输入框占位文案（默认使用当前 agent 展示名的追问提示）。 */
   placeholder?: string;
   /**
    * 对话输入框是否开启【文件上传 / 拖拽 / 「＋」菜单里的本地文件】。**默认 `true`**，

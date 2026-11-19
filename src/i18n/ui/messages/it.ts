@@ -366,7 +366,6 @@ const it: Record<string, string> = {
   "结果文档": "Documento dei risultati",
   "给 OceanLeo 布置一个任务...": "Assegna un'attività a OceanLeo...",
   "给商品做主图和卖点": "Creare l'immagine principale e i punti di forza del prodotto",
-  "继续追问，或上传文件让 agent 分析…": "Continua a fare domande o carica un file per farlo analizzare dall'agent…",
   "电脑": "Computer",
   "继续追问，或上传文件让 {agent} 分析…": "Continua a chiedere o carica un file da far analizzare a {agent}…",
   "编辑": "Modifica",

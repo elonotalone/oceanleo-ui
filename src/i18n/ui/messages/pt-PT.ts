@@ -366,7 +366,6 @@ const ptPT: Record<string, string> = {
   "结果文档": "Documento de resultado",
   "给 OceanLeo 布置一个任务...": "Atribui uma tarefa à OceanLeo...",
   "给商品做主图和卖点": "Criar a imagem principal e os argumentos de venda do produto",
-  "继续追问，或上传文件让 agent 分析…": "Continua a perguntar ou envia um ficheiro para o agent analisar…",
   "电脑": "Computador",
   "继续追问，或上传文件让 {agent} 分析…": "Continue a perguntar ou carregue um ficheiro para {agent} analisar…",
   "编辑": "Editar",

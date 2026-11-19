@@ -370,7 +370,6 @@ const en: Record<string, string> = {
   "结果文档": "Result document",
   "给 OceanLeo 布置一个任务...": "Assign OceanLeo a task...",
   "给商品做主图和卖点": "Create a main image and selling points for a product",
-  "继续追问，或上传文件让 agent 分析…": "Keep asking, or upload a file for the agent to analyze…",
   "电脑": "Computer",
   "继续追问，或上传文件让 {agent} 分析…": "Keep asking, or upload a file for {agent} to analyze…",
   "编辑": "Edit",

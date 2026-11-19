@@ -366,7 +366,6 @@ const vi: Record<string, string> = {
   "结果文档": "Tài liệu kết quả",
   "给 OceanLeo 布置一个任务...": "Giao một tác vụ cho OceanLeo...",
   "给商品做主图和卖点": "Tạo ảnh chính và điểm bán hàng cho sản phẩm",
-  "继续追问，或上传文件让 agent 分析…": "Hỏi tiếp, hoặc tải tệp lên để agent phân tích…",
   "电脑": "Máy tính",
   "继续追问，或上传文件让 {agent} 分析…": "Hỏi tiếp hoặc tải tệp lên để {agent} phân tích…",
   "编辑": "Chỉnh sửa",

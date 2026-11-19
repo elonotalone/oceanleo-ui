@@ -366,7 +366,6 @@ const tr: Record<string, string> = {
   "结果文档": "Sonuç belgesi",
   "给 OceanLeo 布置一个任务...": "OceanLeo'ya bir görev ver...",
   "给商品做主图和卖点": "Ürün için ana görsel ve satış noktaları oluştur",
-  "继续追问，或上传文件让 agent 分析…": "Sormaya devam et ya da agent'ın analiz etmesi için dosya yükle…",
   "电脑": "Bilgisayar",
   "继续追问，或上传文件让 {agent} 分析…": "Sormaya devam edin veya {agent} için analiz edilecek bir dosya yükleyin…",
   "编辑": "Düzenle",
