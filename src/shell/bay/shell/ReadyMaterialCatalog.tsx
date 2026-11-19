@@ -24,7 +24,7 @@ export function ReadyMaterialCatalog({ siteKey, appId, query, view, sellers, onl
   const tt = useUI();
   let locale = "en";
   try { locale = useLocale(); } catch { /* Embedded catalogs can omit next-intl. */ }
-  const [search, setSearch] = useState(readSearch);
+  const [search, setSearch] = useState("");
   const [taxonomy, setTaxonomy] = useState<MaterialTaxonomy | null>(null);
   const [taxonomyError, setTaxonomyError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -45,6 +45,7 @@ export function ReadyMaterialCatalog({ siteKey, appId, query, view, sellers, onl
 
   useEffect(() => {
     const restore = () => setSearch(readSearch());
+    restore();
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
   }, []);

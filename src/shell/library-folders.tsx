@@ -581,7 +581,8 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ text: string; status: number } | null>(null);
   const [query, setQuery] = useState("");
-  const [openId, setOpenId] = useState<string | null>(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("folder") : null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  useEffect(() => setOpenId(new URLSearchParams(window.location.search).get("folder")), []);
   const [importMode, setImportMode] = useState<LibraryImportMode | null>(null);
   const [toggling, setToggling] = useState<Record<string, boolean>>({});
   const [uploading, setUploading] = useState(false);

@@ -238,9 +238,7 @@ export function SiteCatalogConsole({
     pathname,
     manifest?.workspace,
   );
-  const [locationSearch, setLocationSearch] = useState(() =>
-    typeof window === "undefined" ? "" : window.location.search,
-  );
+  const [locationSearch, setLocationSearch] = useState("");
   const [historySession, setHistorySession] = useState<AppSession | null>(null);
   const [legacyHistoryTask, setLegacyHistoryTask] =
     useState<LegacyHistoryTaskRef | null>(null);

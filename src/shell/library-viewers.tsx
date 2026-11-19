@@ -1257,11 +1257,7 @@ export function ThreeDViewer({
     ["model/gltf-binary", "model/gltf+json"].includes(
       viewerMediaType,
     );
-  const [ready, setReady] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      Boolean(window.customElements?.get("model-viewer")),
-  );
+  const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState("");
   const viewerRef = useRef<(HTMLElement & { availableAnimations?: string[]; animationName?: string; play?: () => void; pause?: () => void }) | null>(null);
   const [clips, setClips] = useState<string[]>([]);
@@ -1269,6 +1265,10 @@ export function ThreeDViewer({
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
     if (subtype !== "model" || !modelFormat || ready || typeof window === "undefined") {
+      return;
+    }
+    if (window.customElements?.get("model-viewer")) {
+      setReady(true);
       return;
     }
     let alive = true;

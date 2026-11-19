@@ -1340,7 +1340,7 @@ export function HistoryDetail({
   const router = useRouter();
   const detailPathname = usePathname() || "";
   const detailSearchParams = useSearchParams();
-  const detailSearch = typeof window !== "undefined" ? window.location.search : detailSearchParams?.toString() || "";
+  const detailSearch = detailSearchParams?.toString() || "";
   const detailTaskQuery = new URLSearchParams(detailSearch).get("task");
   // URL 本身必须足以恢复详情，包括 query 深链和认证恢复期间尚未同步的侧栏选中态。
   const sel =

@@ -27,6 +27,7 @@
 //     `tools/call` / `ui/message` / `ui/update-model-context`。
 // ============================================================================
 
+import { useHydratedPageHref } from "../use-hydrated-page-href";
 import {
   type ReactNode,
   useCallback,
@@ -131,15 +132,6 @@ export function appFrameSrc(input: {
   return url.toString();
 }
 
-function currentHostOrigin(): string {
-  if (typeof window === "undefined") return "";
-  try {
-    return window.location.origin;
-  } catch {
-    return "";
-  }
-}
-
 function clampHeight(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Math.min(APP_FRAME_MAX_HEIGHT, Math.max(APP_FRAME_MIN_HEIGHT, Math.round(value)));
@@ -181,18 +173,16 @@ export function AppFrame({
   fallback,
 }: AppFrameProps) {
   const reactId = useId();
-  // instanceId 进 fragment 与 hello 信封；每次挂载一个新值，旧 frame 的消息对不上就丢。
-  const instanceId = useMemo(
-    () => `mcp-app-${reactId.replace(/[^a-zA-Z0-9_-]/g, "")}-${Date.now().toString(36)}`,
-    [reactId],
-  );
+  // useId gives each mount a distinct identity that also matches during hydration.
+  const instanceId = `mcp-app-${reactId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const pageHref = useHydratedPageHref();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const portRef = useRef<MessagePort | null>(null);
   const initializedRef = useRef(false);
   const [height, setHeight] = useState(APP_FRAME_DEFAULT_HEIGHT);
 
   const effectiveSandboxOrigin = sandboxOrigin ?? (allowedOrigins ?? MCP_APPS_SANDBOX_ORIGINS)[0] ?? "";
-  const effectiveHostOrigin = hostOrigin ?? currentHostOrigin();
+  const effectiveHostOrigin = hostOrigin ?? (pageHref ? new URL(pageHref).origin : "");
   const src = html
     ? appFrameSrc({
         sandboxOrigin: effectiveSandboxOrigin,

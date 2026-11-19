@@ -120,15 +120,12 @@ export function ApiPage({
   const pane = variant === "pane";
   const frameClass = pane ? "min-h-0" : "px-8 py-6";
   const paneMark = pane ? "" : undefined;
-  const [apiPane, setApiPane] = useState<ApiPane>(() => readApiPane());
-  const [openedPanes, setOpenedPanes] = useState<ApiPane[]>(() => [readApiPane()]);
+  const [apiPane, setApiPane] = useState<ApiPane>("selection");
+  const [openedPanes, setOpenedPanes] = useState<ApiPane[]>(["selection"]);
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
-  const [byokConnectionId, setByokConnectionId] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return new URL(window.location.href).searchParams.get("connection") || "";
-  });
+  const [byokConnectionId, setByokConnectionId] = useState("");
 
   useEffect(() => {
     setOpenedPanes((opened) => opened.includes(apiPane) ? opened : [...opened, apiPane]);
@@ -186,6 +183,7 @@ export function ApiPage({
       setApiPane(readApiPane());
       setByokConnectionId(new URL(window.location.href).searchParams.get("connection") || "");
     }
+    sync();
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);

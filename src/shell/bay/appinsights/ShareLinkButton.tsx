@@ -2,12 +2,14 @@
 
 import { useState, type ReactElement } from "react";
 
+import { useHydratedPageHref } from "../../use-hydrated-page-href";
 import { useUI } from "../../../i18n/ui/useUI";
 import { appShareHref } from "./insights-model";
 
 export function ShareLinkButton({ appId }: { appId: string }): ReactElement {
   const tt = useUI();
-  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const pageHref = useHydratedPageHref();
+  const origin = pageHref ? new URL(pageHref).origin : "";
   const href = appShareHref(appId, origin);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");

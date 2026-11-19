@@ -35,6 +35,7 @@ import { OrgSection, type OrgPane } from "./sections/OrgSection";
 import { SettingsBackButton } from "./SettingsBackButton";
 import { LocalComputerSettings, useLocalWorkspace } from "../../shell/LocalWorkspace";
 import {
+  billingViewFromLocation,
   accountSettingsPath,
   accountSettingsView,
   canonicalSettingsTab,
@@ -281,13 +282,20 @@ export function SettingsHub({
   const tt = useUI();
   const localWorkspace = useLocalWorkspace();
   const configured = oceanleoConfigured();
-  const href = currentHref ?? (typeof window !== "undefined" ? window.location.href : "");
+  const [browserHref, setBrowserHref] = useState("");
+  const href = currentHref ?? browserHref;
+  useEffect(() => setBrowserHref(window.location.href), []);
   const resetLanding = isPasswordResetLanding(href);
   const fallbackTab = defaultTab || "general";
   const extraIdKey = [...extraSections.map((section) => section.id), ...(localWorkspace ? ["local-computer"] : [])].join("\0");
   const extraIds = useMemo(() => extraIdKey.split("\0").filter(Boolean), [extraIdKey]);
   // `/plugins#connect=<id>`（子站一键授权打开的门户页）重定向到设置后，直接落在「连接器」并弹出连接框。
-  const [connectId] = useState(connectIdFromHere);
+  const [connectId, setConnectId] = useState("");
+  useEffect(() => {
+    const id = connectIdFromHere();
+    connectPendingRef.current = Boolean(id);
+    setConnectId(id);
+  }, []);
   const connectPendingRef = useRef(Boolean(connectId));
   function landingTab(raw: string | null | undefined): string {
     const next = resolveHubTab(raw, extraIds, fallbackTab);
@@ -295,7 +303,7 @@ export function SettingsHub({
     return next;
   }
   const [tab, setTab] = useState(() =>
-    landingTab(variant === "modal" ? initialTab || fallbackTab : tabFromLocation(fallbackTab)),
+    landingTab(variant === "modal" ? initialTab || fallbackTab : tabFromSettingsLocation(currentHref || "", SPLIT_PLUGIN_TABS, fallbackTab)),
   );
   const [accountView, setAccountView] = useState<AccountSettingsView>(() =>
     accountSettingsView(href),
@@ -309,7 +317,7 @@ export function SettingsHub({
   const [monthSpend, setMonthSpend] = useState<number | null>(null);
   const [requests, setRequests] = useState<number | null>(null);
   const [orgInitialPane, setOrgInitialPane] = useState<OrgPane>("mine");
-  const [billingView, setBillingView] = useState<BillingPaneView>(() => readSettingsBillingView(href));
+  const [billingView, setBillingView] = useState<BillingPaneView>(() => billingViewFromLocation(href));
   const loadAccountRef = useRef<() => Promise<void>>(async () => {});
 
   function applySession(next: { email: string | null; signedIn: boolean }) {
@@ -337,11 +345,14 @@ export function SettingsHub({
   useEffect(() => {
     if (variant === "modal") return;
     function onPop() {
-      setTab(resolveHubTab(tabFromLocation(fallbackTab), extraIds, fallbackTab));
+      const next = landingTab(tabFromLocation(fallbackTab));
+      setTab(next);
+      if (connectPendingRef.current && next === CONNECTORS_SETTINGS_TAB) writeTab(next);
       setAccountView(accountSettingsView(window.location.href));
       setBillingView(readSettingsBillingView());
     }
     if (typeof window === "undefined") return;
+    onPop();
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [fallbackTab, variant, extraIds]);

@@ -125,8 +125,9 @@ export function readHostSetMode(
 
 /** 三个 gallery-editor 共用：URL 先判，再听宿主消息把 self 翻成 host。 */
 export function usePluginChromeOwner(): PluginChromeOwner {
-  const [owner, setOwner] = useState<PluginChromeOwner>(readPluginChromeFromSearch);
+  const [owner, setOwner] = useState<PluginChromeOwner>("self");
   useEffect(() => {
+    setOwner(readPluginChromeFromSearch());
     const instanceId = new URLSearchParams(window.location.search).get("instance") || "";
     const onMessage = (event: MessageEvent) => {
       if (readPluginChromeFromHostMessage(event.data, instanceId) === "host") {
@@ -305,6 +306,11 @@ export function PluginChromeFrame({
     () => false,
   );
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
+  const [fullscreenAvailable, setFullscreenAvailable] = useState(false);
+  useEffect(() => {
+    setFullscreenAvailable(document.fullscreenEnabled !== false &&
+      typeof document.documentElement?.requestFullscreen === "function");
+  }, []);
   useEffect(() => {
     if (rightPaneSlot || windowActions?.onToggleFullscreen) return;
     const sync = () => setNativeFullscreen(Boolean(document.fullscreenElement));
@@ -429,9 +435,7 @@ export function PluginChromeFrame({
           label: tt(windowActions.fullscreen ? "退出全屏" : "全屏"),
           onClick: windowActions.onToggleFullscreen,
         }
-      : typeof document !== "undefined" &&
-          document.fullscreenEnabled !== false &&
-          typeof document.documentElement?.requestFullscreen === "function"
+      : fullscreenAvailable
         ? {
             pressed: nativeFullscreen,
             label: tt(nativeFullscreen ? "退出全屏" : "全屏"),

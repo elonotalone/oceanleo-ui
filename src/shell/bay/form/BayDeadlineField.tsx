@@ -133,7 +133,9 @@ export function BayDeadlineField(props: {
     };
   }, [open]);
 
-  const tz = resolveZone(zone);
+  const [device, setDevice] = useState("UTC");
+  useEffect(() => setDevice(deviceTimeZone()), []);
+  const tz = zone === DEVICE_ZONE ? device : resolveZone(zone);
   const at = deadlineMs(props.value);
   const parts: ZonedParts | null = at == null ? null : zonedParts(at, tz);
   const [time, setTime] = useState<Time>(parts ? { hour: parts.hour, minute: parts.minute, second: parts.second } : END_OF_DAY);
@@ -193,7 +195,6 @@ export function BayDeadlineField(props: {
   while (cells.length % 7) cells.push(null);
 
   const summaryText = at == null ? "" : `${wallClockText(at, tz)} ${offsetLabel(at, tz)}`;
-  const device = deviceTimeZone();
 
   return (
     <div ref={boxRef} data-bay-deadline-field="" data-bay-deadline-open={open ? "" : undefined} className={`${open ? "relative z-30" : "relative"} ${props.disabled ? "opacity-50" : ""}`}>

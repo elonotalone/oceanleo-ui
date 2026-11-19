@@ -9,8 +9,7 @@ import {
 } from "../lib/browser-trust";
 
 export function useCloudBrowserTrustVisible(ref: RefObject<HTMLDivElement | null>) {
-  const [pageVisible, setPageVisible] = useState(() =>
-    typeof document !== "undefined" && document.visibilityState !== "hidden");
+  const [pageVisible, setPageVisible] = useState(false);
   const [intersecting, setIntersecting] = useState(true);
   useEffect(() => {
     const onVisibility = () => setPageVisible(document.visibilityState !== "hidden");

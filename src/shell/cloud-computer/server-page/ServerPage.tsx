@@ -181,18 +181,24 @@ function ServerPageContent({
     [computers],
   );
   const [initial] = useState(() => {
-    let remembered: ServerPageCard | undefined;
-    try {
-      remembered = cardFromQuery(window.localStorage.getItem(`oceanleo.serverPage.lastCard.${computerId}`));
-    } catch { /* Storage can be unavailable in private browsing. */ }
     return {
-      card: cardFromQuery(searchParams.get("card")) ?? remembered,
+      card: cardFromQuery(searchParams.get("card")),
       program: searchParams.get("program") || undefined,
       session: searchParams.get("session") || undefined,
     };
   });
   const [card, setCard] = useState(initial.card);
   const [visited, setVisited] = useState<ServerPageCard[]>(() => initial.card ? [initial.card] : []);
+  useEffect(() => {
+    if (initial.card) return;
+    try {
+      const remembered = cardFromQuery(window.localStorage.getItem(`oceanleo.serverPage.lastCard.${computerId}`));
+      if (remembered) {
+        setCard(remembered);
+        setVisited([remembered]);
+      }
+    } catch { /* Storage can be unavailable in private browsing. */ }
+  }, [computerId, initial.card]);
   const [stripSlot, setStripSlot] = useState<HTMLElement | null>(null);
   const chrome = useMemo(() => card ? { activeCard: card, stripSlot } : null, [card, stripSlot]);
   const state = computer ? computerDisplayState(computer) : null;

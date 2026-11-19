@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { IconSettings } from "./chrome-icons";
 import { tone } from "./tone";
@@ -42,10 +42,11 @@ export function ProgramStrip({
   const tt = useUI();
   const rows = useRef<HTMLDivElement>(null);
   const controls = useRef<HTMLSpanElement>(null);
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return !!storageKey && localStorage.getItem(storageKey) === "collapsed"; }
-    catch { return false; }
-  });
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try { setCollapsed(!!storageKey && localStorage.getItem(storageKey) === "collapsed"); }
+    catch { setCollapsed(false); }
+  }, [storageKey]);
   const [wrapped, setWrapped] = useState(false);
   const [firstHeight, setFirstHeight] = useState(40);
   const [visible, setVisible] = useState<string[]>([]);

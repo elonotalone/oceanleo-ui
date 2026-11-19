@@ -27,6 +27,7 @@ import { useWorkspaceEntryRequest, type TaskWorkspaceOpenEntry } from "./result-
 import { LIVE_MATERIAL_TYPES } from "../lib/live-materials";
 import { LiveMaterialSearch } from "./bay/asset/LiveMaterialSearch";
 import { BayAssetLibrary } from "./bay/asset/BayAssetLibrary";
+import { useHydratedPageHref } from "./use-hydrated-page-href";
 import { MyLibrary } from "./MyLibrary";
 import { libraryCurrentIdentityFromSearch } from "./library-current-identity";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
@@ -272,16 +273,19 @@ export function ResultCanvas({
   renderBoundEditor,
 }: ResultCanvasProps) {
   const tt = useUI();
-  const [legacyLocationAction] = useState<WorkspaceActionEnvelope | null>(() => {
-    if (typeof window === "undefined") return null;
-    const params = new URLSearchParams(window.location.search);
-    // Item bookmarks already go through the catalog dispatcher. Raw platform
-    // links predate it, so the sidebar itself supplies their material landing.
-    if (params.has("item")) return null;
-    const action = workspaceMaterialsActionFromSearch(window.location.search);
-    return action ? { nonce: `legacy-material-location:${window.location.search}`, action } : null;
-  });
-  const [legacyAssetLocation] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("asset"));
+  const [legacyLocationAction, setLegacyLocationAction] = useState<WorkspaceActionEnvelope | null>(null);
+  const [legacyAssetLocation, setLegacyAssetLocation] = useState(false);
+  useEffect(() => {
+    const search = window.location.search;
+    const params = new URLSearchParams(search);
+    setLegacyAssetLocation(params.has("asset"));
+    // Item bookmarks already go through the catalog dispatcher.
+    if (params.has("item")) return;
+    const action = workspaceMaterialsActionFromSearch(search);
+    if (action) setLegacyLocationAction({ nonce: `legacy-material-location:${search}`, action });
+  }, []);
+  const pageHref = useHydratedPageHref();
+
   const workspaceSession = useOptionalWorkspaceSession();
   const workspaceSessionRef = useRef(workspaceSession);
   workspaceSessionRef.current = workspaceSession;
@@ -590,7 +594,7 @@ export function ResultCanvas({
   // Park the Library after its first open/intent so reopening paints the same
   // list. Merely mounting a task must not start its private Library readers.
   const [libraryWarmed, setLibraryWarmed] = useState(false);
-  const location = typeof window === "undefined" ? null : window.location;
+  const location = pageHref ? new URL(pageHref) : null;
   const path = location?.pathname.replace(/\/+$/, "") || "";
   // These bookmarks have no catalog sender; mounting the reader lets the
   // existing read-only item intent restore the requested file. Workspace URLs

@@ -135,6 +135,44 @@ test("F6B: real MyLibrary keeps ordinary collection chrome on a bare Library URL
   });
 });
 
+const { ProgramStrip } = await import(await compileModule("src/shell/cloud-computer/server-page/ProgramStrip.tsx", { "../../../i18n/ui/useUI": ui }));
+test("F6B: remembered program-strip collapse hydrates without changing server markup", async () => {
+  await hydrate(React.createElement(ProgramStrip, { items: [{ id: "agent", label: "Agent" }], storageKey: "f6b-collapse" }), {
+    storage: { "f6b-collapse": "collapsed" },
+    verify(host, html) { assert.ok(html); assert.match(host.textContent, /Agent/); },
+  });
+});
+
+const { ShareLinkButton } = await import(await compileModule("src/shell/bay/appinsights/ShareLinkButton.tsx", { "../../../i18n/ui/useUI": ui }));
+test("F6B: share-link text hydrates before restoring the page origin", async () => {
+  await hydrate(React.createElement(ShareLinkButton, { appId: "app-1" }), {
+    verify(host, html) {
+      assert.equal(html.includes("hydration.test"), false);
+      assert.match(host.querySelector("[data-bay-share-link]").textContent, /https:\/\/hydration.test/);
+    },
+  });
+});
+
+const { BayDeadlineField } = await import(await compileModule("src/shell/bay/form/BayDeadlineField.tsx", {
+  "../../../i18n/ui/useUI": ui,
+  "next-intl": dataModule("export function useLocale() { return 'en'; }"),
+}));
+test("F6B: a deadline hydrates across server and device timezone differences", async () => {
+  const previousTZ = process.env.TZ;
+  process.env.TZ = "Asia/Shanghai";
+  try {
+    await hydrate(React.createElement(BayDeadlineField, { value: "2026-11-20T02:00:00Z", onChange() {} }), {
+      verify(host, html) {
+        assert.match(html, /02:00/);
+        assert.match(host.querySelector("[data-bay-deadline-trigger]").textContent, /10:00/);
+      },
+    });
+  } finally {
+    if (previousTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTZ;
+  }
+});
+
 test("F6B: a URL-only bookmark opens detail without a host action", async () => {
   await hydrate(React.createElement(MyLibrary, { siteId: "website", pageTitle: "My Library" }), {
     search: "?item=link-work%3Alink-1",
@@ -145,3 +183,39 @@ test("F6B: a URL-only bookmark opens detail without a host action", async () => 
     },
   });
 });
+
+const { AppFrame } = await import(await compileModule("src/shell/mcp-apps/AppFrame.tsx"));
+for (const hostOrigin of [undefined, "https://p-f6b.dev.oceanleo.com"]) {
+  test(`F6B: MCP AppFrame hydrates a stable frame identity (${hostOrigin ? "supplied" : "browser"} host origin)`, async () => {
+    await hydrate(React.createElement(AppFrame, {
+      resourceUri: "ui://sample/app", html: "<p>Tool UI</p>",
+      hostOrigin, sandboxOrigin: "https://mcp-apps.oceanleo.app", allowedOrigins: ["https://mcp-apps.oceanleo.app"],
+      title: "Tool UI", onToolCall: async () => ({}),
+    }), {
+      origin: "https://p-f6b.dev.oceanleo.com",
+      retainRoot: Boolean(hostOrigin),
+      verify(host) { assert.ok(host.querySelector("iframe"), "valid content must open after the host origin is known"); },
+    });
+  });
+}
+
+const { ApiPage } = await import(await compileModule("src/pages/ApiPage.tsx", {
+  "../i18n/ui/useUI": ui,
+  "../lib/auth": dataModule(`
+    export function oceanleoConfigured() { return true; }
+    export function loginUnavailableNotice() { return null; }
+    export function browserClient() { return null; }
+    export async function getModelCatalog() { return {ok:false}; }
+    export function pricingDocUrl() { return ''; }
+  `),
+  "./ByokKeys": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function ByokKeys(){return React.createElement('div', {'data-byok-keys':''});}`),
+  "./ModelCapabilityMarket": dataModule("export function ModelGroupManager(){return null;}"),
+}));
+for (const search of ["?pane=byok&connection=key-1", "?guide=1"]) {
+  test(`F6B: API settings hydrate before restoring ${search}`, async () => {
+    await hydrate(React.createElement(ApiPage), {
+      search,
+      verify(host) { assert.equal(host.querySelector('[data-api-settings-tab="byok"]').getAttribute("aria-selected"), "true"); },
+    });
+  });
+}

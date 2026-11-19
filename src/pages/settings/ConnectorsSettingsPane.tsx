@@ -71,7 +71,7 @@ export function ConnectorsSettingsPane({
 }: ConnectorsSettingsPaneProps) {
   const tt = useUI();
   const [catalogOpen, setCatalogOpen] = useState(false);
-  const [detailId, setDetailId] = useState(() => initialConnectorId || (typeof window !== "undefined" ? connectorDetailId(window.location.href) : ""));
+  const [detailId, setDetailId] = useState(initialConnectorId || "");
   function navigateDetail(id: string) {
     if (typeof window !== "undefined") window.history.pushState(window.history.state, "", connectorDetailPath(id, window.location.href));
     setDetailId(id);
@@ -88,9 +88,10 @@ export function ConnectorsSettingsPane({
   };
   useEffect(() => {
     const onLocation = () => setDetailId(connectorDetailId(window.location.href));
+    if (!initialConnectorId) onLocation();
     window.addEventListener("popstate", onLocation);
     return () => window.removeEventListener("popstate", onLocation);
-  }, []);
+  }, [initialConnectorId]);
   const market = usePluginsCatalog();
   const [q, setQ] = useState("");
   const [highlightedId, setHighlightedId] = useState("");

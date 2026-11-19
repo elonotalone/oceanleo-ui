@@ -9,6 +9,7 @@ import { LiveMaterialSearch } from "./LiveMaterialSearch";
 import { BayArtifactDeepLink, bayAssetRefForCard, useBayAssetRoute } from "./BayArtifactDeepLink";
 import { BayLicensesView } from "./BayLicensesView";
 import type { BayAsset } from "./library-client";
+import { useHydratedPageHref } from "../../use-hydrated-page-href";
 import { ReadyMaterialCatalog } from "../shell/ReadyMaterialCatalog";
 
 const readSearch = () => typeof window === "undefined" ? "" : window.location.search;
@@ -28,15 +29,17 @@ export function BayAssetLibrary({ filter, siteKey, accent, view = "grid", contex
   licensesOpen?: boolean;
   onCloseLicenses?: () => void;
 }) {
-  const [online, setOnline] = useState(() => new URLSearchParams(readSearch()).get("view") === "online");
+  const [online, setOnline] = useState(false);
   useEffect(() => {
     const restore = () => setOnline(new URLSearchParams(readSearch()).get("view") === "online");
+    restore();
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
   }, []);
   const rootRef = useRef<HTMLDivElement>(null);
   const route = useBayAssetRoute(rootRef);
-  const appId = providedContext?.appId || new URLSearchParams(readSearch()).get("app") || "";
+  const pageHref = useHydratedPageHref();
+  const appId = providedContext?.appId || (pageHref ? new URL(pageHref).searchParams.get("app") : "") || "";
   const bayOn = bayEnabledHere();
   const openAsset = useCallback((asset: BayAsset) => route.open(bayAssetRefForCard(asset)), [route.open]);
 

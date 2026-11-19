@@ -255,7 +255,8 @@ export function DeviceSettingsSection({ client = devicesFacade, settingsClient =
   const tt = useUI();
   const [devices, setDevices] = useState<Device[]>([]);
   const [servers, setServers] = useState<Computer[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(selectedDeviceFromLocation);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  useEffect(() => setSelectedId(selectedDeviceFromLocation()), []);
   const [localDeviceId, setLocalDeviceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
