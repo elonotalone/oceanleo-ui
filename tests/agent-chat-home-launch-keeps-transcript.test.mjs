@@ -570,25 +570,18 @@ test("建会话连续失败、任务只能无会话出生：回答出现后 prov
 });
 
 // ---------------------------------------------------------------------------
-// 6 「新建」重挂载后，首页那条 initialPrompt 不许被再发一遍（真机 T3：自动多出一条 hi）
+// 6 首页开聊后的任务顶栏没有「新建」，首轮回答与任务身份保持不变
 // ---------------------------------------------------------------------------
 
-test("点「新建」重挂载对话后，不会把首页的 initialPrompt 自动再发一遍", async () => {
+test("首页开聊后顶栏不再显示新建，回答与已创建任务保持不变", async () => {
   const backend = makeBackend();
   const { view } = await launchAndAnswer(backend);
   try {
-    const before = backend.log.filter((l) => l.startsWith("create-task")).length;
-    assert.equal(before, 1);
-    const restart = view.host.querySelector('button[aria-label="新建"]');
-    assert.ok(restart, "顶栏应有「新建」键");
-    await act(async () => {
-      restart.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
-    });
+    assert.equal(backend.log.filter((entry) => entry.startsWith("create-task")).length, 1);
+    assert.equal(view.host.querySelector('button[aria-label="新建"]'), null);
     await settle(600);
-    const after = backend.log.filter((l) => l.startsWith("create-task")).length;
-    assert.equal(after, 1, `「新建」后不该自动再建任务；调用记录：${JSON.stringify(backend.log)}`);
-    assert.ok(!view.text().includes(ANSWER), "「新建」后对话应清空");
+    assert.equal(backend.log.filter((entry) => entry.startsWith("create-task")).length, 1);
+    assert.ok(view.text().includes(ANSWER), "任务页保留已有回答");
   } finally {
     await view.unmount();
   }
