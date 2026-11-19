@@ -29,14 +29,15 @@ const { TranscriptPane, TranscriptStream, StreamLatestButton, CLOUD_TRANSCRIPT_C
   '../../i18n/ui/useUI': dataModule('export const useUI = () => (text, vars) => text.replace("{count}", String(vars?.count));'),
 }));
 
-async function mountStream({ key = 'task:test', ids = ['1', '2', '3', '4', '5'], ready = true, active = true, hasMoreAfter = false, caps = CLOUD_TRANSCRIPT_CAPABILITIES } = {}) {
+async function mountStream({ key = 'task:test', ids = ['1', '2', '3', '4', '5'], ready = true, active = true, hasMoreAfter = false, viewport = 200, clamp = false, caps = CLOUD_TRANSCRIPT_CAPABILITIES } = {}) {
   resizes = []; const errors = []; const oldError = console.error;
   console.error = (...args) => errors.push(args.map(String).join(' '));
   const host = document.createElement('div'); document.body.append(host);
-  let patch, scroll, scroller, shift = 0;
+  let patch, scroll, scroller, shift = 0, currentIds = ids, currentViewport = viewport;
   function Harness() {
     const ref = useRef(null);
-    const [value, set] = useState({ key, ids, ready, active, hasMoreAfter, revision: 0 });
+    const [value, set] = useState({ key, ids, ready, active, hasMoreAfter, viewport, revision: 0 });
+    currentIds = value.ids; currentViewport = value.viewport;
     patch = (next) => set((current) => ({ ...current, ...next }));
     scroll = useStreamScroll({ taskKey: value.key, scrollRef: ref, messageIds: value.ids, revision: value.revision,
       ready: value.ready, active: value.active, hasMoreAfter: value.hasMoreAfter, hasMore: false, loadEarlier: async () => {} });
@@ -44,9 +45,16 @@ async function mountStream({ key = 'task:test', ids = ['1', '2', '3', '4', '5'],
       ref.current = node;
       if (!node || scroller === node) return;
       scroller = node;
-      Object.defineProperty(node, 'clientHeight', { configurable: true, get: () => 200 });
-      Object.defineProperty(node, 'scrollHeight', { configurable: true, get: () => value.ids.length * 200 + shift });
-      node.getBoundingClientRect = () => ({ top: 0, bottom: 200, height: 200 });
+      Object.defineProperty(node, 'clientHeight', { configurable: true, get: () => currentViewport });
+      Object.defineProperty(node, 'scrollHeight', { configurable: true, get: () => currentIds.length * 200 + shift });
+      node.getBoundingClientRect = () => ({ top: 0, bottom: currentViewport, height: currentViewport });
+      if (clamp) {
+        let top = 0;
+        Object.defineProperty(node, 'scrollTop', { configurable: true,
+          get: () => Math.min(top, Math.max(0, node.scrollHeight - node.clientHeight)),
+          set: (value) => { top = Math.max(0, Math.min(value, node.scrollHeight - node.clientHeight)); },
+        });
+      }
     }, onScroll: scroll.onScroll, top: null, empty: null, tail: null, canView: true, after: null,
     hasMore: false, history: scroll.history,
     footer: React.createElement('textarea', { 'aria-label': 'message' }),
@@ -65,7 +73,8 @@ async function mountStream({ key = 'task:test', ids = ['1', '2', '3', '4', '5'],
   await act(async () => root.render(React.createElement(Harness)));
   return { host, get scroller() { return scroller; }, get state() { return scroll; },
     patch: async (next) => act(async () => patch(next)),
-    scroll: async (top) => act(async () => { scroller.scrollTop = top; scroll.onScroll(); }),
+    scroll: async (top) => act(async () => { scroller.scrollTop = top; scroller.dispatchEvent(new window.Event('scroll')); }),
+    scrollEvent: async () => act(async () => { scroller.dispatchEvent(new window.Event('scroll')); }),
     resize: async (by) => act(async () => { shift += by; for (const resize of resizes) resize.callback(); }),
     close: async () => { await act(async () => root.unmount()); host.remove(); console.error = oldError; assert.deepEqual(errors, [], 'no hook loops or React errors'); },
   };
@@ -95,6 +104,88 @@ test('persistent anchors capture the actual topmost message and restore it after
 });
 
 for (const [name, caps] of [['cloud', CLOUD_TRANSCRIPT_CAPABILITIES], ['ACP', ACP_TRANSCRIPT_CAPABILITIES]]) {
+  test(`${name}: Library/Back and reload restore the reader anchor before delayed rows and footer layout`, async () => {
+    memory.forgetConversationScrolls();
+    let view = await mountStream({ caps, clamp: true });
+    try {
+      await view.scroll(425);
+      const saved = memory.recallConversationAnchor('task:test');
+      assert.equal(saved.messageId, '3');
+      assert.equal(saved.offset, -25);
+      assert.equal(saved.atBottom, false);
+      await view.close();
+      // Back initially mounts an empty stream; history and the measured footer arrive later.
+      view = await mountStream({ caps, clamp: true, ids: [], ready: false });
+      await view.scrollEvent();
+      window.dispatchEvent(new window.Event('pagehide'));
+      assert.deepEqual(memory.recallConversationAnchor('task:test'), saved);
+      await view.patch({ ids: ['4', '5'] });
+      await view.scrollEvent();
+      assert.deepEqual(memory.recallConversationAnchor('task:test'), saved, 'partial cache must not replace the anchor');
+      // With the footer not yet measured the restored offset happens to be within 80px of the bottom.
+      await view.patch({ ids: ['1', '2', '3', '4', '5'], ready: true, viewport: 650 });
+      assert.equal(view.scroller.scrollTop, 350, 'browser clamps restoration before the footer is measured');
+      await view.scrollEvent(); // Browser event from restoreConversationAnchor, not a reader scroll.
+      await view.patch({ viewport: 200, revision: 1 });
+      await view.resize(0);
+      assert.equal(view.state.following, false, 'restoration must win over follow-latest');
+      assert.equal(view.scroller.scrollTop, 425);
+      assert.deepEqual(memory.captureConversationAnchor(view.scroller, false, '5'), saved);
+      assert.deepEqual(memory.recallConversationAnchor('task:test'), saved);
+      // Reload starts again with no rendered messages; neither scroll nor pagehide may resave it.
+      await view.close();
+      view = await mountStream({ caps, clamp: true, ids: [], ready: false });
+      await view.scrollEvent();
+      await view.patch({ ids: ['1', '2', '3', '4', '5'], ready: true });
+      await view.scrollEvent();
+      assert.equal(view.scroller.scrollTop, 425);
+      assert.deepEqual(memory.recallConversationAnchor('task:test'), saved);
+    } finally { await view.close(); }
+  });
+
+  test(`${name}: a mounted stream preserves its anchor while hidden, empty or loading`, async () => {
+    memory.forgetConversationScrolls();
+    const view = await mountStream({ caps });
+    try {
+      await view.scroll(425);
+      const saved = memory.recallConversationAnchor('task:test');
+      await view.patch({ ids: [], ready: false, active: false });
+      await view.scroll(0);
+      window.dispatchEvent(new window.Event('pagehide'));
+      await view.patch({ active: true });
+      await view.patch({ ids: ['4', '5'], ready: false });
+      await view.scroll(200);
+      assert.deepEqual(memory.recallConversationAnchor('task:test'), saved);
+      await view.patch({ ids: ['1', '2', '3', '4', '5'], ready: true });
+      await view.scrollEvent();
+      assert.equal(view.scroller.scrollTop, 425);
+      assert.equal(view.state.following, false);
+      assert.deepEqual(memory.recallConversationAnchor('task:test'), saved);
+      await view.scroll(700);
+      assert.equal(view.state.following, false, 'reader may still move after restoration');
+      assert.equal(memory.recallConversationAnchor('task:test').offset, -100);
+    } finally { await view.close(); }
+  });
+
+  test(`${name}: a zero-height first layout waits for measurement before restoring`, async () => {
+    memory.forgetConversationScrolls();
+    const saved = { messageId: '3', offset: -25, atBottom: false, latestId: '5', rowId: 3 };
+    memory.rememberConversationAnchor('task:test', saved);
+    const view = await mountStream({ caps, viewport: 0 });
+    try {
+      await view.scrollEvent();
+      window.dispatchEvent(new window.Event('pagehide'));
+      assert.equal(view.scroller.scrollTop, 0);
+      assert.deepEqual(memory.recallConversationAnchor('task:test'), saved);
+      await view.patch({ viewport: 200 });
+      await view.resize(0);
+      await view.scrollEvent();
+      assert.equal(view.scroller.scrollTop, 425);
+      assert.equal(view.state.following, false);
+      assert.deepEqual(memory.recallConversationAnchor('task:test'), saved);
+    } finally { await view.close(); }
+  });
+
   test(`${name}: reopen stays on message, growing content/prepends stay aligned, unread counts messages and latest resumes`, async () => {
     memory.forgetConversationScrolls();
     memory.rememberConversationAnchor('task:test', { messageId: '3', offset: -25, atBottom: false, latestId: '4', rowId: 3 });
