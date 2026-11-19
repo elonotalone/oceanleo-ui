@@ -18,8 +18,9 @@ export type PendingSendInput = {
   choice: AcpSessionChoices;
   taskId?: string | null;
   afterRowId?: number;
+  held?: boolean;
 };
-export type PendingSendStatus = "sending" | "retrying" | "accepted" | "queued" | "failed";
+export type PendingSendStatus = "held" | "sending" | "retrying" | "accepted" | "queued" | "failed";
 export type PendingSend = Readonly<PendingSendInput & {
   id: string;
   taskId: string | null;
@@ -95,7 +96,7 @@ function restore(value: unknown): PendingSend | null {
     typeof item.text !== "string" || typeof item.computerId !== "string" || typeof item.program !== "string" ||
     !Array.isArray(item.attachments) || !item.choice || typeof item.choice !== "object") return null;
   return { ...item, session: item.session?.task_id === item.taskId ? item.session : null, rowId: item.rowId ?? null, taskId: item.taskId || null,
-    status: item.status === "failed" || !item.taskId ? "failed" : "sending",
+    status: item.status === "held" ? "held" : item.status === "failed" || !item.taskId ? "failed" : "sending",
     error: null, restored: true };
 }
 function hydrate(): void {
@@ -150,7 +151,7 @@ export function putPending(input: PendingSendInput): string {
   if (existing) return existing.id;
   const id = crypto.randomUUID();
   const entry: PendingSend = { ...input, attachments: [...input.attachments], id,
-    taskId: input.taskId ?? null, session: null, rowId: null, status: "sending", error: null };
+    taskId: input.taskId ?? null, session: null, rowId: null, status: input.held ? "held" : "sending", error: null };
   entries.set(id, entry);
   persist(entry);
   notify();
@@ -194,6 +195,15 @@ export function settlePending(pendingId: string, outcome: PendingSettle): void {
     entries.set(pendingId, { ...entry, acknowledged: true });
     receipt(entry);
   } else persist(entry);
+  notify();
+}
+/** Hold a retry/restored message locally until the running prompt has ended. */
+export function holdPending(pendingId: string): void {
+  const current = readPending(pendingId);
+  if (!current || current.acknowledged || current.rowId !== null) return;
+  const entry: PendingSend = { ...current, status: "held", error: null, restored: false };
+  entries.set(pendingId, entry);
+  persist(entry);
   notify();
 }
 export function retryPending(pendingId: string): void {

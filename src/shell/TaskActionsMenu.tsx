@@ -28,6 +28,7 @@ export interface TaskActionCallbacks {
   onRemoveFromProject?: () => void;
   onDelete?: () => void;
   onQuote?: () => void;
+  onFork?: () => void;
 }
 
 export interface TaskActionsMenuProps extends TaskActionCallbacks {
@@ -53,7 +54,7 @@ export interface TaskActionsMenuProps extends TaskActionCallbacks {
 export function TaskActionsMenu({
   open, onOpenChange, active = false, variant = "row", pinned = false, favorite = false,
   canDelete = true, canManage = true, inProject = false, href, taskId, taskTitle = "", trigger,
-  onRename, onTogglePin, onToggleFavorite, onMove, onRemoveFromProject, onDelete, onQuote,
+  onRename, onTogglePin, onToggleFavorite, onMove, onRemoveFromProject, onDelete, onQuote, onFork,
 }: TaskActionsMenuProps) {
   const tt = useUI();
   const anchorRef = useRef<HTMLButtonElement>(null);
@@ -77,6 +78,7 @@ export function TaskActionsMenu({
   );
   return <div className="relative shrink-0">{button}<FloatingMenu open={open} anchorRef={anchorRef} onClose={() => onOpenChange(false)} align="end" ariaLabel={tt("更多操作")}>
     <FloatingMenuItem icon={<Icon name="open" />} label={tt("在新标签打开")} href={href} external onSelect={() => onOpenChange(false)} />
+    {canManage && onFork && <FloatingMenuItem icon={<Icon name="quote" />} label={tt("复制成新任务")} onSelect={closeAnd(onFork)} />}
     {taskId && <FloatingMenuItem icon={<Icon name="quote" />} label={tt("在新任务中引用")} onSelect={quote} />}
     {canManage && <><FloatingMenuSeparator />
     <FloatingMenuItem icon={<Icon name="rename" />} label={tt("重命名")} onSelect={closeAnd(onRename)} />

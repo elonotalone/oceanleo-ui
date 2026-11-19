@@ -506,8 +506,16 @@ test("a send blocks silently only for its HTTP request, then accepts another mes
     assert.equal(view.composer("acp").__props.sendBlocked, false, "no stream row is needed");
     globalThis.__acpRoute = null;
     await submit(view, "acp");
-    assert.equal(posts("/send").length, 2);
+    assert.equal(posts("/send").length, 1, "next message waits locally for the preceding receipt and turn completion");
     assert.equal(view.host.querySelectorAll("[data-acp-pending-send]").length, 2, "both messages retain their bubbles");
+    const echo = rows.prompt(7, "first request");
+    echo.id = 90000;
+    rowSeq = 90000;
+    await deliver(echo);
+    assert.equal(posts("/send").length, 1, "the first prompt is still running");
+    await deliver(rows.done(7));
+    assert.equal(posts("/send").length, 2);
+    assert.equal(posts("/send")[1].body.text, "second request");
   } finally { complete?.({ body: { row_id: 90000 } }); await view.unmount(); }
 });
 
@@ -714,6 +722,7 @@ test("the catalog pill: empty catalog → shows the program at once (no 「选�
     await act(async () => { globalThis.__pickerDialog.setSelectedModel("gpt-5-mini"); });
     await type(view, "acp", "一");
     await submit(view, "acp");
+    await deliver(rows.prompt(71, "一"), rows.done(71));
     await type(view, "acp", "二");
     await submit(view, "acp");
     const bodies = posts("/send").map((call) => call.body);
@@ -828,4 +837,72 @@ test("keep-alive pings never become rows or advance the reconnect cursor", async
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1100)); });
     assert.match(socket().url, new RegExp(`after=${stored.at(-1).id}$`));
   } finally { await view.unmount(); }
+});
+
+
+for (const program of ["claude", "codex", "hermes", "cursor"]) {
+  test(`${program}: local FIFO waits for stopReason after cancel and sends only one held prompt at a time`, async () => {
+    const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_queue", "acp", program)] });
+    try {
+      await connect();
+      await deliver(rows.prompt(101, "running"), rows.chunk("working"));
+      await type(view, "acp", "held one");
+      await submit(view, "acp");
+      await type(view, "acp", "held two");
+      await submit(view, "acp");
+      assert.equal(posts("/send").length, 0, "nothing reaches an adapter during its active turn");
+      assert.equal(view.host.querySelectorAll('[data-acp-pending-status="held"]').length, 2);
+      const stop = view.host.querySelector('[data-acp-stop-and-send]');
+      assert.ok(stop);
+      await act(async () => stop.click());
+      await settle();
+      assert.equal(posts("/stop").length, 1);
+      assert.equal(posts("/send").length, 0, "HTTP stop acknowledgement does not release the queue");
+      await deliver(row("agent", { id: 101, result: { stopReason: "cancelled" } }));
+      assert.equal(posts("/send").length, 1);
+      assert.equal(posts("/send")[0].body.text, "held one");
+      assert.equal(posts("/send")[0].body.program, program);
+      await deliver(rows.prompt(102, "held one"));
+      assert.equal(posts("/send").length, 1);
+      await deliver(rows.done(102));
+      assert.equal(posts("/send").length, 2);
+      assert.equal(posts("/send")[1].body.text, "held two");
+    } finally { await view.unmount(); }
+  });
+}
+
+test("advertised slash commands and context usage are visible in the real task composer area", async () => {
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
+  try {
+    await connect();
+    await deliver(row("agent", { method: "session/update", params: { sessionId: "s1", update: {
+      sessionUpdate: "available_commands_update", availableCommands: [{ name: "compact", description: "Compact context" }],
+    } } }), row("agent", { method: "session/update", params: { sessionId: "s1", update: {
+      sessionUpdate: "usage_update", used: 50, size: 200,
+    } } }));
+    await type(view, "acp", "/co");
+    const command = view.host.querySelector('[data-acp-session-controls] [role="menuitem"]');
+    assert.match(command?.textContent || "", /compact/);
+    assert.match(view.host.querySelector('[data-acp-context]')?.textContent || "", /25%/);
+    await act(async () => command.click());
+    assert.equal(view.composer("acp").__props.value, "/compact ");
+    assert.equal(posts("/send").length, 0, "choosing a command fills the composer without sending");
+  } finally { await view.unmount(); }
+});
+
+test("reopened task menu offers session copy only when the persisted session advertises fork", async () => {
+  for (const supported of [false, true]) {
+    const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions,
+      acpRoute: (path) => path.endsWith("/session-controls") ? { body: {
+        capabilities: supported ? { fork: {} } : {}, commands: [], usage: null, after: 10,
+      } } : null });
+    try {
+      const menu = view.host.querySelector('button[aria-label="更多操作"]');
+      assert.ok(menu);
+      await act(async () => menu.click());
+      await settle();
+      const labels = [...document.querySelectorAll('[role="menu"] button')].map((node) => node.textContent);
+      assert.equal(labels.some((label) => label.includes("复制成新任务")), supported);
+    } finally { await view.unmount(); }
+  }
 });

@@ -192,3 +192,17 @@ test("storage refusal leaves the text and makes no request", async () => {
     assert.equal(readPending(id).text, value.text);
   } finally { storage.setItem = original; }
 });
+
+
+test("locally held messages restore as held, retaining order, attachments and choices", async () => {
+  const one = pending({ held: true, text: "first", attachments: [{ name: "a.txt", artifact_id: "a", url: "signed" }] });
+  const two = pending({ held: true, text: "second" });
+  assert.equal(readPending(one.id).status, "held");
+  assert.equal(readPending(two.id).status, "held");
+  const fresh = await import(new URL("../src/shell/acp-task/pending-send.ts?held=" + crypto.randomUUID(), import.meta.url));
+  assert.equal(fresh.readPending(one.id).status, "held");
+  assert.equal(fresh.readPending(two.id).status, "held");
+  assert.equal(fresh.readPending(one.id).attachments[0].artifact_id, "a");
+  assert.equal(fresh.readPending(one.id).attachments[0].url, "");
+  assert.deepEqual(fresh.readPending(one.id).choice, { model: "opus" });
+});

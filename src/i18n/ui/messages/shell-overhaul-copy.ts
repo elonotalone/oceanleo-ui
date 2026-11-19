@@ -18,6 +18,7 @@ import { SHELL_OCEANLEO_PANE_MESSAGES } from "./shell-oceanleo-pane-copy";
 import { SHELL_ENDED_MESSAGES } from "./shell-ended-copy";
 import { SERVER_PAGE_MESSAGES } from "./server-page-copy";
 import { TERMINAL_CARD_MESSAGES } from "./terminal-card-copy";
+import { GN2_CONVERSATION_MESSAGES } from "./gn2-conversation-copy";
 import { ACP_CARD_MESSAGES } from "./acp-card-copy";
 import { COMPUTER_OVERHAUL_DIALOG_MESSAGES } from "./computer-overhaul-dialog-copy";
 import { COMPUTER_OVERHAUL_PERIPHERY_MESSAGES } from "./computer-overhaul-periphery-copy";
@@ -131,6 +132,7 @@ const PARTS = [
   SERVER_PAGE_MESSAGES,
   TERMINAL_CARD_MESSAGES,
   ACP_CARD_MESSAGES,
+  GN2_CONVERSATION_MESSAGES,
   COMPUTER_OVERHAUL_DIALOG_MESSAGES,
   COMPUTER_OVERHAUL_PERIPHERY_MESSAGES,
   COMPUTER_OVERHAUL_CLI_MESSAGES,
