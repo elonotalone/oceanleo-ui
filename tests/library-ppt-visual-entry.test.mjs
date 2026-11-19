@@ -1,5 +1,6 @@
 import './helpers/w1-jsdom-window.mjs';
 import assert from 'node:assert/strict';
+import {useAutoRecovery} from '../src/lib/auto-recovery.ts';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import React, { act } from 'react';
@@ -17,7 +18,7 @@ const file = ts.createSourceFile(path.pathname, readFileSync(path, 'utf8'), ts.S
 const names = ['PptViewer', 'startPptxThumbnailPass', 'applyPptxLogicalSize', 'scheduleAfterPaint', 'namespacePptxSurfaceIds', 'clonePptxSlideSurface', 'PptxSlideThumbnail', 'PendingSlideThumbnail', 'readableSlideName'];
 const source = names.map(name => file.statements.find(s => ts.isFunctionDeclaration(s) && s.name?.text === name).getText(file)).join('\n');
 const js = ts.transpileModule(source, { compilerOptions: { jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-const makeEntry = new Function('deps', `const {React,useState,useRef,useEffect,useCallback,useMemo,useUI,DeckPreviewLayout,ViewerParsingPoster,ErrorView,fetchValidatedOfficePackage,loadPptxPreview,deckPreviewLogicalSize,officeSourceCacheKey,applyDeckPptxPreviewVisuals,paintDeckPptxPreviewImages,loadDeckPptxPreviewFonts}=deps;${js};return {PptViewer,startPptxThumbnailPass};`);
+const makeEntry = new Function('deps', `const {React,useState,useRef,useEffect,useCallback,useMemo,useAutoRecovery,useUI,DeckPreviewLayout,ViewerParsingPoster,ErrorView,fetchValidatedOfficePackage,loadPptxPreview,deckPreviewLogicalSize,officeSourceCacheKey,applyDeckPptxPreviewVisuals,paintDeckPptxPreviewImages,loadDeckPptxPreviewFonts}=deps;${js};return {PptViewer,startPptxThumbnailPass};`);
 const lodash = import.meta.resolve('lodash');
 const { init } = await import(await compileModule('vendor/pptx-preview/pptx-preview.es.js', {
     lodash: dataModule(`import lib from ${JSON.stringify(lodash)};export const get=lib.get,omit=lib.omit;`),
@@ -54,7 +55,7 @@ async function bench(options = {}) {
         disconnect() { this.stopped = true; super.disconnect(); }
     };
     const fonts = fontEnvironment(options);
-    const { PptViewer, startPptxThumbnailPass } = makeEntry({ React, ...React, useUI: () => s => s,
+    const { PptViewer, startPptxThumbnailPass } = makeEntry({ React, ...React, useAutoRecovery, useUI: () => s => s,
         DeckPreviewLayout: ({ slides, children, stageOverlay }) => React.createElement('section', null, React.createElement('aside', { 'data-rail': '' }, slides.map(s => React.createElement('div', { key: s.id }, s.thumbnail))), React.createElement('main', null, children, stageOverlay)),
         ViewerParsingPoster: () => null, ErrorView: ({ message }) => React.createElement('div', null, message),
         fetchValidatedOfficePackage: async () => ({ arrayBuffer: bytes }),

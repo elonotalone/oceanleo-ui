@@ -70,10 +70,11 @@ test("document covers render fetched text, honest errors and bounded pending req
     assert.equal(node.querySelector('[data-cover-state="loading"]') !== null, true);
     await act(async () => expireCover());
     assert.equal(node.querySelector('[data-cover-state="error"]'), null, 'timeout does not claim the cover is unavailable');
-    assert.ok(node.querySelector('[data-cover-timeout]'));
+    assert.ok(node.querySelector('[data-cover-state="loading"]'));
     assert.ok(node.querySelector('img'), 'late image loads can still recover');
-    assert.match(node.textContent, /预览加载超时/);
-    assert.equal(node.querySelector('[role="status"]'), null);
+    assert.doesNotMatch(node.textContent, /预览加载超时/);
+    assert.ok(node.querySelector('[role="status"][aria-label="正在刷新缩略图"]'));
+    assert.equal(node.querySelector("button"), null);
   } finally {
     await act(async () => root.unmount());
     globalThis.setTimeout = realSetTimeout;

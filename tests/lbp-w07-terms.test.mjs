@@ -257,46 +257,55 @@ test("BayTermsPublic：门户法律页永远是白底，所以一个 dark: 类�
   await view.unmount();
 });
 
-test("BayTermsPublic：失败给原因与「重试」，重试成功后渲染 9 节", async () => {
+test("BayTermsPublic：失败保留加载态，联网自动恢复后渲染 9 节", async () => {
   const b = bench({ "GET /v1/talent/terms/current": { __status: 503, message: "条款服务暂时不可用" } });
   const view = await mount(React.createElement(BayTermsPublic, {}));
-  const failed = await until(() => view.host.querySelector('[data-bay-terms-public][data-state="error"]'), "失败态");
-  assert.match(failed.querySelector('[role="alert"]').textContent, /条款服务暂时不可用/);
-  assert.equal(failed.querySelector("[data-bay-terms-section]"), null, "失败时不画任何节");
-  const retry = failed.querySelector("[data-bay-terms-retry]");
-  assert.ok(retry, "有重试按钮");
-  assert.equal(retry.textContent, "重试");
-  assert.equal(getCalls(b).length, 1);
-
-  // 网关恢复，点重试。
-  b.routes["GET /v1/talent/terms/current"] = { current: CURRENT };
-  await click(retry);
-  await until(() => view.host.querySelector('[data-bay-terms-public][data-state="ready"]'), "重试后就绪");
-  assert.equal(view.host.querySelectorAll("[data-bay-terms-section]").length, 9);
-  assert.equal(getCalls(b).length, 2, "重试就是再取一次");
-  assert.equal(view.host.querySelector("[data-bay-terms-retry]"), null, "就绪后没有重试按钮");
-  await view.unmount();
+  try {
+    const failed = await until(() => view.host.querySelector('[data-bay-recovery="temporary"][aria-busy="true"]'), "自动恢复加载态");
+    assert.equal(failed.querySelector("button"), null);
+    assert.equal(view.host.querySelector("[data-bay-terms-section]"), null);
+    assert.doesNotMatch(view.host.textContent, /条款服务暂时不可用/);
+    assert.equal(getCalls(b).length, 1);
+    b.routes["GET /v1/talent/terms/current"] = { current: CURRENT };
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    await until(() => view.host.querySelector('[data-state="ready"]'), "恢复后就绪");
+    assert.equal(view.host.querySelectorAll("[data-bay-terms-section]").length, 9);
+    assert.equal(getCalls(b).length, 2);
+    assert.equal(view.host.querySelector("[data-bay-recovery]"), null);
+  } finally { await view.unmount(); }
 });
 
-test("BayTermsPublic：重试时先回到加载态；再失败还停在失败态并能继续重试", async () => {
+test("BayTermsPublic：连续失败保持加载态，恢复后自动显示正文", async () => {
   const b = bench({ "GET /v1/talent/terms/current": { __status: 500, message: "第一次失败" } });
   const view = await mount(React.createElement(BayTermsPublic, {}));
-  const failed = await until(() => view.host.querySelector('[data-state="error"]'), "失败态");
-  b.routes["GET /v1/talent/terms/current"] = { __status: 500, message: "第二次失败" };
-  await click(failed.querySelector("[data-bay-terms-retry]"));
-  await until(() => /第二次失败/.test(view.host.textContent), "第二次的原因");
-  assert.ok(view.host.querySelector("[data-bay-terms-retry]"), "还能继续重试");
-  assert.equal(getCalls(b).length, 2);
-  await view.unmount();
+  try {
+    await until(() => view.host.querySelector('[data-bay-recovery="temporary"]'), "自动恢复加载态");
+    b.routes["GET /v1/talent/terms/current"] = { __status: 500, message: "第二次失败" };
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    await until(() => getCalls(b).length === 2 && view.host.querySelector('[data-bay-recovery="temporary"]'), "第二次加载态");
+    assert.equal(view.host.querySelector("button, [data-bay-terms-section]"), null);
+    assert.doesNotMatch(view.host.textContent, /第一次失败|第二次失败/);
+    b.routes["GET /v1/talent/terms/current"] = { current: CURRENT };
+    await act(async () => window.dispatchEvent(new window.Event("focus")));
+    await until(() => view.host.querySelector('[data-state="ready"]'), "恢复后就绪");
+    assert.equal(getCalls(b).length, 3);
+    assert.equal(view.host.querySelectorAll("[data-bay-terms-section]").length, 9);
+  } finally { await view.unmount(); }
 });
 
-test("BayTermsPublic：网关回了没有任何节的空文档，按失败处理（兜底文案 + 重试），不画空白页", async () => {
-  bench({ "GET /v1/talent/terms/current": { current: { version: 4, effective_at: null, sections: [] } } });
+test("BayTermsPublic：没有任何节的空文档保持自动恢复加载态，不伪造正文", async () => {
+  const b = bench({ "GET /v1/talent/terms/current": { current: { version: 4, effective_at: null, sections: [] } } });
   const view = await mount(React.createElement(BayTermsPublic, {}));
-  const failed = await until(() => view.host.querySelector('[data-state="error"]'), "失败态");
-  assert.match(failed.textContent, /条款加载失败，请稍后重试/);
-  assert.ok(failed.querySelector("[data-bay-terms-retry]"));
-  await view.unmount();
+  try {
+    await until(() => view.host.querySelector('[data-bay-recovery="temporary"][aria-busy="true"]'), "自动恢复加载态");
+    assert.equal(view.host.querySelector("button, [data-bay-terms-section]"), null);
+    assert.equal(getCalls(b).length, 1);
+    b.routes["GET /v1/talent/terms/current"] = { current: CURRENT };
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    await until(() => view.host.querySelector('[data-state="ready"]'), "恢复后就绪");
+    assert.equal(view.host.querySelectorAll("[data-bay-terms-section]").length, 9);
+    assert.equal(getCalls(b).length, 2);
+  } finally { await view.unmount(); }
 });
 
 test("BayTermsPublic：没有生效日期时只写版本号；老式整篇正文也能显示成一节", async () => {

@@ -655,7 +655,7 @@ test("Library editor uses real AgentChat split and survives opening and closing 
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
-test("a right-pane render loop stays contained and retry preserves the live conversation", async () => {
+test("a right-pane render loop stays contained and automatic recovery preserves the live conversation", async () => {
   globalThis.__backend = makeBackend();
   const host = document.createElement("div"); document.body.appendChild(host);
   const root = createRoot(host, { onCaughtError() {} });
@@ -679,9 +679,10 @@ test("a right-pane render loop stays contained and retry preserves the live conv
     assert.ok(composer);
     assert.ok(errors.some(args => String(args[1]).includes("Too many re-renders")));
     broken = false;
-    const retry = [...host.querySelectorAll("button")].find(button => button.textContent === "重试");
-    assert.ok(retry);
-    await act(async () => retry.click());
+    const failure = host.querySelector("[data-workspace-pane-error]");
+    assert.ok(failure.querySelector('[aria-busy="true"]'));
+    assert.deepEqual([...failure.querySelectorAll("button")].map(button => button.textContent), ["关闭"]);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
     assert.ok(host.querySelector("[data-recovered-editor]"));
     assert.equal(host.querySelector("[data-composer]"), composer);
     assert.ok(host.textContent.includes("conversation intact"));

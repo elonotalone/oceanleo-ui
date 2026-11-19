@@ -36,11 +36,12 @@ test("typed local-device destination: saved/saving say so, with a device icon an
   assert.doesNotMatch(saving, /已保存/);
 });
 
-test("local-device failures and pending acknowledgements stay honest and keep the retry affordance", () => {
+test("local-device failures and pending acknowledgements stay honest during automatic recovery", () => {
   const failed = render({ destination: "local-device", state: "error", error: "宿主拒绝保存" });
   assert.match(failed, /data-save-state="error"/);
-  assert.match(failed, /保存失败/);
-  assert.match(failed, /title="[^"]*宿主拒绝保存/);
+  assert.match(failed, /title="保存未完成，将自动重试"/);
+  assert.match(failed, /<span class="sr-only">保存未完成，将自动重试<\/span>/);
+  assert.doesNotMatch(failed, /宿主拒绝保存/);
   assert.doesNotMatch(failed, /已保存到本机/);
   const unconfirmed = render({ destination: "local-device", state: "saving", recoveryReady: false });
   assert.match(unconfirmed, /data-save-state="saving"/);

@@ -40,6 +40,8 @@ const client = dataModule(`
 `);
 const libraryOverrides = {
  '../i18n/ui/useUI': ui,
+ // This account has no inherited team assets; project membership stays real.
+ '../lib/org-api': dataModule(`export * from ${JSON.stringify(new URL('../src/lib/org-api.ts',import.meta.url).href)};export async function listInheritedOrgAssets(){return {available:true,ownerUserId:'test-owner',assets:[],hasMore:false};}`),
  '../lib/auth/client': auth,
  '../lib/auth/config': dataModule(`export * from ${JSON.stringify(new URL('../src/lib/auth/config.ts',import.meta.url).href)};export function gatewayBase(){return '';}`),
  './artifact-client': client,

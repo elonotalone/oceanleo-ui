@@ -83,12 +83,13 @@ for (const [availability, ready, expected] of [["offline", true, "这台电脑�
   });
 }
 
-test("an offline error keeps retry and does not repeat the availability sentence", async () => {
+test("an offline error keeps read recovery and the last confirmed access state", async () => {
   const view = await mount(DeviceSettingsPanel, {device, availability: "offline", client: {...settingsClient, startOperation: async () => ({ok: false, error: "device_offline"})}, onControl() {}, onRename: async () => true, onRevoke() {}});
   try {
     await click(view.host.querySelector('[aria-label="允许远程 Agent 控制"]'));
-    assert.equal(view.host.textContent.split("这台电脑不在线。").length - 1, 1);
-    assert.ok(view.host.querySelector('[role="alert"] button'), "retry remains available");
+    assert.ok(view.host.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(view.host.querySelector('[data-auto-recovery] button'), null);
+    assert.equal(view.host.querySelector('[aria-label="允许远程 Agent 控制"]').getAttribute("aria-checked"), "true");
   } finally {view.cleanup();}
 });
 

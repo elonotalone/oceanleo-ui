@@ -71,7 +71,7 @@ test("重复 id 不进列表，不截份数", () => {
 
 test("BayWorkShowcase 源码含 lazy LibraryItemViewer、模板式浮层，不含 iframe / innerHTML", () => {
   const source = readFileSync(new URL("../src/shell/bay/form/BayWorkShowcase.tsx", import.meta.url), "utf8");
-  assert.match(source, /lazy\(\(\) => import\("\.\.\/\.\.\/library-viewers"\)/);
+  assert.match(source, /lazy\(\(\) => importWithChunkReload\(\(\) => import\("\.\.\/\.\.\/library-viewers"\)/);
   assert.match(source, /data-bay-work-showcase=""/);
   assert.match(source, /max-w-5xl/);
   assert.match(source, /90vh/);

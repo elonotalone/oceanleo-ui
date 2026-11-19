@@ -75,7 +75,7 @@ function muteConsoleError() {
   return { calls, restore: () => (console.error = original) };
 }
 
-test("技术细节展开后有 message + 组件栈，console.error 一次带栈", async () => {
+test("加载恢复态不暴露 message 和组件栈，console.error 一次带栈", async () => {
   const muted = muteConsoleError();
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
@@ -91,16 +91,9 @@ test("技术细节展开后有 message + 组件栈，console.error 一次带栈"
         ),
       );
     });
-    const details = container.querySelector(
-      "details[data-workbench-error-details]",
-    );
-    assert.ok(details, "技术细节折叠不在");
-    const pre = details.querySelector("pre");
-    assert.ok(pre);
-    assert.match(pre.textContent, /Maximum update depth exceeded/);
-    assert.match(pre.textContent, /组件栈/);
-    assert.match(pre.textContent, /Boom/);
-    assert.equal(pre.getAttribute("data-workbench-error-stack"), "true");
+    assert.ok(container.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(container.querySelector("details, pre, button"), null);
+    assert.doesNotMatch(container.textContent, /Maximum update depth exceeded|组件栈|Boom/);
     const crashLogs = muted.calls.filter((args) =>
       String(args[0]).includes("[advanced-workbench] editor crashed"),
     );

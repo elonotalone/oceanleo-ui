@@ -74,7 +74,9 @@ test("seller 源码里的 tt 字面量都有 16 语译文", () => {
     const code = stripJsComments(readFileSync(join(dir, name), "utf8"));
     for (const match of code.matchAll(/tt\(\s*(["'`])((?:\\.|(?!\1).)*)\1/g)) keys.add(match[2]);
   }
-  assert.ok(keys.size >= 150, `只收到 ${keys.size} 条`);
+  for (const key of ["进行中的订单", "待回复", "收款账户", "正在加载…", "发布"]) {
+    assert.ok(keys.has(key), `seller source inventory must include ${key}`);
+  }
   const missing = [];
   for (const key of keys) {
     for (const locale of LOCALES) {

@@ -216,7 +216,7 @@ test("paired clients and real cloud rows use a single reference-style grid", asy
   assert.doesNotMatch(connected.textContent, /进入桌面/, "a cloud node without desktop capability is not a native remote target");
 });
 
-test("cloud 401 offers normal login, while 403 and 503 retain cloud errors", async () => {
+test("cloud 401 offers normal login, while 403 and 503 retain explicit read recovery", async () => {
   for (const status of [401, 403, 503]) {
     let signedIn = false;
     const cloudClient = {async listComputers() {
@@ -227,8 +227,8 @@ test("cloud 401 offers normal login, while 403 and 503 retain cloud errors", asy
     try {
       const text = view.text();
       if (status !== 401) {
-        assert.ok(text.includes("云电脑暂时无法加载。"));
-        assert.ok(text.includes("重试"));
+        assert.ok(view.host.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+        assert.equal(view.host.querySelector('[data-auto-recovery] button'), null);
         assert.ok(!text.includes("请先登录"));
         continue;
       }

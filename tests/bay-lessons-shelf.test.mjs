@@ -73,7 +73,8 @@ test("use-bay-lessons / 货架 / 卡片只走 lib/bay/lessons，有取消与封�
   assert.match(shelf, /data-bay-lesson-shelf/);
   assert.match(shelf, /data-bay-lesson-tab/);
   assert.match(shelf, /data-bay-lesson-empty/);
-  assert.match(shelf, /data-bay-lesson-error/);
+  assert.match(shelf, /<BayRecovery[\s\S]*?reload=\{feed\.reload\} error=\{feed\.error\}/);
+  assert.doesNotMatch(shelf, /data-bay-lesson-error|tt\("重试"\)/);
   assert.match(shelf, /data-bay-lesson-more/);
   assert.match(shelf, /data-bay-lesson-loading/);
 });

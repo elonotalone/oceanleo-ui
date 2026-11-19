@@ -308,12 +308,12 @@ test("只有 /leo-turn、没有 /leo-turn/stream 的网关：回落后这一轮�
   });
 });
 
-test("记录级 404（leo_session_not_found）不是旧网关：仍是可重试的「记录暂时不可用」", async () => {
+test("记录级 404（leo_session_not_found）不是旧网关：保留自动恢复加载态", async () => {
   await withLeo({ transcript: { status: 404, body: { detail: "leo_session_not_found" } } }, async (view) => {
     const transcript = view.host.querySelector("[data-leo-transcript]");
-    assert.match(transcript.textContent, new RegExp(MISLEADING));
+    assert.ok(transcript.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
     assert.doesNotMatch(transcript.textContent, new RegExp(OUTDATED));
-    assert.ok([...transcript.querySelectorAll("button")].some((b) => (b.textContent || "").trim() === "重试"));
+    assert.equal(transcript.querySelector("button"), null);
   });
 });
 
@@ -330,7 +330,7 @@ test("未登录维持原语义：记录区「登录后 leo 才能记住对话」
 
 test("断网维持原语义：不说版本过旧", async () => {
   await withLeo({ offline: true }, async (view) => {
-    assert.match(view.host.querySelector("[data-leo-transcript]").textContent, new RegExp(MISLEADING));
+    assert.ok(view.host.querySelector('[data-leo-transcript] [data-auto-recovery="temporary"][aria-busy="true"]'));
     assert.doesNotMatch(view.host.textContent, new RegExp(OUTDATED));
     await typeAndSend(view.host, "你好");
     assert.match(view.host.querySelector("[data-leo-turn-error]").textContent, /网络错误/);

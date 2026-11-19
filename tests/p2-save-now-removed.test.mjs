@@ -139,7 +139,7 @@ test("P2: 无 save 组时云朵显示三态，且不出现立即保存 / flush-n
   const labels = {
     saved: "已保存",
     saving: "保存中…",
-    error: "保存失败",
+    error: "保存未完成，将自动重试",
   };
   for (const [state, label] of Object.entries(labels)) {
     const html = renderMarkup({ autoSaveState: state });
@@ -172,7 +172,7 @@ test("P2: 有 save 组时菜单入口在，但不含立即保存 / flush-now", (
   assert.doesNotMatch(html, /flush-now/);
 });
 
-test("P2: 无动作时点云朵不弹菜单；失败时可点重试", async () => {
+test("P2: 无动作时点云朵不弹菜单；失败时自动恢复", async () => {
   let retries = 0;
   await withDom(async ({ window, render, find, click }) => {
     await render(
@@ -204,17 +204,17 @@ test("P2: 无动作时点云朵不弹菜单；失败时可点重试", async () =
       ),
     );
     const errorLauncher = find("[data-workspace-save-launcher]");
-    assert.match(errorLauncher.textContent || "", /保存失败/);
+    assert.match(errorLauncher.textContent || "", /保存未完成，将自动重试/);
     await click(errorLauncher);
     const menu = window.document.querySelector("[data-workspace-save-menu]");
-    assert.ok(menu, "失败时应能打开重试菜单");
+    assert.ok(menu, "保存状态菜单仍然可访问");
     const retry = menu.querySelector('[data-workspace-save-action-id="retry"]');
-    assert.ok(retry);
+    assert.equal(retry, null);
     assert.equal(
       menu.querySelector('[data-workspace-save-action-id="flush-now"]'),
       null,
     );
-    await click(retry);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
     assert.equal(retries, 1);
   });
 });

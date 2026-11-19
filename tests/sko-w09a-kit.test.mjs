@@ -791,7 +791,7 @@ test("FolderTreeViewer：默认选中 SKILL.md；YAML 头成代码块；Markdown
   await view.unmount();
 });
 
-test("FolderTreeViewer：读失败显示错误并可重试；initialPath 生效；空树", async () => {
+test("FolderTreeViewer：读失败自动恢复；initialPath 生效；空树", async () => {
   let fail = true;
   const view = await mount(
     h(kit.FolderTreeViewer, {
@@ -801,11 +801,13 @@ test("FolderTreeViewer：读失败显示错误并可重试；initialPath 生效�
     }),
   );
   assert.equal(view.host.querySelector('[aria-selected="true"]').getAttribute("data-tree-path"), "references/sources.md");
-  const err = view.host.querySelector("[data-folder-tree-error]");
+  const err = view.host.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]');
   assert.ok(err);
-  assert.match(err.textContent, /无法读取这个文件/);
+  assert.match(err.textContent, /正在加载/);
+  assert.equal(err.querySelector("button"), null);
   fail = false;
-  await click(err.querySelector("button"));
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  await act(async () => window.dispatchEvent(new window.Event("online")));
   assert.equal(view.host.querySelector("[data-folder-tree-error]"), null);
   assert.equal(view.host.querySelector("[data-folder-tree-content] h2").textContent, "Sources");
   await view.unmount();

@@ -183,7 +183,7 @@ test("挂载带 artifactId：出现成品档，查看器按需加载", async () 
 
 test("BayTypedPreview 走懒加载 LibraryItemViewer，源码不新增 iframe / innerHTML", () => {
   const source = readFileSync(new URL("../src/shell/bay/form/BayTypedPreview.tsx", import.meta.url), "utf8");
-  assert.match(source, /lazy\(\(\) => import\("\.\.\/\.\.\/library-viewers"\)/);
+  assert.match(source, /lazy\(\(\) => importWithChunkReload\(\(\) => import\("\.\.\/\.\.\/library-viewers"\)/);
   assert.doesNotMatch(source, /<iframe/);
   assert.doesNotMatch(source, /dangerouslySetInnerHTML/);
   const preview = readFileSync(new URL("../src/shell/bay/form/BayListingPreview.tsx", import.meta.url), "utf8");

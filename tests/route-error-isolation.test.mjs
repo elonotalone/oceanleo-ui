@@ -221,8 +221,8 @@ test("路由级边界：一条编辑器崩了，body 不多 portal、没有全�
     // 边界确实接住了（不是「没崩」造成的假绿）。
     const placeholder = mounted.container.querySelector("[data-workbench-route-error]");
     assert.ok(placeholder, "路由级失败态没渲染出来 ⇒ 边界没接到，这条测试什么都没验");
-    assert.equal(placeholder.getAttribute("role"), "alert");
-    assert.equal(placeholder.dataset.chunkFailureKind, "crash");
+    assert.ok(placeholder.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(placeholder.querySelector("button"), null);
     assert.equal(mounted.container.querySelector("[data-real-editor]"), null);
 
     // ① 没有 portal：body 的直接子节点一个都没多。
@@ -327,7 +327,7 @@ test("换到另一条路由：新边界从未 error 过，正常渲染，失败�
   }
 });
 
-test("外层 workbench 边界仍然整页接管：两级各管一件事，不是冗余", async () => {
+test("外层 workbench 边界在独立 portal 内自动恢复，两级遥测各自保留", async () => {
   const events = collectTelemetry();
   // 不传 scope ⇒ 默认 "workbench"；不传 contained ⇒ 非 embedded，走 portal 那一支。
   const mounted = await mount({
@@ -347,12 +347,11 @@ test("外层 workbench 边界仍然整页接管：两级各管一件事，不是
       bodyChildrenBefore + 1,
       "外层边界没有 portal 到 body ⇒ 它的整页接管行为被改掉了",
     );
-    const overlay = overlayNodes();
-    assert.equal(overlay.length, 1, "外层失败态该正好是一张全视口遮罩");
-    assert.match(overlay[0].className, /z-\[2147483000\]/);
-    assert.match(overlay[0].className, /\bfixed\b/);
-    assert.equal(overlay[0].getAttribute("role"), "dialog");
-    assert.equal(overlay[0].getAttribute("aria-modal"), "true");
+    assert.equal(overlayNodes().length, 0, "自动恢复不覆盖外壳为全屏错误页");
+    const recovery = document.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]');
+    assert.ok(recovery);
+    assert.equal(mounted.container.contains(recovery), false, "外层的加载恢复仍走独立 portal");
+    assert.equal(recovery.querySelector("button"), null);
     // 外层不是路由级失败态，别把两者混起来。
     assert.equal(document.querySelector("[data-workbench-route-error]"), null);
 
@@ -367,7 +366,7 @@ test("外层 workbench 边界仍然整页接管：两级各管一件事，不是
   }
 });
 
-test("同一次崩溃：事件里没有 error.message，窗格内给用户看的 pre 里有", async () => {
+test("同一次崩溃：遥测与加载恢复界面都不暴露 error.message", async () => {
   const events = collectTelemetry();
   // 编辑器的错误消息经常直接嵌着素材文件名，这是最容易把用户内容带进管道的口子。
   const message = "无法解析 季度汇报-v3.xlsx";
@@ -391,7 +390,9 @@ test("同一次崩溃：事件里没有 error.message，窗格内给用户看的
     assert.ok(placeholder);
 
     // 给用户看：他自己的文件名当然该出现在他自己的屏幕上。
-    assert.match(placeholder.textContent, /季度汇报-v3\.xlsx/);
+    assert.doesNotMatch(placeholder.textContent, /季度汇报-v3\.xlsx/);
+    assert.equal(placeholder.querySelector("pre, details, button"), null);
+    assert.ok(placeholder.querySelector('[aria-busy="true"]'));
 
     // 送进管道：一个字都不许有。
     const caught = events.filter((event) => event.name === "boundary.catch");

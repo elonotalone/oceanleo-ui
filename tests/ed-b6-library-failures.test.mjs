@@ -104,7 +104,7 @@ async function flush() { await act(pause); await act(pause); }
 function newState() {
   return {
     user: "user-1", items: [item("saved")], favorites: [], calls: [], detailCalls: [], linkCalls: [],
-    mineFailure: null, favoriteFailure: null, pageFailure: null, detailItem: null,
+    mineFailure: null, favoriteFailure: null, pageFailure: null, detailItem: null, detailStatus: 404,
     async list(collection, options) {
       this.calls.push({ collection, ...options });
       const offset = Number(options.offset ?? options.cursor ?? 0);
@@ -115,7 +115,7 @@ function newState() {
       const rows = filtered.slice(offset, offset + 100);
       return { ok: true, status: 200, data: { items: rows, ownerPrincipalId: this.user, nextCursor: offset + rows.length < filtered.length ? String(offset + rows.length) : null, total: filtered.length, invalidItems: [] } };
     },
-    async detail(id) { this.detailCalls.push(id); return this.detailItem ? { ok: true, data: this.detailItem } : failure(404); },
+    async detail(id) { this.detailCalls.push(id); return this.detailItem ? { ok: true, data: this.detailItem } : failure(this.detailStatus); },
     async link(id) { this.linkCalls.push(id); if (!this.detailItem) throw Error("项目更新失败，请重试。"); return this.detailItem; },
   };
 }
@@ -140,10 +140,11 @@ async function mounted(run, props = {}, configure = () => {}) {
   assert.deepEqual(errors, [], "the real MyLibrary must render without console.error through every transition");
 }
 const stage = (host, value) => host.querySelector(`[data-library-failure-stage="${value}"]`);
-async function retry(host, value) {
-  const button = host.querySelector(`[data-library-retry="${value}"]`);
-  assert.ok(button, `${value} has a retry action`);
-  await act(async () => { button.click(); await pause(); });
+async function recover(host, value) {
+  const surface = stage(host, value) || host;
+  assert.ok(surface.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'), `${value} has automatic read recovery`);
+  assert.equal(surface.querySelector(`[data-library-retry="${value}"]`), null);
+  await act(async () => { window.dispatchEvent(new window.Event("online")); await pause(); });
   await flush();
 }
 async function refresh() {
@@ -151,45 +152,45 @@ async function refresh() {
   await flush();
 }
 
-test("mine first-load failure exposes the list retry and recovers", () => mounted(async ({ host, state }) => {
-  assert.match(host.querySelector("[data-empty]").textContent, /暂时无法加载我的库/);
+test("mine first-load failure stays loading and recovers automatically", () => mounted(async ({ host, state }) => {
+  assert.match(host.querySelector("[data-empty]").textContent, /正在加载/);
   assert.equal(stage(host, "intent"), null);
   state.mineFailure = null;
-  await retry(host, "mine");
+  await recover(host, "mine");
   assert.ok(host.querySelector('[data-entry="saved"]'));
   assert.equal(host.querySelector('[data-library-retry="mine"]'), null);
 }, {}, state => { state.mineFailure = 503; }));
 
-test("mine refresh retains the verified snapshot and names only list refresh", () => mounted(async ({ host, state }) => {
+test("mine refresh retains the verified snapshot while automatically re-reading", () => mounted(async ({ host, state }) => {
   state.mineFailure = 503; await refresh();
   assert.ok(host.querySelector('[data-entry="saved"]'));
-  assert.match(stage(host, "mine").textContent, /显示上次成功加载的作品/);
+  assert.match(stage(host, "mine").textContent, /正在加载/);
   assert.equal(stage(host, "pagination"), null);
-  state.mineFailure = null; await retry(host, "mine");
+  state.mineFailure = null; await recover(host, "mine");
   assert.equal(stage(host, "mine"), null);
 }));
 
 test("favorites failure keeps mine usable and recovers independently of an entry error", () => mounted(async ({ host, state }) => {
   assert.ok(host.querySelector('[data-entry="saved"]'));
-  assert.match(stage(host, "favorites").textContent, /收藏素材服务暂时不可用/);
+  assert.match(stage(host, "favorites").textContent, /正在加载/);
   assert.equal(stage(host, "mine"), null);
   assert.ok(stage(host, "intent"));
-  state.favoriteFailure = null; await retry(host, "favorites");
+  state.favoriteFailure = null; await recover(host, "favorites");
   assert.equal(stage(host, "favorites"), null);
   assert.ok(stage(host, "intent"), "successful list reads cannot clear the missing-entry error");
 }, { pageTitle: "我的库", action: { nonce: "favorite-and-intent", action: { version: 1, tab: "mine", intent: "open", itemId: "missing" } } }, state => { state.favoriteFailure = 503; }));
 
 for (const collection of ["mine", "favorites"]) {
-  test(`${collection} page failure names page 2, retries its cursor, and keeps entry errors`, () => mounted(async ({ host, state }) => {
+  test(`${collection} page failure retains page 2, recovers its cursor, and keeps entry errors`, () => mounted(async ({ host, state }) => {
     await act(async () => { host.querySelector("[data-next]").click(); await pause(); }); await flush();
     const banner = stage(host, "pagination");
-    assert.match(banner.textContent, collection === "mine" ? /作品第 2 页/ : /收藏第 2 页/);
+    assert.match(banner.textContent, /正在加载/);
     assert.equal(banner.dataset.libraryFailurePage, "2");
     assert.equal(stage(host, "mine"), null);
     assert.doesNotMatch(banner.textContent, /列表暂未刷新/);
     assert.ok(stage(host, "intent"));
     const callsBeforeRetry = state.calls.length;
-    state.pageFailure = null; await retry(host, "pagination");
+    state.pageFailure = null; await recover(host, "pagination");
     const retried = state.calls.slice(callsBeforeRetry).filter(call => call.collection === collection && !call.artifactType);
     assert.equal(retried[0].cursor, "100");
     assert.ok(host.querySelector(`[data-entry="${collection}-100"]`));
@@ -204,25 +205,29 @@ for (const collection of ["mine", "favorites"]) {
 }
 
 for (const intent of ["open", undefined]) {
-  test(`${intent || "plain"} artifact 404 stays entry-scoped and retries without reloading the list`, () => mounted(async ({ host, state }) => {
-    assert.match(stage(host, "intent").textContent, /这份条目已不存在或无法访问/);
+  test(`${intent || "plain"} artifact 404 stays terminal and entry-scoped without reloading the list`, () => mounted(async ({ host, state }) => {
+    assert.match(stage(host, "intent").textContent, /这项内容不存在或已下架/);
     assert.ok(host.querySelector('[data-library-entry-error]'));
     assert.equal(host.querySelector('[data-library-list-failures] [data-library-failure-stage="intent"]'), null);
     assert.equal(stage(host, "mine"), null);
     assert.doesNotMatch(host.textContent, /显示上次成功加载|列表暂未刷新/);
     const listCalls = state.calls.length;
-    state.detailItem = item("recovered"); await retry(host, "intent");
-    assert.equal(stage(host, "intent"), null);
-    assert.ok(host.querySelector('[data-entry="recovered"]'));
-    assert.equal(state.calls.length, listCalls, "entry retry only reads the entry");
-    assert.equal(state.detailCalls.length, 2);
+    assert.equal(stage(host, "intent").querySelector('[data-auto-recovery]').getAttribute("aria-busy"), "false");
+    assert.equal(stage(host, "intent").querySelector("button"), null);
+    state.detailItem = item("recovered");
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    await flush();
+    assert.ok(stage(host, "intent"));
+    assert.equal(host.querySelector('[data-entry="recovered"]'), null);
+    assert.equal(state.calls.length, listCalls, "terminal missing entries never reload the list");
+    assert.equal(state.detailCalls.length, 1, "terminal missing entries never retry themselves");
   }, { pageTitle: "我的库", action: { nonce: `missing-${intent}`, action: { version: 1, tab: "mine", itemId: "missing", ...(intent ? { intent } : {}) } } }));
 }
 
 test("link-work read error stays entry-scoped and recovers through the same link route", () => mounted(async ({ host, state }) => {
   assert.ok(stage(host, "intent")); assert.equal(stage(host, "mine"), null);
   assert.doesNotMatch(host.textContent, /显示上次成功加载|列表暂未刷新/);
-  state.detailItem = item("recovered-link"); await retry(host, "intent");
+  state.detailItem = item("recovered-link"); await recover(host, "intent");
   assert.equal(stage(host, "intent"), null);
   assert.ok(host.querySelector('[data-entry="recovered-link"]'));
   assert.deepEqual(state.linkCalls, ["missing", "missing"]);
@@ -233,12 +238,12 @@ test("successful list refresh preserves the unresolved intent error and successf
   await refresh(); assert.ok(stage(host, "intent"));
   state.mineFailure = 503; await refresh();
   assert.ok(stage(host, "mine")); assert.ok(stage(host, "intent"));
-  state.detailItem = item("recovered"); await retry(host, "intent");
+  state.detailItem = item("recovered"); await recover(host, "intent");
   assert.equal(stage(host, "intent"), null);
   assert.ok(stage(host, "mine"), "opening an item does not claim that a failed list refresh recovered");
-}, { action: { nonce: "independent-errors", action: { version: 1, tab: "mine", intent: "open", itemId: "missing" } } }));
+}, { action: { nonce: "independent-errors", action: { version: 1, tab: "mine", intent: "open", itemId: "missing" } } }, state => { state.detailStatus = 503; }));
 
-for (const [status, expected] of [[403, /当前账号暂时无法读取/], [503, /维护或过载/]]) {
+for (const [status, expected] of [[403, /没有权限/], [503, /正在加载/]]) {
   test(`mine ${status} explains the service or account failure`, () => mounted(async ({ host }) => {
     assert.match(host.querySelector("[data-empty]").textContent, expected);
   }, {}, state => { state.mineFailure = status; }));
@@ -253,7 +258,7 @@ test("short pages count successful requests and a network failure never claims o
     assert.doesNotMatch(stage(host, "pagination").textContent, /归属/);
   }
   state.pageFailure = null;
-  await retry(host, "pagination");
+  await recover(host, "pagination");
   assert.equal(stage(host, "pagination"), null);
 }, {}, state => {
   const original = state.list;

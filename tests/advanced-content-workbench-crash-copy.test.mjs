@@ -1,16 +1,4 @@
-// ============================================================================
-// 编辑器崩溃边界：文案人话、「重新载入」保留、原始错误不吞（plugin-chrome X4，规范 v2 §5）
-// ----------------------------------------------------------------------------
-// 操作员现场：库里打开编辑器崩了，屏幕上是「这个编辑器出错了 … Minified React error
-// #185; visit https://react.dev/errors/185 …」。崩溃本体归 X2；这里只管**用户看到的话**：
-//   ① 正文先说发生了什么、素材有没有事、下一步点哪里；
-//   ② 原始 `error.message` 不再是正文，收进「技术细节」折叠——但**仍在 DOM 里**
-//      （不吞：`route-error-isolation.test.mjs` 判 textContent 含文件名照旧成立）；
-//   ③ 「重新载入」按钮保留（`data-chunk-action="retry"`），点它能真的重挂 children；
-//   ④ 遥测照旧：`boundary.catch` 事件仍发。
-//   ⑤ 边界的失败态在**没有 intl provider** 的树里也渲染得出来（不双重故障）。
-// ============================================================================
-
+// Editor crashes keep a loading surface, recover automatically, and preserve private telemetry.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -69,9 +57,8 @@ const telemetry = await import("../src/lib/telemetry/index.ts");
 const { UIMessageProvider } = await import(
   await compileModule("src/i18n/ui/messages/context.tsx")
 );
-const { ADVANCED_ROUTE_MESSAGES } = await import(
-  "../src/i18n/ui/messages/advanced-route-copy.ts"
-);
+const { loadUiMessages } = await import("../src/i18n/ui/messages/load.ts");
+const englishMessages = await loadUiMessages("en");
 
 const ITEM = Object.freeze({
   key: "creation:poster-1",
@@ -150,49 +137,20 @@ function collectTelemetry() {
   return { events, stop: () => telemetry.resetTelemetry() };
 }
 
-async function click(target) {
-  assert.ok(target, "要点的按钮不在 DOM 里");
-  await act(async () => {
-    target.dispatchEvent(
-      new window.MouseEvent("click", { bubbles: true, cancelable: true }),
-    );
-  });
-}
-
-test("路由级失败态：人话正文 + 技术细节折叠 + 「重新载入」能真的重挂", async () => {
+test("route crashes stay in the pane and recover on connectivity without a retry control", async () => {
   const muted = muteConsoleError();
   const mounted = await mount({ crash: true, scope: "route" });
   try {
     const box = mounted.container.querySelector("[data-workbench-route-error]");
-    assert.ok(box, "失败态没渲染出来");
-    const text = box.textContent;
-
-    // ① 人话：先说发生了什么、素材有没有事、下一步。
-    assert.match(text, /编辑器刚才出了问题，已经停下/);
-    assert.match(text, /你的素材没有被改动/);
-    assert.doesNotMatch(text, /这个编辑器出错了/, "旧标题不许再出现");
-
-    // ② 原始消息不当正文：正文段落里没有它；折叠里有（不吞）。
-    const paragraphs = [...box.querySelectorAll("p")].map((p) => p.textContent).join("\n");
-    assert.doesNotMatch(paragraphs, /Minified React error/, "原始错误被当正文印给用户");
-    const details = box.querySelector("details[data-workbench-error-details]");
-    assert.ok(details, "技术细节折叠不存在 = 把错误吞了");
-    assert.match(details.textContent, /技术细节/);
-    assert.match(details.textContent, /Minified React error #185/);
-    assert.equal(details.open, false, "折叠默认收起");
-
-    // ③ 重新载入保留且有效。
-    const retry = box.querySelector('[data-chunk-action="retry"]');
-    assert.ok(retry);
-    assert.match(retry.textContent, /重新载入/);
+    assert.ok(box);
+    assert.equal(box.querySelector('[role="status"]').getAttribute("aria-busy"), "true");
+    assert.match(box.textContent, /正在加载/);
+    assert.equal(box.querySelector("button, details, a"), null);
+    assert.doesNotMatch(box.textContent, /Minified React error|185|出错/);
     await mounted.rerender({ crash: false, scope: "route" });
-    // 边界的 error 状态还在（同一个 item），点重新载入才清。
     assert.ok(mounted.container.querySelector("[data-workbench-route-error]"));
-    await click(mounted.container.querySelector('[data-chunk-action="retry"]'));
-    assert.ok(
-      mounted.container.querySelector("[data-real-editor]"),
-      "点了重新载入，children 该重新挂上",
-    );
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    assert.ok(mounted.container.querySelector("[data-real-editor]"));
     assert.equal(mounted.container.querySelector("[data-workbench-route-error]"), null);
   } finally {
     muted.restore();
@@ -200,27 +158,21 @@ test("路由级失败态：人话正文 + 技术细节折叠 + 「重新载入�
   }
 });
 
-test("外壳级失败态（contained）：人话标题、关闭 / 重新载入 / 打开原内容三键齐全，遥测照旧", async () => {
+test("contained workbench crashes keep loading inside their host and report private telemetry", async () => {
   const muted = muteConsoleError();
   const collected = collectTelemetry();
   const mounted = await mount({ crash: true, contained: true });
   try {
-    const dialog = mounted.container.querySelector('[role="dialog"]');
-    assert.ok(dialog, "contained 失败态该留在容器内");
-    assert.equal(dialog.getAttribute("aria-label"), "季度汇报海报 · 编辑器错误");
-    assert.match(dialog.textContent, /这件素材暂时打不开编辑器/);
-    assert.doesNotMatch(dialog.textContent, /暂时无法载入编辑器/, "旧标题不许再出现");
-    const buttons = [...dialog.querySelectorAll("button")].map((b) => b.textContent.trim());
-    assert.deepEqual(buttons, ["重新载入", "关闭"]);
-    const link = dialog.querySelector('a[href="https://website.oceanleo.com/assets/poster-1.png"]');
-    assert.ok(link);
-    assert.equal(link.textContent.trim(), "打开原内容");
-    assert.ok(dialog.querySelector("details[data-workbench-error-details]"));
-
-    // ④ 不吞：遥测事件仍发，且事件里仍然没有 error.message（口径同 route-error-isolation）。
-    const caught = collected.events.filter((event) => event.name === "boundary.catch");
-    assert.equal(caught.length, 1, "componentDidCatch 的上报没了");
+    const status = mounted.container.querySelector('[role="status"][aria-busy="true"]');
+    assert.ok(status, "contained recovery remains inside its host");
+    assert.equal(mounted.container.querySelector("button, details, a"), null);
+    assert.doesNotMatch(mounted.container.textContent, /Minified React error|185|出错/);
+    const caught = collected.events.filter(event => event.name === "boundary.catch");
+    assert.equal(caught.length, 1);
     assert.doesNotMatch(JSON.stringify(caught[0]), /Minified React error/);
+    await mounted.rerender({ crash: false, contained: true });
+    await act(async () => window.dispatchEvent(new window.Event("focus")));
+    assert.ok(mounted.container.querySelector("[data-real-editor]"));
   } finally {
     collected.stop();
     muted.restore();
@@ -228,22 +180,15 @@ test("外壳级失败态（contained）：人话标题、关闭 / 重新载入 /
   }
 });
 
-test("挂了词典就翻译：英文站看到的是英文，不再是中文原文", async () => {
+test("English dictionaries translate the automatic loading state without exposing the exception", async () => {
   const muted = muteConsoleError();
-  const mounted = await mount({
-    crash: true,
-    scope: "route",
-    messages: ADVANCED_ROUTE_MESSAGES.en,
-  });
+  const mounted = await mount({ crash: true, scope: "route", messages: englishMessages });
   try {
     const box = mounted.container.querySelector("[data-workbench-route-error]");
-    assert.match(box.textContent, /The editor hit a problem and stopped/);
-    assert.match(box.textContent, /Technical details \(for developers\)/);
-    assert.match(
-      box.querySelector('[data-chunk-action="retry"]').textContent,
-      /^Reload$/,
-    );
-    assert.doesNotMatch(box.textContent, /编辑器刚才出了问题/);
+    assert.match(box.textContent, /Loading/);
+    assert.doesNotMatch(box.textContent, /正在加载|Minified React error|Reload|Retry/);
+    assert.equal(box.querySelector("button"), null);
+    assert.equal(box.querySelector('[role="status"]').getAttribute("aria-busy"), "true");
   } finally {
     muted.restore();
     await mounted.unmount();

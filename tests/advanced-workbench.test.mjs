@@ -27,7 +27,7 @@ test("embedded workbench keeps a crash fallback inside the pane", () => {
   const boundary = source("../src/shell/WorkbenchErrorBoundary.tsx");
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
   assert.match(boundary, /contained\?: boolean/);
-  assert.match(boundary, /contained \? fallback : createPortal\(fallback, document\.body\)/);
+  assert.match(boundary, /contained \|\| scope === "route" \? fallback : createPortal\(fallback, document\.body\)/);
   assert.match(workbench, /contained=\{editorHost\.embedded\}/);
 });
 

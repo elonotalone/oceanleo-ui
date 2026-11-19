@@ -266,20 +266,23 @@ test("读不到本体时给中文人话，不许继续假装它是一张图", as
   }
 });
 
-test("失败面把封面图说成封面图，并给得出重试", async () => {
+test("恢复面把封面图说成封面图，并自动重新读取", async () => {
+  let recoveries = 0;
   const mounted = await mount(
     React.createElement(MaterialDetailUnavailable, {
       item: catalogRow(),
       message: "暂时打不开这份素材的完整内容，请稍后重试。",
       needsSignIn: false,
-      onRetry: () => {},
+      onRetry: () => { recoveries++; },
     }),
   );
   try {
     const text = mounted.container.textContent;
     assert.match(text, /以上只是这份素材的封面图/);
-    assert.match(text, /暂时打不开这份素材的完整内容/);
-    assert.match(text, /重新加载/);
+    assert.match(text, /正在打开这份素材/);
+    assert.equal(mounted.container.querySelector("button"), null);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    assert.equal(recoveries, 1);
   } finally {
     await mounted.unmount();
   }

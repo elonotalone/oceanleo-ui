@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import ts from 'typescript';
+import { useAutoRecovery, startAutoRecovery } from '../src/lib/auto-recovery.ts';
 import { normalizeLibraryPreview, normalizeLibraryFacts, normalizeArtifactProjection } from '../src/shell/artifact-contract.ts';
 import { artifactProjectionToLibraryItem } from '../src/shell/library-data.ts';
 
@@ -14,8 +15,8 @@ const declaration = source.statements.find(s => ts.isFunctionDeclaration(s) && s
 const js = ts.transpileModule(declaration.getText(source).replace('export ', ''), { compilerOptions: { jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const stub = kind => props => React.createElement('div', { 'data-viewer': kind, 'data-url': props.src || props.fullUrl || props.url || props.item?.url || '', 'data-mode': props.mode || '', 'data-key': props.item?.key || '' });
 let calls = 0;
-const Viewer = new Function('deps', `const {React,useState,useEffect,useRef,useUI,getArtifactItem,NativeLibraryItemViewerBody,DownloadOnlyFileCard,LoadingView,LibraryPdfReader,Center,ProgressiveArtifactImage,LibraryMediaPreview,ThreeDViewer,AttachmentFileViewer,Suspense,fetchItemSourceBlob,libraryMediaGeometry}=deps;${js};return LibraryItemViewerBody;`)({
-  React, ...React, useUI: () => s => s, getArtifactItem: async () => { calls++; return { ok: true, data: { ...base, preview: { state: 'ready', kind: 'image', url: '/ready.png' } } }; },
+const Viewer = new Function('deps', `const {React,useState,useEffect,useRef,useAutoRecovery,startAutoRecovery,useUI,getArtifactItem,NativeLibraryItemViewerBody,DownloadOnlyFileCard,LoadingView,LibraryPdfReader,Center,ProgressiveArtifactImage,LibraryMediaPreview,ThreeDViewer,AttachmentFileViewer,Suspense,fetchItemSourceBlob,libraryMediaGeometry}=deps;${js};return LibraryItemViewerBody;`)({
+  React, ...React, useAutoRecovery, startAutoRecovery, useUI: () => s => s, getArtifactItem: async () => { calls++; return { ok: true, data: { ...base, preview: { state: 'ready', kind: 'image', url: '/ready.png' } } }; },
   NativeLibraryItemViewerBody: stub('native'), DownloadOnlyFileCard: stub('download'), LoadingView: stub('loading'), LibraryPdfReader: stub('pdf'),
   Center: ({ children }) => children, ProgressiveArtifactImage: stub('image'), LibraryMediaPreview: props => stub(props.kind)(props),
   ThreeDViewer: stub('model'), AttachmentFileViewer: stub('file'), fetchItemSourceBlob: () => {}, libraryMediaGeometry: () => ({}),
@@ -46,7 +47,7 @@ test('pending refreshes the same saved revision then shows the derived preview',
   try {
     await act(async () => root.render(React.createElement(Viewer, { item: { ...base, preview: { state: 'pending', kind: 'pdf' } } })));
     assert.match(node.textContent, /正在准备文件预览/); assert.equal(calls, 0);
-    await act(async () => timers.find(t => t.ms === 2000).fn());
+    await act(async () => timers.find(t => t.ms === 1000).fn());
     assert.equal(calls, 1); assert.equal(node.querySelector('[data-viewer]').dataset.viewer, 'image');
   } finally { await act(async () => root.unmount()); globalThis.setTimeout = original; }
 });

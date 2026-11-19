@@ -40,31 +40,28 @@ async function mount(t, nextMode){
 }
 async function timeout(t){await act(async()=>{t.mock.timers.tick(http.BAY_GET_TIMEOUT_MS+1);});}
 
-test("hung seller feed reaches its deadline: official material appears, loading ends, retry succeeds",async t=>{
+test("hung seller feed reaches its deadline, preserves official material and recovers automatically",async t=>{
  const v=await mount(t,"seller-hung");try{
   assert.ok(v.host.querySelector("[data-bay-ready-loading]"));
   await timeout(t);
   assert.equal(v.host.querySelector("[data-bay-ready-loading]"),null);
   assert.ok(v.host.querySelector('[data-bay-asset-card="library:deck"]'));
-  assert.match(v.host.querySelector("[data-bay-asset-error]").textContent,/部分素材未能加载/);
-  mode="ok";await act(async()=>v.host.querySelector("[data-bay-asset-error] button").click());
-  assert.equal(v.host.querySelector("[data-bay-asset-error]"),null);
+  assert.ok(v.host.querySelector('[data-bay-recovery="temporary"][aria-busy="true"]'));
+  assert.equal(v.host.querySelector('[data-bay-recovery] button'),null);
+  mode="ok";await act(async()=>window.dispatchEvent(new window.Event("online")));
+  assert.equal(v.host.querySelector("[data-bay-recovery]"),null);
   assert.ok(v.host.querySelector("[data-bay-asset-card]"));
  }finally{await v.close();}
 });
-test("hung official request ends with an inline error and retry, without skeletons",async t=>{
- const v=await mount(t,"official-hung");try{
+for (const nextMode of ["official-hung", "taxonomy-hung"]) test(`${nextMode} stays loading and recovers automatically after the deadline`,async t=>{
+ const v=await mount(t,nextMode);try{
   await timeout(t);
-  assert.equal(v.host.querySelector("[data-bay-ready-loading]"),null);
-  assert.ok(v.host.querySelector("[data-bay-asset-error] button"));
+  assert.ok(v.host.querySelector('[data-bay-recovery="temporary"][aria-busy="true"]'));
+  assert.equal(v.host.querySelector('[data-bay-recovery] button'),null);
   assert.equal(v.host.querySelector("[data-bay-asset-card]"),null);
- }finally{await v.close();}
-});
-test("hung taxonomy also ends with an inline error",async t=>{
- const v=await mount(t,"taxonomy-hung");try{
-  await timeout(t);
-  assert.equal(v.host.querySelector("[data-bay-ready-loading]"),null);
-  assert.match(v.host.querySelector("[data-bay-asset-error]").textContent,/素材分类未能加载/);
+  mode="ok";await act(async()=>window.dispatchEvent(new window.Event("online")));
+  assert.equal(v.host.querySelector("[data-bay-recovery]"),null);
+  assert.ok(v.host.querySelector('[data-bay-asset-card="library:deck"]'));
  }finally{await v.close();}
 });
 test("GET deadline also bounds authenticated calls and anonymous response decoding",async t=>{

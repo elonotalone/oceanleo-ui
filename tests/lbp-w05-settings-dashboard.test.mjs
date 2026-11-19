@@ -502,7 +502,7 @@ test("为什么还收不了款：网关给的原因逐条列出，英文界面�
   view.unmount();
 });
 
-test("没登录：只给登录提示，点登录走 requireBayLogin；加载失败给重试", async () => {
+test("没登录只给登录提示；读取失败自动恢复", async () => {
   let w = bench(settingsRoutes({ "GET /v1/talent/payout-account": { __status: 401, message: "请先登录" } }));
   const { BaySettingsSection } = await loadSection();
   let view = await render(React.createElement(BaySettingsSection));
@@ -515,8 +515,9 @@ test("没登录：只给登录提示，点登录走 requireBayLogin；加载失�
 
   w = bench(settingsRoutes({ "GET /v1/talent/payout-account": { __status: 500, message: "后端出错了" } }));
   view = await render(React.createElement(BaySettingsSection));
-  assert.match(view.host.querySelector("[role=alert]").textContent, /后端出错了/);
-  assert.ok(buttonByText(view.host, "重试"));
+  assert.ok(view.host.querySelector('[data-bay-recovery="temporary"][aria-busy="true"]'));
+  assert.doesNotMatch(view.host.textContent, /后端出错了/);
+  assert.equal(buttonByText(view.host, "重试"), undefined);
   view.unmount();
 });
 
@@ -761,16 +762,17 @@ test("收入流水：导出 CSV 翻完所有页（每页 100），表头与币�
   view.unmount();
 });
 
-test("收入流水：流水取不到时只在这张卡里给重试，其余数字照常显示", async () => {
+test("收入流水只自动恢复失败的卡片，其余数字照常显示", async () => {
   const w = bench(dashboardRoutes({ "GET /v1/talent/ledger": { __status: 500, message: "账本暂时读不了" } }));
   const { DashboardPane } = await loadDashboard();
   const view = await render(React.createElement(DashboardPane, { target: { kind: "dashboard" }, layout: "page", siteKey: "design" }));
   const card = view.host.querySelector("[data-bay-dashboard-ledger]");
-  assert.match(card.querySelector("[data-bay-ledger-error]").textContent, /账本暂时读不了/);
+  assert.ok(card.querySelector('[data-bay-recovery="temporary"][aria-busy="true"]'));
+  assert.equal(card.querySelector("[data-bay-recovery] button"), null);
   assert.equal(card.querySelector('[data-bay-action="export-ledger"]'), null, "没有数据就没有导出");
   assert.ok(view.host.querySelector('[data-bay-stat="income_lifetime"]'), "其余数字不受影响");
   w.routes["GET /v1/talent/ledger"] = (_body, path) => ledgerPage(path);
-  await click(buttonByText(card, "重试"));
+  await act(async () => window.dispatchEvent(new window.Event("online")));
   assert.equal(card.querySelectorAll("[data-bay-ledger-row]").length, 20);
   view.unmount();
 });

@@ -197,7 +197,7 @@ test("PDF cover is a PDFium first-page raster: lazy, cached per resource key, no
   const pdfBytes = await document.save();
   try {
     const source = read("src/shell/workspace-library-cover.tsx");
-    assert.match(source, /lazy\(\(\) => import\("\.\/WorkspacePdfCover"\)\)/);
+    assert.match(source, /lazyWithRetry\(\(\) => import\("\.\/WorkspacePdfCover"\)\)/);
     const cover = stripComments(read("src/shell/WorkspacePdfCover.tsx"));
     assert.match(cover, /renderPageRaw/);
     assert.match(cover, /coverCache/);

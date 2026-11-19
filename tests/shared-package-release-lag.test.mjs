@@ -42,8 +42,8 @@ const REPO = fileURLToPath(new URL("..", import.meta.url));
  */
 const UNRELEASED_EXPORTS = Object.freeze([
   // v0.233.26（2026-10-08）已把此前登记的 ./bay/public、./bay/public-views、./shell/EmbedChrome 发出去了，登记清空。
-  // The latest tag already contains the design-document entry; no unreleased
-  // export debt remains in this checkout.
+  // Social-wave recovery is local until the parent performs the authorized release.
+  "./lib/recovery",
 ]);
 
 function git(...args) {

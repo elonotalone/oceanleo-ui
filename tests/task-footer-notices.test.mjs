@@ -113,7 +113,8 @@ for (const pane of ["cloud", "acp"]) {
       await view.render(React.createElement(TaskAccessComposer, { ...props, error: true }));
       assert.equal(view.footer().outerHTML, before);
       assert.equal(view.padding(), padding);
-      assert.ok(view.notices().querySelector('[role="alert"]'));
+      assert.ok(view.notices().querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+      assert.equal(view.notices().querySelector('[data-auto-recovery] button'), null);
       assert.equal(view.footer().querySelector('[role="alert"]'), null);
     } finally { await view.close(); }
   });

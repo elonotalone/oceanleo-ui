@@ -48,6 +48,9 @@ test('sheet preview pages beyond the 300 by 60 window without entering editing m
   }));
   const host=document.createElement('div'),root=createRoot(host);
   await act(async()=>root.render(React.createElement(SpreadsheetViewer,{item:{key:'pages',meta:{snapshot:{sheets:{a:{name:'Big',rowCount:301,columnCount:61,cellData:{300:{60:{v:'last cell'}}}}}}}}})));
+  for (let attempt=0;attempt<30 && !host.querySelector('[data-sheet-preview="readonly"]');attempt++) {
+    await act(async()=>new Promise(resolve=>setImmediate(resolve)));
+  }
   assert.ok(host.querySelector('[data-sheet-preview="readonly"]'));assert.equal(host.querySelectorAll('tr').length,300);
   await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='下一页').click());
   await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='后 60 列').click());

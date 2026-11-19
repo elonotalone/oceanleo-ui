@@ -65,7 +65,7 @@ test("rich-doc source failures cannot become saveable blank documents", async ()
   );
   assert.match(hook, /onUpdate:[\s\S]*已阻止修改空白回退内容/);
   assert.match(hook, /sourceReadyRef\.current = true;[\s\S]*setSourceReady\(true\);/);
-  assert.match(route, /officeSource\.error && !editor\.dirty/);
+  assert.match(route, /<EditorSourceFailurePanel[\s\S]*?onReload=\{editor\.reload\}/);
   assert.match(route, /!editor\.loading && !editor\.sourceReady/);
   assert.match(route, /editor\.sourceReady[\s\S]*capture:/);
 });

@@ -39,7 +39,8 @@ test("use-bay-apps / BayAppShelf / BayAppCard 只走 lib/bay/apps，有取消与
   assert.match(card, /startsWith\("https:\/\/"\)/);
   assert.match(shelf, /data-bay-app-shelf/);
   assert.match(shelf, /data-bay-app-empty/);
-  assert.match(shelf, /data-bay-app-error/);
+  assert.match(shelf, /<BayRecovery[\s\S]*?reload=/);
+  assert.doesNotMatch(shelf, /data-bay-app-error|tt\("重试"\)/);
   assert.match(shelf, /data-bay-app-more/);
   assert.match(shelf, /data-bay-app-loading/);
   assert.match(card, /"data-bay-app-card": app\.id/);

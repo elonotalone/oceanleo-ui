@@ -295,7 +295,7 @@ test("W3: 素材库/我的库是同线宽描边图标，无障碍名仍是原句
   );
 });
 
-test("W3: 保存失败只留图标，错误进 title，状态字仍给读屏", () => {
+test("W3: 保存失败只留图标，自动恢复状态进 title 和读屏", () => {
   const html = renderToStaticMarkup(
     React.createElement(
       AdvancedWorkspaceActionBar,
@@ -306,9 +306,10 @@ test("W3: 保存失败只留图标，错误进 title，状态字仍给读屏", (
     ),
   );
   assert.match(html, /data-workspace-save-launcher/);
-  assert.match(html, /保存被拒绝（integrity-failed）/);
-  assert.match(html, /sr-only/);
-  assert.match(html, /保存失败/);
+  assert.match(html, /data-save-state="error"/);
+  assert.match(html, /title="保存未完成，将自动重试"/);
+  assert.match(html, /<span class="sr-only">保存未完成，将自动重试<\/span>/);
+  assert.doesNotMatch(html, /integrity-failed|保存被拒绝/);
 });
 
 test("W3: share URL 带上 LibraryItem 身份", () => {

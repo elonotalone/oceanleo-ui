@@ -345,8 +345,9 @@ test("C-3 §6: a failed load is surfaced, never left as a blank stage", async ()
   const stage = await source("src/shell/media-editors/PdfStage.tsx");
   assert.match(stage, /role="alert"/);
   // 内核太慢：说原因并给「重新载入」，但不卸掉查看器（就绪后提示自动收起）。
-  assert.match(stage, /data-pdf-init-slow=""/);
-  assert.match(stage, /onClick=\{reload\}/);
+  assert.match(stage, /useAutoRecovery\(Boolean\(timeoutError && !revealed\), reload, instanceId\)/);
+  assert.match(stage, /正在载入 PDF/);
+  assert.doesNotMatch(stage, /onClick=\{reload\}/);
   const workbench = await source("src/shell/media-editors/use-pdf-workbench.ts");
   // 源坏了：报出原因，不许拿空白页顶替。
   assert.match(workbench, /setError\(pdfErrorMessage\(caught, tt\("PDF 加载失败"\)\)\)/);

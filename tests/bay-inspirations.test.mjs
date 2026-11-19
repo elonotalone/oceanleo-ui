@@ -218,7 +218,7 @@ test("restored card requests its app and reveals/fills its own left agent", asyn
 });
 
 
-test("API failures stay visible and retry reloads the same app", async () => {
+test("API failures stay loading and automatically recover the same app", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host), original = globalThis.fetch, urls = [];
@@ -230,10 +230,11 @@ test("API failures stay visible and retry reloads the same app", async () => {
   };
   try {
     await act(async () => root.render(h(InspirationPanel, { siteKey: "website", appId: "landing" })));
-    assert.match(host.querySelector('[role="alert"]').textContent, /重试/);
+    assert.ok(host.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(host.querySelector('[data-auto-recovery] button'), null);
     fail = false;
-    await act(async () => host.querySelector('[role="alert"] button').click());
-    assert.equal(host.querySelector('[role="alert"]'), null);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    assert.equal(host.querySelector('[data-auto-recovery]'), null);
     assert.match(host.textContent, /暂无平台灵感/);
     assert.equal(new URL(urls.at(-1)).searchParams.get("appId"), "landing");
   } finally {

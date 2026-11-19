@@ -232,13 +232,15 @@ test("unscoped or incorrectly projected responses cannot claim a Production conn
   try {
     await choose(environmentSelect(m.host), "production");
     assert.equal(m.host.querySelector('[data-testid="website-connector-database"]'), null);
-    assert.match(m.host.textContent, /暂时无法确认此环境的配置状态/);
+    assert.ok(m.host.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(m.host.querySelector("[data-auto-recovery] button"), null);
     await act(async () => m.root.render(React.createElement(WebsiteConfiguration, { ...m.props, projectId: "legacy", api: { get: async () => {
       const snapshot = fixture(); delete snapshot.environment; return snapshot;
     } } })));
     assert.equal(environmentSelect(m.host).value, "preview");
     assert.equal(m.host.querySelectorAll("[data-connector-environment]").length, 0);
-    assert.match(m.host.textContent, /暂时无法确认此环境的配置状态/);
+    assert.ok(m.host.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(m.host.querySelector("[data-auto-recovery] button"), null);
   } finally { await m.destroy(); }
 });
 

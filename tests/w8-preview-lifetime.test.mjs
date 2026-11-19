@@ -174,7 +174,9 @@ test("stopped and error recovery never remount a prior assertion before the curr
     rejectRead = true; await tick(t);
     assert.equal(m.host.querySelector("iframe"), null);
     rejectRead = false; deferRead = true;
-    await act(async () => [...m.host.querySelectorAll("button")].find(button => button.textContent === "重试").click());
+    assert.ok(m.host.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(m.host.querySelector("[data-auto-recovery] button"), null);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
     assert.equal(m.host.querySelector("iframe"), null);
     await act(async () => finishRecovery(running(third)));
     assert.ok(ownerMatches(m.host.querySelector("iframe"), third));

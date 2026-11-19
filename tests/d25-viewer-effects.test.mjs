@@ -17,7 +17,7 @@ for (const component of ['PptViewer', 'DocumentViewer', 'SpreadsheetViewer']) te
   let cursor = 0, refs = [], previous, scheduled = 0;
   const useRef = value => refs[cursor++] ||= { current: value };
   const useEffect = (_callback, deps) => { if (!previous || deps.some((v, i) => !Object.is(v, previous[i]))) scheduled++; previous = deps; };
-  const helpers = { useUI: () => x => x, useRef, useEffect, useState: value => [typeof value === 'function' ? value() : value, () => {}], useMemo: fn => fn(), useCallback: fn => fn,
+  const helpers = { useAutoRecovery: () => {}, useUI: () => x => x, useRef, useEffect, useState: value => [typeof value === 'function' ? value() : value, () => {}], useMemo: fn => fn(), useCallback: fn => fn,
     asRecords: v => Array.isArray(v) ? v : [], deckStructuredSourceUrl: () => '', structuredDeckSourceCandidate: () => '', deckPreviewLogicalSize: () => ({ width: 960, height: 540 }), extension: () => 'docx', officePackageKindForItem: () => component === 'DocumentViewer' ? 'docx' : 'pptx', ...cache };
   const documentHelpers = ast.statements.filter(n => ts.isFunctionDeclaration(n) && ['documentSourceUrl', 'documentViewerMediaType'].includes(n.name?.text)).map(n => n.getText(ast)).join('\n');
   const js = ts.transpileModule(documentHelpers + '\n' + setup, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;

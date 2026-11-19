@@ -1146,11 +1146,11 @@ test("法语：离线那台电脑的标注是「Studio-PC (hors ligne)」，不�
   }
 });
 
-test("法语：三种「查不到你的电脑」各说各的法语，不是同一句、也不是中文", async () => {
+test("法语：未登录为终态，临时查询失败保持自动恢复加载态", async () => {
   const cases = [
     {
       why: "没登录",
-      key: "登录后才能把文件发到你的电脑上。",
+      key: "你没有权限查看这项内容。",
       arrange(native) {
         delete globalThis.__W06_TOKEN__;
         return native;
@@ -1158,7 +1158,7 @@ test("法语：三种「查不到你的电脑」各说各的法语，不是同�
     },
     {
       why: "断网",
-      key: "网络断了，没能查到你的电脑。恢复后再试一次。",
+      key: "正在加载…",
       arrange() {
         globalThis.fetch = async () => {
           throw new TypeError("Failed to fetch");
@@ -1167,7 +1167,7 @@ test("法语：三种「查不到你的电脑」各说各的法语，不是同�
     },
     {
       why: "网关 500",
-      key: "暂时查不到你的电脑，稍后再试一次。",
+      key: "正在加载…",
       arrange() {
         globalThis.fetch = async () => ({ ok: false, status: 500 });
       },
@@ -1186,7 +1186,9 @@ test("法语：三种「查不到你的电脑」各说各的法语，不是同�
         "error",
         `${scenario.why}：面板没有进错误态，这条断言就没在验文案`,
       );
-      const alert = panel.querySelector('[role="alert"]');
+      const alert = panel.querySelector("[data-auto-recovery]");
+      assert.equal(alert.getAttribute("aria-busy"), String(scenario.why !== "没登录"));
+      assert.equal(alert.querySelector("button"), null);
       assert.equal(
         alert.textContent,
         FR[scenario.key],
@@ -1200,10 +1202,10 @@ test("法语：三种「查不到你的电脑」各说各的法语，不是同�
       native.remove();
     }
   }
-  assert.equal(seen.size, 3, "三种原因被收成了同一句话 —— 用户不知道该做什么");
+  assert.equal(seen.size, 2, "终态权限提示与临时加载态要分开翻译");
 });
 
-test("中文站逐字不变：同一屏在 zh 下印的还是原来那几句", async () => {
+test("中文站保留设备名称，读取失败显示自动恢复加载态", async () => {
   const zhActions = await nativeActionsIn("zh");
   const native = installNativeHost({
     devices: [{ ...DESKTOP_ROW, device_name: "" }],
@@ -1221,10 +1223,10 @@ test("中文站逐字不变：同一屏在 zh 下印的还是原来那几句", a
     const errored = await openProbe(zhActions);
     assert.equal(
       errored.container
-        .querySelector('[role="alert"]')
+        .querySelector('[data-auto-recovery="temporary"]')
         .textContent,
-      "暂时查不到你的电脑，稍后再试一次。",
-      "中文站的错误提示被改掉了",
+      "正在加载…",
+      "中文站显示真实的加载恢复状态",
     );
     await errored.unmount();
   } finally {

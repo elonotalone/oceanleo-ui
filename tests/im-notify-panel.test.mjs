@@ -233,15 +233,16 @@ test("不在门户域但推送已开：可以从这里关掉", async () => {
   await view.unmount();
 });
 
-test("加载失败：显示重试，点了重新拉取", async () => {
+test("加载失败：保持加载态，联网后自动拉取", async () => {
   installDom("https://oceanleo.com/");
   reset({ loadOk: false });
   const view = await mount();
   assert.equal(switches(view.container).length, 0);
-  assert.match(view.container.textContent, /没能加载出来/);
+  assert.ok(view.container.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+  assert.equal(view.container.querySelector("button"), null);
   ctl.loadOk = true;
   const callsBefore = ctl.loadCalls;
-  await click(view.container.querySelector("button"));
+  await act(async () => window.dispatchEvent(new window.Event("online")));
   assert.equal(ctl.loadCalls, callsBefore + 1);
   assert.equal(switches(view.container).length, 6);
   await view.unmount();

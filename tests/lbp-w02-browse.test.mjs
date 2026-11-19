@@ -654,16 +654,18 @@ test("网站与软件服务货架：两边都空才显示空态；任何一边�
   await appsWaiting.unmount();
 });
 
-test("网站与软件服务货架：哪边出错就给重试，重试只重取出错的那边；还有更多时两边一起接着取", async () => {
+test("网站与软件服务货架：只自动重取出错的一边；还有更多时两边一起接着取", async () => {
   const reloads = [];
   resetShelf({
     apps: { items: [], loading: false, error: "作品列表没读出来，请稍后点「重试」。", hasMore: false, loadMore() {}, reload: () => reloads.push("apps") },
     posted: { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry: () => reloads.push("posted") },
   });
   const failed = await mount(React.createElement(BayAppShelf, { filter: { kind: "app" }, siteKey: "oceanleo", accent: "#0ea5e9" }));
-  assert.ok(failed.host.querySelector("[data-bay-app-error]"));
+  assert.ok(failed.host.querySelector('[data-bay-recovery="temporary"][aria-busy="true"]'));
+  assert.equal(failed.host.querySelector("[data-bay-recovery] button"), null);
   assert.equal(failed.host.querySelector("[data-bay-app-empty]"), null);
-  await click(failed.host.querySelector("[data-bay-app-error] button"));
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  await act(async () => window.dispatchEvent(new window.Event("online")));
   assert.deepEqual(reloads, ["apps"]);
   await failed.unmount();
 

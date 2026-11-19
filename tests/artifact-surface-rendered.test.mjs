@@ -2559,7 +2559,7 @@ test("near-expiry material URLs are never reused from cache", async () => {
   assert.equal(fetches, 2);
 });
 
-test("material retry replaces a service error with an editable result", async () => {
+test("material automatic recovery replaces a service error with an editable result", async () => {
   invalidateMaterialLibraryCache();
   const contextId = "ctx:image:retry";
   let attempts = 0;
@@ -2590,11 +2590,9 @@ test("material retry replaces a service error with an editable result", async ()
   try {
     await settle();
     assert.match(mounted.container.textContent || "", /维护或过载/);
-    const retry = [...mounted.container.querySelectorAll("button")].find(
-      (button) => button.textContent?.trim() === "重试",
-    );
-    assert.ok(retry);
-    await click(retry);
+    assert.ok(mounted.container.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal([...mounted.container.querySelectorAll("button")].find(button => button.textContent?.trim() === "重试"), undefined);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
     await settle();
     assert.ok(
       mounted.container.querySelector(
@@ -3127,7 +3125,7 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
     );
     assert.match(
       mounted.container.querySelector('[role="alert"]')?.textContent || "",
-      /收藏素材服务暂时不可用/,
+      /正在加载/,
     );
     assert.equal(
       mounted.container.querySelector('input[type="file"]')?.disabled,
@@ -3146,11 +3144,8 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
       ),
       null,
     );
-    assert.match(
-      mounted.container.querySelector("[data-empty-description]")
-        ?.textContent || "",
-      /请稍后重试/,
-    );
+    assert.ok(mounted.container.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(mounted.container.querySelector('[data-auto-recovery] button'), null);
   } finally {
     await mounted.unmount();
   }
@@ -3309,7 +3304,7 @@ test("initial favorites outage preserves healthy mine authority and recovers", a
     );
     assert.match(
       mounted.container.querySelector('[role="alert"]')?.textContent || "",
-      /收藏素材服务暂时不可用/,
+      /正在加载/,
     );
     assert.equal(
       mounted.container.querySelector('input[type="file"]')?.disabled,
@@ -3460,7 +3455,7 @@ test("favorites pagination fails closed when a later page changes owner", async 
     );
     assert.match(
       mounted.container.querySelector('[role="alert"]')?.textContent || "",
-      /归属与当前账号不一致.*请稍后重试/,
+      /正在加载/,
     );
   } finally {
     await mounted.unmount();
@@ -3505,11 +3500,15 @@ test("rendered My Library distinguishes authoritative empty, 401, 403 and 503", 
     const mounted = await createMounted(MyLibrary, {});
     try {
       await settle();
-      assert.match(
-        mounted.container.querySelector("[data-empty-description]")
-          ?.textContent || "",
-        expected,
-      );
+      if (status === 403 || status === 503) {
+        const recovery = mounted.container.querySelector(`[data-auto-recovery="${status === 403 ? "denied" : "temporary"}"]`);
+        assert.ok(recovery);
+        assert.equal(recovery.getAttribute("aria-busy"), String(status === 503));
+        assert.equal(recovery.querySelector("button"), null);
+        assert.match(recovery.textContent, status === 403 ? /没有权限/ : /正在加载/);
+      } else {
+        assert.match(mounted.container.querySelector("[data-empty-description]")?.textContent || "", expected);
+      }
     } finally {
       await mounted.unmount();
     }
@@ -3567,11 +3566,8 @@ test("rendered bare item stays visible through same-account list failure", async
       ),
       "the item must survive a malformed list response on the initial load for the same auth snapshot",
     );
-    assert.match(
-      mounted.container.querySelector('[role="alert"]')?.textContent || "",
-      /暂时无法加载我的库/,
-      "the initial list request should actually fail while the direct item remains visible",
-    );
+    assert.ok(mounted.container.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'),
+      "the list keeps recovering while the direct item remains visible");
   } finally {
     await mounted.unmount();
     resetLibraryCurrentIdentityForTests();
@@ -3866,10 +3862,13 @@ test("material refresh failure preserves the last authoritative shelf", async ()
     });
     await settle();
     assert.ok(entryTitled(mounted.container, "Stable single_file_image"));
-    assert.match(
-      mounted.container.querySelector('[role="alert"]')?.textContent || "",
-      /素材库服务暂时不可用/,
-    );
+    assert.ok(mounted.container.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal([...mounted.container.querySelectorAll("button")].find(button => button.textContent?.trim() === "重试"), undefined);
+    failing = false;
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    await settle();
+    assert.equal(mounted.container.querySelector('[data-auto-recovery]'), null);
+    assert.ok(entryTitled(mounted.container, "Stable single_file_image"));
   } finally {
     await mounted.unmount();
   }

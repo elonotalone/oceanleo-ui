@@ -91,11 +91,12 @@ for (const pane of ["cloud", "acp"]) {
       await changed();
       assert.equal(view.composer(pane), composer);
       assert.ok(view.host.querySelector("[data-share-entry]"));
-      assert.ok(view.host.querySelector('[data-task-access-status="unstable"]'));
+      assert.ok(view.host.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+      assert.equal(view.host.querySelector('[data-auto-recovery] button'), null);
       assert.match(view.host.querySelector(`[data-agent-stream="${pane}"]`).textContent, pane === "acp" ? /Access regression answer/ : /同比增长 12%/);
       client.getAccess = async () => ownerAccess();
       await changed();
-      assert.equal(view.host.querySelector('[data-task-access-status="unstable"]'), null);
+      assert.equal(view.host.querySelector('[data-auto-recovery]'), null);
     } finally { await view.unmount(); }
   });
 }

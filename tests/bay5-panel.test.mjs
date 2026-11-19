@@ -17,7 +17,7 @@ const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).hre
 if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
 else delete require.cache[canvasEntry];
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "https://video.oceanleo.com/library" });
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "https://video.oceanleo.com/library", pretendToBeVisual: true });
 for (const [name, value] of Object.entries({
   window: dom.window,
   document: dom.window.document,
@@ -328,7 +328,7 @@ test("match: site 多出说明，含类目标签", async () => {
   await view.unmount();
 });
 
-test("空结果不写招揽文案；失败可重试", async () => {
+test("空结果不写招揽文案；失败自动恢复", async () => {
   resetRelated({ items: [], match: "none", q: "无人", site: "ppt" });
   const empty = await mount(panelEl({ active: true, request: { nonce: "n4", query: "无人", category: "ppt" } }));
   await waitFor(() => assert.ok(empty.host.querySelector("[data-bay-related-empty]")));
@@ -342,15 +342,15 @@ test("空结果不写招揽文案；失败可重试", async () => {
     return { items: [feedItem("service", "s9", "修好了")], match: "keyword", q: "修", site: "ppt" };
   });
   const view = await mount(panelEl({ active: true, request: { nonce: "n5", query: "修" } }));
-  await waitFor(() => assert.ok(view.host.querySelector("[data-bay-related-error]")));
-  assert.match(view.host.textContent, /相关服务没读出来，请稍后再试。/);
-  fail = false;
-  await act(() => {
-    view.host.querySelector("[data-bay-related-error] button").click();
-  });
-  await waitFor(() => assert.ok(view.host.querySelector("[data-bay-related-list]")));
-  assert.equal(globalThis.__bay5.relatedCalls.length, 2);
-  await view.unmount();
+  try {
+    await waitFor(() => assert.ok(view.host.querySelector('[data-bay-recovery="temporary"][aria-busy="true"]')));
+    assert.equal(view.host.querySelector('[data-bay-recovery] button'), null);
+    fail = false;
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    await waitFor(() => assert.ok(view.host.querySelector("[data-bay-related-list]")));
+    assert.equal(globalThis.__bay5.relatedCalls.length, 2);
+    assert.equal(view.host.querySelector('[data-bay-recovery]'), null);
+  } finally { await view.unmount(); }
 });
 
 test("点一条服务进详情，返回回到相关服务", async () => {

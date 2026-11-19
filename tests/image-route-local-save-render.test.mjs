@@ -225,7 +225,7 @@ test("with onLocalSave: idle slot is local-device; ack before success is never c
   });
 });
 
-test("host failure shows a real failure, keeps the edit dirty, and the retry control saves it", async () => {
+test("host failure keeps the edit dirty and automatic retry saves the same revision", async () => {
   const host = deferredHost();
   await withRoute({ onLocalSave: host.handler }, async ({ container, ctl }) => {
     await edit(ctl);
@@ -233,15 +233,14 @@ test("host failure shows a real failure, keeps the edit dirty, and the retry con
     await act(async () => host.calls[0].resolve({ ok: false, error: "宿主拒绝保存" }));
     await settle(50);
     assert.equal(slot(container).getAttribute("data-save-state"), "error");
-    assert.equal(label(container), "保存失败");
-    assert.match(slot(container).getAttribute("title"), /宿主拒绝保存/);
+    assert.equal(label(container), "保存未完成，将自动重试");
+    assert.equal(slot(container).getAttribute("title"), "保存未完成，将自动重试");
     assert.equal(ctl.snapshot().dirty, true, "failed save never cleans");
     assert.equal(ctl.marks.length, 0);
 
     await act(async () => slot(container).dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
-    const retry = document.querySelector('[data-workspace-save-action-id="retry"]');
-    assert.ok(retry, "retry menu item exists");
-    await act(async () => retry.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
+    assert.equal(document.querySelector('[data-workspace-save-action-id="retry"]'), null);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
     await settle(100);
     assert.equal(host.calls.length, 2, "retry reached the host again");
     await act(async () => host.calls[1].resolve({ ok: true }));
@@ -314,33 +313,36 @@ test("website path: without onLocalSave the editor is NOT told to import locally
   });
 });
 
-test("a failed source load keeps the stage mounted under the failure panel, and 重新载入 reaches the editor", async () => {
+test("a failed source load keeps the stage mounted while automatic recovery reaches the editor", async () => {
   await withRoute({ onLocalSave: async () => ({ ok: true }) }, async ({ container, ctl, root }) => {
     assert.ok(container.querySelector("[data-fake-stage]"));
-    assert.equal(container.querySelector("[data-editor-source-failure]"), null);
+    assert.equal(container.querySelector("[data-editor-source-recovery]"), null);
     ctl.failed = true;
     await act(async () => ctl.rerender());
-    const panel = container.querySelector("[data-editor-source-failure]");
+    const panel = container.querySelector("[data-editor-source-recovery]");
     assert.ok(panel, "failure is shown");
-    assert.match(panel.textContent, /这份矢量图无法解析为可编辑的 SVG/);
+    assert.match(panel.textContent, /正在打开这份素材/);
+    assert.equal(panel.getAttribute("aria-busy"), "true");
+    assert.doesNotMatch(panel.textContent, /SVG|无法解析/);
     assert.ok(container.querySelector("[data-fake-stage]"), "the canvas stage is still mounted so Fabric can be re-initialised");
     assert.match(panel.className, /absolute inset-0/, "the panel overlays the stage (variant overlay)");
     assert.equal(slot(container).getAttribute("data-save-state"), "saving", "no blank overwrite and no success while the source failed");
-    const reload = [...panel.querySelectorAll("button")].find((b) => b.textContent === "重新载入");
-    await act(async () => reload.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
+    assert.equal(panel.querySelector("button"), null);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
     assert.equal(ctl.reloads, 1);
-    assert.equal(container.querySelector("[data-editor-source-failure]"), null);
+    assert.equal(container.querySelector("[data-editor-source-recovery]"), null);
     assert.ok(container.querySelector("[data-fake-stage]"));
   });
 });
 
-test("scene diagnostic is shown when the source error is empty; failed source never feeds collaboration", async () => {
+test("an empty source error keeps a loading recovery surface; failed source never feeds collaboration", async () => {
   await withRoute({}, async ({ container, ctl }) => {
     ctl.failed = true;
     ctl.sourceError = "";
     ctl.diagnostic = { code: "invalid-scene", message: "图层依赖无法读取" };
     await act(async () => ctl.rerender());
-    assert.match(container.querySelector("[data-editor-source-failure]").textContent, /图层依赖无法读取/);
+    assert.ok(container.querySelector('[data-editor-source-recovery][aria-busy="true"]'));
+    assert.doesNotMatch(container.textContent, /图层依赖无法读取/);
     assert.equal(ctl.collabInput.local, null);
   });
 });

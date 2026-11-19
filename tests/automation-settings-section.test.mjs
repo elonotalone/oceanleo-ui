@@ -428,8 +428,11 @@ test("栏目：三块独立、空态、https 外链、开关失败回滚、列�
   });
   const split = await renderSection();
   try {
-    assert.ok(split.host.querySelector("[data-automation-block=delivery]").textContent.includes("网络失败"));
-    assert.ok(split.host.querySelector("[data-automation-block=sites]").textContent.includes("网络失败"));
+    for (const block of ["delivery", "sites"]) {
+      const section = split.host.querySelector(`[data-automation-block=${block}]`);
+      assert.ok(section.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+      assert.doesNotMatch(section.textContent, /网络失败|重试/);
+    }
     assert.ok(split.host.querySelector("[data-automation-grant]"));
     const revoke = [...split.host.querySelectorAll("button")].find((node) => node.textContent === "撤销");
     await split.click(revoke);

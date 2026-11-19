@@ -945,7 +945,7 @@ test("thumbnail lifecycle reports loading, real-media success, failure and refre
     await act(async () =>
       firstImage.dispatchEvent(new window.Event("error", { bubbles: true })),
     );
-    assert.equal(globalThis.__coverResourceFailures, 0);
+    assert.equal(globalThis.__coverResourceFailures, 1, "image errors immediately invalidate the failed rendition so recovery can refresh it");
     assert.equal(container.querySelector("img"), firstImage, "transient error retains the pending image");
     assert.equal(container.querySelector('[role="alert"]'), null);
     assert.equal(container.querySelector('[data-cover-state]').getAttribute('data-cover-state'), 'loading');

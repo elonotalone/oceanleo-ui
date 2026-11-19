@@ -85,18 +85,21 @@ for (const [name, code, status, message] of [
   ["preview not generated", "preview_unavailable", 503, /预览还没生成/],
   ["source missing", "missing-source", 409, /源码缺失/],
   ["permission denied", "unauthorized", 403, /没有权限/],
-]) test(`website preview distinguishes ${name} and retry resolves a real page`, async () => {
+]) test(`website preview distinguishes ${name}, automatically recovering only temporary failures`, async () => {
   const original = globalThis.fetch; let attempts = 0;
   globalThis.fetch = async () => ++attempts === 1 ? json({ detail: { code } }, status) : json(ready());
   try {
     await mounted(fixture().item, async host => {
-      assert.match(host.querySelector('[role="status"]').textContent, message);
+      const terminal = code === "missing-source" || status === 403;
+      assert.match(host.querySelector('[role="status"]').textContent, terminal ? message : /正在打开网站页面/);
       assert.equal(host.querySelector("iframe"), null);
+      assert.equal(host.querySelector("button"), null);
       assert.doesNotMatch(host.textContent, /只存了一张封面图/);
-      await act(async () => host.querySelector("button").click());
-      assert.equal(host.querySelector("iframe").getAttribute("src"), previewUrl);
+      await act(async () => window.dispatchEvent(new window.Event("online")));
+      if (terminal) assert.equal(host.querySelector("iframe"), null);
+      else assert.equal(host.querySelector("iframe").getAttribute("src"), previewUrl);
     });
-    assert.equal(attempts, 2);
+    assert.equal(attempts, code === "missing-source" || status === 403 ? 1 : 2);
   } finally { globalThis.fetch = original; }
 });
 
@@ -148,14 +151,14 @@ test("website preview shows startup stages and polls until the executor is ready
   try {
     await mounted(fixture().item, async (host) => {
       assert.match(host.querySelector('[role="status"]').textContent, /安装网站依赖/);
-      await act(async () => new Promise((resolve) => setTimeout(resolve, 650)));
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 1100)));
       assert.equal(host.querySelector("iframe").getAttribute("src"), previewUrl);
       assert.equal(calls, 2);
     });
   } finally { globalThis.fetch = original; }
 });
 
-test("website preview renders a non-retryable failure reason and retries on demand", async () => {
+test("website preview recovers a transient startup failure without a retry control", async () => {
   const original = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async () => {
@@ -170,9 +173,10 @@ test("website preview renders a non-retryable failure reason and retries on dema
   };
   try {
     await mounted(fixture().item, async (host) => {
-      assert.match(host.querySelector('[role="status"]').textContent, /启动失败/);
+      assert.match(host.querySelector('[role="status"]').textContent, /正在打开网站页面/);
       assert.equal(host.querySelector("iframe"), null);
-      await act(async () => host.querySelector("button").click());
+      assert.equal(host.querySelector("button"), null);
+      await act(async () => window.dispatchEvent(new window.Event("online")));
       assert.equal(host.querySelector("iframe").getAttribute("src"), previewUrl);
       assert.equal(calls, 2);
     });

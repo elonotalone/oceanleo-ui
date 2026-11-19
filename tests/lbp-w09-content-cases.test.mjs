@@ -36,7 +36,7 @@ const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).hre
 if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
 else delete require.cache[canvasEntry];
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "https://oceanleo.com/leochat?im=cases" });
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "https://oceanleo.com/leochat?im=cases", pretendToBeVisual: true });
 for (const [name, value] of Object.entries({
   window: dom.window,
   document: dom.window.document,
@@ -700,22 +700,23 @@ test("登录状态事件：INITIAL_SESSION / TOKEN_REFRESHED 不重取；SIGNED_
   await view.unmount();
 });
 
-test("取不到（5xx / 断网）：写「加载失败」带重试；重试成功列表出来", async () => {
+test("取不到（5xx / 断网）保留加载态，自动恢复后显示列表", async () => {
   install();
   globalThis.__casesAuthed = () => ({ ok: false, status: 503, error: "暂时无法读取" });
   const view = await mount();
-  assert.ok(view.q("[data-cases-error]"));
-  assert.match(view.q("[data-cases-error]").textContent, /加载失败/);
-  assert.doesNotMatch(view.q("[data-cases-error]").textContent, /503|暂时无法读取/);
+  assert.ok(view.q('[data-auto-recovery="temporary"][aria-busy="true"]'));
+  assert.equal(view.q("[data-auto-recovery] button"), null);
+  assert.doesNotMatch(view.host.textContent, /503|暂时无法读取/);
   install();
-  await view.click(view.q('[data-action="retry"]'));
+  await act(async () => window.dispatchEvent(new window.Event("online")));
   assert.equal(view.all("[data-case-id]").length, 4);
   assert.equal(view.q("[data-cases-error]"), null);
 
   globalThis.__casesAuthed = () => ({ ok: false, status: 0, error: "网络错误" });
   await view.click(view.q('[data-action="refresh"]'));
   // 已经有列表时手动刷新失败：落到错误页，不是白屏
-  assert.ok(view.q("[data-cases-error]") || view.all("[data-case-id]").length === 4);
+  assert.ok(view.q('[data-auto-recovery="temporary"][aria-busy="true"]'));
+  assert.equal(view.q("[data-auto-recovery] button"), null);
   await view.unmount();
 });
 

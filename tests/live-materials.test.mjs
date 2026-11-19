@@ -155,8 +155,8 @@ test('search failure is recoverable and partial sources are visible',async()=>{
   reset();let fail=true;
   request=async()=>{if(fail)throw new Error('network');return {items:[asset()],partial:true};};
   const view=await mount(h(LiveMaterialSearch,{types:['image']}));
-  try {assert.match(view.host.textContent,/在线素材未能加载/);fail=false;await click(button(view.host,'重试'));
-    assert.ok(view.host.querySelector('[data-live-material]'));assert.match(view.host.textContent,/部分来源暂不可用/);}
+  try {assert.match(view.host.textContent,/图片搜索正在加载/);assert.equal(button(view.host,'重试'),undefined);fail=false;await act(async()=>window.dispatchEvent(new window.Event('online')));
+    assert.ok(view.host.querySelector('[data-live-material]'));assert.match(view.host.textContent,/内容暂时无法加载，正在自动恢复/);assert.ok(view.host.querySelector('[data-live-material]'));assert.equal(button(view.host,'重试'),undefined);}
   finally {await view.close();}
 });
 

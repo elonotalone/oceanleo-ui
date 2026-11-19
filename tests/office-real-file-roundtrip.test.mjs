@@ -264,7 +264,8 @@ test("preview and native Office routes consume only refreshable source/full inpu
         /重新载入表格/,
       );
     } else {
-      assert.match(contents, /重新获取文件后重试/, route);
+      assert.match(contents, /EditorSourceFailurePanel/, route);
+      assert.match(contents, /onReload=/, route);
     }
   }
 });

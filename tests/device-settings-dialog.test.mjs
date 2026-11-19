@@ -307,7 +307,7 @@ test("offline Settings revoke merges only confirmed partial fields and keeps own
   } finally { view.cleanup(); }
 });
 
-test("a missing Settings policy shows retry without inventing an Agent switch state", async () => {
+test("a missing Settings policy recovers automatically without inventing an Agent switch state", async () => {
   const client = fakeClient();
   const read = client.getSettings;
   let unavailable = true;
@@ -317,9 +317,10 @@ test("a missing Settings policy shows retry without inventing an Agent switch st
   try {
     assert.equal(view.agentSwitch(), null);
     assert.equal(view.button("撤销 Agent 控制"), undefined);
-    assert.ok(document.querySelector('[role="alert"]'));
+    assert.ok(document.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(view.button("重试"), undefined);
     unavailable = false;
-    await view.click(view.button("重试"));
+    await act(async () => window.dispatchEvent(new window.Event("online")));
     assert.equal(view.agentSwitch().disabled, false);
     await view.click(view.agentSwitch());
     assert.deepEqual(client.calls.operations, [["mac-target", {kind: "remote_access.update", agent_control_allowed: false}]]);
@@ -340,7 +341,7 @@ test("Agent OFF cannot be switched ON while offline, signed out or unknown", asy
   }
 });
 
-test("failed offline OFF keeps the switch ON and reports a retryable error", async () => {
+test("failed offline OFF keeps the switch ON while settings are read again automatically", async () => {
   const client = fakeClient();
   client.settings.remote_access.agent_control_allowed = true;
   client.startOperation = async () => ({ok: false, error: "network_error"});
@@ -349,8 +350,8 @@ test("failed offline OFF keeps the switch ON and reports a retryable error", asy
     await view.click(view.agentSwitch());
     assert.equal(view.agentSwitch().getAttribute("aria-checked"), "true");
     assert.equal(view.agentSwitch().disabled, false);
-    assert.ok(document.querySelector('[role="alert"]'));
-    assert.ok(view.button("重试"));
+    assert.ok(document.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(view.button("重试"), undefined);
     assert.equal(view.button("撤销 Agent 控制"), undefined);
   } finally { view.cleanup(); }
 });
