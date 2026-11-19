@@ -143,7 +143,10 @@ test("页头动作胶囊与四列货架写在同一份 chrome", () => {
   assert.match(bay, /COLLECTION_ACTION_BTN_PRIMARY/);
   const assets = source("../src/shell/bay/asset/BayAssetLibrary.tsx");
   assert.doesNotMatch(assets, /lg:grid-cols-6/);
-  assert.match(assets, /PREVIEW_PER_ROW = 4/);
+  assert.match(assets, /<ReadyMaterialCatalog/);
+  const catalog = source("../src/shell/bay/shell/ReadyMaterialCatalog.tsx");
+  assert.match(catalog, /const Items = view === "list" \? CollectionItemList : CollectionCardGrid/);
+  assert.match(catalog, /<Items/);
 });
 
 test("下拉菜单搜索与页头同一只白框；箭头打开朝上", () => {
