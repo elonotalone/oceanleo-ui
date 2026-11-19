@@ -20,6 +20,7 @@
 //   左栏 CSS 隐藏但保持挂载，不写 URL；编辑器认领顶栏后在同一行提供这些控件。
 // ============================================================================
 
+import { BackButton } from "../ui/BackButton";
 import {
   createContext,
   useCallback,
@@ -841,18 +842,14 @@ export function SplitWorkspace({
   const presentedLeftPanel = activeDetail || activeLibraryPanel;
   const detailLabel = presentedLeftPanel ? (
     <div className="flex min-w-0 items-center gap-2">
-      <button
-        type="button"
-        onClick={() => {
-          if (activeDetail) clearDetail(activeDetail.ownerId);
-          else closeLibraryPanel();
-        }}
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
-        aria-label={tt(leftHidden ? "收起面板" : "返回操作台")}
-        title={tt(leftHidden ? "收起面板" : "返回操作台")}
-      >
-        {leftHidden ? "×" : "←"}
-      </button>
+      {leftHidden ? <button type="button" onClick={() => {
+        if (activeDetail) clearDetail(activeDetail.ownerId);
+        else closeLibraryPanel();
+      }} className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
+        aria-label={tt("收起面板")} title={tt("收起面板")}>×</button> : <BackButton onClick={() => {
+        if (activeDetail) clearDetail(activeDetail.ownerId);
+        else closeLibraryPanel();
+      }} label={tt("返回操作台")} />}
       <span className="truncate text-[12px] font-semibold text-stone-700">
         {presentedLeftPanel.label}
       </span>

@@ -30,6 +30,7 @@
 // 成功与失败一律内联渲染。
 // ============================================================================
 
+import { BackButton } from "../ui/BackButton";
 import {
   useCallback,
   useEffect,
@@ -966,6 +967,7 @@ function EmailForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" data-auth-form="email" data-auth-email-step="password">
+      <BackButton data-auth-step-back label={tt("返回登录")} onClick={goIdentify} />
       <p className="text-center text-[14px] text-neutral-500">{email}</p>
       <input
         id="oceanleo-auth-password"
@@ -1047,6 +1049,7 @@ function ForgotPasswordForm({ tt, onBack }: { tt: UITranslate; onBack: () => voi
   if (sent) {
     return (
       <div data-auth-form="forgot-sent" className="space-y-3 py-2 text-center">
+        <BackButton data-auth-step-back label={tt("返回登录")} onClick={onBack} />
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-2xl">
           ✉️
         </div>
@@ -1070,6 +1073,7 @@ function ForgotPasswordForm({ tt, onBack }: { tt: UITranslate; onBack: () => voi
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" data-auth-form="forgot">
+      <BackButton data-auth-step-back label={tt("返回登录")} onClick={onBack} />
       <div>
         <p className="mb-3 text-[13px] leading-relaxed text-neutral-500">
           {tt("输入你注册时用的邮箱，我们发一条重置链接过去。")}

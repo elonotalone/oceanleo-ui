@@ -2,6 +2,7 @@
 
 import { AutoRecovery } from "./AutoRecovery";
 
+import { BackButton } from "../ui/BackButton";
 import { getUserId, AUTH_STATE_EVENT } from "../lib/auth/client";
 
 import { isComputerWorkspaceTask, taskExecutionTarget } from "../lib/execution-target";
@@ -3071,17 +3072,7 @@ function AgentChatInner({
       className="flex w-full min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
     >
       {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          title={backTitle}
-          aria-label={backTitle}
-          className={sidebarHost ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)]" : HEADER_ICON_BUTTON_CLASS}
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+        <BackButton onClick={onBack} label={backTitle} />
       )}
       {summaryNode}
       {resolvedApp && (

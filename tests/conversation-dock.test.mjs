@@ -120,7 +120,9 @@ test("computer → Codex → 对话 emits a native chat target; 命令行 emits 
     assert.ok(level, "the computer's own list opens inside the same popover");
     assert.deepEqual([...level.querySelectorAll("[data-dock-program-row]")].map((n) => n.getAttribute("data-dock-program-row")),
       ["oceanleo", "codex", "claude", "cursor", "hermes", "terminal"]);
-    assert.match(view.q("[data-dock-back]").textContent, /elon/);
+    assert.match(view.q("[data-dock-back]").parentElement.textContent, /elon/);
+    assert.equal(view.q("[data-dock-back]").textContent, "", "parent name stays beside the icon button");
+    assert.ok(view.q("[data-dock-back][data-back-button]"));
     await view.click(view.q('[data-dock-program-row="codex"]'));
     assert.ok(view.q('[data-dock-level="program"][data-dock-program="codex"]'));
     assert.deepEqual([...view.host.querySelectorAll("[data-dock-view]")].map((n) => n.getAttribute("data-dock-view")), ["chat", "cli"], "对话 first");
@@ -166,7 +168,7 @@ test("program rows show plain status only when not ready; back rows walk up one 
     assert.match(text("claude"), /未安装/);
     assert.match(text("cursor"), /需要登录/);
     await view.click(view.q('[data-dock-program-row="hermes"]'));
-    assert.match(view.q("[data-dock-back]").textContent, /Hermes/);
+    assert.match(view.q("[data-dock-back]").parentElement.textContent, /Hermes/);
     await view.click(view.q("[data-dock-back]"));
     assert.ok(view.q('[data-dock-level="computer"]'));
     await view.click(view.q("[data-dock-back]"));

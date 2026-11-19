@@ -33,7 +33,7 @@ async function mount(component, props) {
   return { host, async close() { await act(async () => root.unmount()); host.remove(); } };
 }
 async function click(node) { assert.ok(node, "button exists"); await act(async () => { node.click(); await new Promise(resolve => setTimeout(resolve, 0)); }); }
-const button = text => [...document.querySelectorAll("[data-access-popover] button")].find(node => node.textContent === text) ?? [...document.querySelectorAll("button:not([data-share-entry])")].find(node => node.textContent === text);
+const button = text => [...document.querySelectorAll("[data-access-popover] button")].find(node => (node.textContent === text || node.getAttribute("aria-label") === text)) ?? [...document.querySelectorAll("button:not([data-share-entry])")].find(node => (node.textContent === text || node.getAttribute("aria-label") === text));
 const shareState = () => ({ active: false, selectable: [{ id: 1 }], selectedCount: 1, selectedIds: new Set([1]), allSelected: true, busy: null, notice: null,
   enter() {}, exit() {}, toggleAll() {}, snapshotLink: null, async loadSnapshot() {}, async setSnapshotEnabled() {}, copyText() {}, generateImage() {}, generateDocument() {} });
 
@@ -232,7 +232,7 @@ test("Share and task actions use identical container, row, icon and separator cl
     assert.equal(memberPage.className, expected.container);
     assert.equal(memberPage.id, panel.id, "members open inside the same popover");
     for (const node of [memberPage, ...memberPage.querySelectorAll('[class]')]) {
-      assert.doesNotMatch(node.className, /var\(--(?:background|foreground|border)\)/);
+      assert.doesNotMatch(node.getAttribute("class") || "", /var\(--(?:background|foreground|border)\)/);
     }
   } finally { await view.close(); }
 });

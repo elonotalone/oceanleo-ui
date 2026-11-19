@@ -1,5 +1,7 @@
 "use client";
 
+import { useUI } from "../i18n/ui/useUI";
+import { BackButton } from "../ui/BackButton";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AppSession } from "../lib/app-session";
 import { AgentChat } from "./AgentChat";
@@ -57,19 +59,14 @@ export function LegacyHistoryPlayback({
   accent: string;
   onBack: () => void;
 }) {
+  const tt = useUI();
   return (
     <div
       className="flex min-h-0 flex-col overflow-hidden bg-white"
       style={{ height: "calc(100dvh - var(--leo-safe-top, 0px) - var(--leo-safe-bottom, 0px))" }}
     >
       <div className="flex shrink-0 justify-end border-b border-stone-100 px-4 py-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="shrink-0 rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
-        >
-          返回我的任务
-        </button>
+        <BackButton onClick={onBack} label={tt("返回我的任务")} />
       </div>
       <div className="min-h-0 flex-1">
         {taskId === undefined ? (

@@ -2,6 +2,7 @@
 
 // 工作回放播放器（全屏播放层与公开分享页共用）：顶部标题与「谁看过」；中间是当前来源的画面；
 // 右侧是 AI 输入/输出气泡流；底部是时间轴。不执行任何用户内容：画面只用 React 画快照（work-chat 契约 §8.2 / §10）。
+import { BackButton } from "../../../ui/BackButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { Markdown, TypewriterMarkdown } from "../../Markdown";
@@ -537,9 +538,7 @@ export function WorkReplayPlayer(props: WorkReplayPlayerProps) {
               </button>
             ) : null}
             {detail ? (
-              <button type="button" data-replay-collapse onClick={() => setDetail(null)} className="rounded-md border border-stone-300 px-2 py-0.5 hover:bg-white">
-                {tt("回到主线")}
-              </button>
+              <BackButton data-replay-collapse onClick={() => setDetail(null)} label={tt("回到主线")} />
             ) : null}
             {data.viewer.is_owner ? (
               <label className="flex items-center gap-1">

@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../ui/BackButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CloudComputerError,
@@ -281,13 +282,7 @@ export function CreateComputerDialog({
               {tt("正在开通，几分钟后出现在我的设备里")}
             </p>
             <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white"
-              >
-                {tt("返回")}
-              </button>
+              <BackButton onClick={onClose} label={tt("返回")} />
             </div>
           </div>
         ) : step === "cn-account" ? (
@@ -353,17 +348,11 @@ export function CreateComputerDialog({
               <p className="text-[12px] text-rose-600">{tt(submitError)}</p>
             )}
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
+              <BackButton onClick={() => {
                   setStep("catalog");
                   setInsufficient(false);
                   setSubmitError(null);
-                }}
-                className="rounded-lg border border-neutral-200 px-3.5 py-1.5 text-[13px]"
-              >
-                {tt("返回")}
-              </button>
+                }} label={tt("返回")} />
               {knownShort || insufficient ? (
                 <a
                   href={COST_HREF}

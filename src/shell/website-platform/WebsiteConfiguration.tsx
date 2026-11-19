@@ -1,6 +1,7 @@
 "use client";
 
 import { AutoRecovery } from "../AutoRecovery";
+import { BackButton } from "../../ui/BackButton";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   websiteConnectorsApi, type WebsiteConnectorChange, type WebsiteConnectorDetails,
@@ -392,7 +393,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
   }
 
   if (sampleProject) return <section className="flex h-full min-h-0 flex-col" data-testid="website-tier-sample-work">
-    <button type="button" className="shrink-0 border-b p-2 text-left text-xs underline" onClick={() => setSampleProject("")}>{tt("返回原作品配置")}</button>
+    <BackButton onClick={() => setSampleProject("")} label={tt("返回原作品配置")} />
     <div className="min-h-0 flex-1"><Suspense fallback={<p role="status">{tt("加载中…")}</p>}><SampleWorkbench workId={"cloud:" + sampleProject} /></Suspense></div>
   </section>;
   if (notWired) return <section className="h-full overflow-auto p-3">

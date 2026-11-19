@@ -10,6 +10,7 @@
 // （`composerAttachmentFromLibraryItem`），发送路径不需要任何改动。
 // ============================================================================
 
+import { BackButton } from "../ui/BackButton";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { ComposerAttachment } from "./LeoComposer";
@@ -133,16 +134,7 @@ export function ComposerLibraryPicker({
   return (
     <div className="flex min-h-0 min-w-0 flex-col" data-composer-library-picker="" data-composer-file-source={mode}>
       <div className="flex shrink-0 items-center gap-1.5 px-2 pb-1.5">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label={tt("返回")}
-          className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+        <BackButton onClick={onBack} label={tt("返回")} />
         {mode === "recent" ? (
           <span className="px-1 text-[13px] text-neutral-700">{tt("最近文件")}</span>
         ) : (

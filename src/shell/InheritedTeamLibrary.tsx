@@ -1,6 +1,7 @@
 "use client";
 
 import { AutoRecovery } from "./AutoRecovery";
+import { BackButton } from "../ui/BackButton";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { listInheritedOrgAssets, orgApiCode, orgErrorCopy, type InheritedOrgAsset } from "../lib/org-api";
@@ -76,7 +77,7 @@ export function InheritedTeamLibrary({ ownerUserId, query = "" }: { ownerUserId:
   return <section data-inherited-team-library="" className="mt-3 rounded-xl border border-stone-200 bg-white p-3 text-[12px] text-neutral-700">
     <h2 className="mb-2 font-medium text-neutral-900">{tt("团队库")}</h2>
     {currentPreview ? <>
-      <button type="button" className={COLLECTION_ACTION_BTN_GHOST} onClick={() => { setPreview(null); setOpenId(""); }}>{tt("返回")}</button>
+      <BackButton onClick={() => { setPreview(null); setOpenId(""); }} label={tt("返回")} />
       <div className="overflow-auto" style={{ height: 384 }}><Suspense fallback={null}><Viewer item={currentPreview} accent="#78716c" /></Suspense></div>
     </> : <ul className="max-h-64 divide-y divide-stone-200 overflow-auto">{shown.map((row) => {
       const href = inheritedAssetHref(row.assetRef);

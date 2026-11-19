@@ -24,14 +24,6 @@ function Svg({
   );
 }
 
-export function IconBack({ className }: IconProps) {
-  return (
-    <Svg className={className}>
-      <path d="M10.5 3.5 5.5 8l5 4.5" />
-    </Svg>
-  );
-}
-
 export function IconChat({ className }: IconProps) {
   return (
     <Svg className={className}>

@@ -17,6 +17,7 @@
 // 不弹窗、不抛错。
 // ============================================================================
 
+import { BackButton } from "../../ui/BackButton";
 import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { AppFrame } from "./AppFrame";
@@ -181,14 +182,7 @@ export function ComposerAppsBar({
           data-composer-app-panel={active.tool.name}
         >
           <div className="mb-1.5 flex items-center justify-between px-1">
-            <button
-              type="button"
-              onClick={() => setActive(null)}
-              aria-label={tt("返回应用列表")}
-              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
-            >
-              ‹ {tt("应用")}
-            </button>
+            <div className="flex items-center gap-2"><BackButton onClick={() => setActive(null)} label={tt("返回应用列表")} /><span>{tt("应用")}</span></div>
             <span className="min-w-0 flex-1 truncate px-2 text-[12px] font-medium text-neutral-700">
               {active.tool.title || active.tool.name}
             </span>

@@ -590,7 +590,8 @@ test("narrow viewport contract never wraps chrome or sacrifices essential contro
   );
 
   assert.match(operatorSource, /data-workbench-app-title[\s\S]*?\btruncate\b/);
-  assert.doesNotMatch(operatorSource, /\btopBar\b|TABS_BAR_HEIGHT|✦ agent|<BackButton/);
+  assert.match(operatorSource, /<BackButton onClick=\{backToDirectory\}/, "directory back uses the shared primitive in the existing header");
+  assert.doesNotMatch(operatorSource, /\btopBar\b|TABS_BAR_HEIGHT|✦ agent/);
   assert.match(
     splitSource,
     /data-workbench-toolbar[\s\S]*?flex-nowrap[\s\S]*?overflow-hidden/,

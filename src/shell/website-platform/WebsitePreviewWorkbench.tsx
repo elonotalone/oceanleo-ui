@@ -1,5 +1,6 @@
 "use client";
 import { AutoRecovery } from "../AutoRecovery";
+import { BackButton } from "../../ui/BackButton";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { notifyHistoryChanged } from "../../lib/history-events";
@@ -282,7 +283,7 @@ export function WebsitePreviewWorkbench({ projectId, runtimeApi = websiteRuntime
         onClick={() => setPicking(value => !value)}>{tt(picking ? "取消指位置" : "指位置给 agent")}</button>}
       </>}
       {!!projectId && !readOnly && <><button type="button" onClick={() => setLogsOpen(value => !value)}>{tt("运行日志")}</button>
-        <button type="button" onClick={() => { setSourceOpen(value => !value); setPicking(false); }}>{tt(sourceOpen ? "返回预览" : "查看源码")}</button></>}
+        <>{sourceOpen ? <BackButton label={tt("返回预览")} onClick={() => { setSourceOpen(false); setPicking(false); }} /> : <button type="button" onClick={() => { setSourceOpen(true); setPicking(false); }}>{tt("查看源码")}</button>}</></>}
       {server && source?.type === "url" && !readOnly && <>
         <button type="button" disabled={pending || serverPreview?.status === "starting"} onClick={startServer}>{tt("打开预览")}</button>
         <button type="button" disabled={pending || (!running && serverPreview?.status !== "starting")} onClick={() => void run(async () => { await worksApi.stop(work.id); setServerPreview(null); })}>{tt("停止")}</button>

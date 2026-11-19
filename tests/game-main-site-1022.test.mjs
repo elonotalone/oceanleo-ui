@@ -227,7 +227,7 @@ test("有宿主：先看封面，点开始游玩后宿主挂在原地，拿到�
     assert.equal(host.getAttribute("data-artifact"), "art-play");
     assert.equal(host.getAttribute("data-revision"), "rev-7");
     assert.equal(lastRender().source, undefined, "详情页播放已保存版，不带草稿");
-    assert.ok(byText(mounted.container, "button", "返回"));
+    assert.ok(mounted.container.querySelector('button[data-back-button][aria-label="返回"]'));
     assert.ok(byText(mounted.container, "button", "重新开始"));
     assert.ok(byText(mounted.container, "button", "全屏"));
   } finally {
@@ -257,7 +257,7 @@ test("重新开始让 reloadKey 加一；返回回到封面；全屏被拒时给
       q(mounted.container, "[role=alert]").textContent,
       /无法进入全屏/,
     );
-    await click(byText(mounted.container, "button", "返回"));
+    await click(mounted.container.querySelector('button[data-back-button][aria-label="返回"]'));
     assert.equal(q(mounted.container, "[data-testid=fake-host]"), null);
     assert.ok(byText(mounted.container, "button", "开始游玩"));
   } finally {

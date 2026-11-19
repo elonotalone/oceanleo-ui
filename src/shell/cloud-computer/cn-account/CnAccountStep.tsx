@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../../ui/BackButton";
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { PURCHASE_COPY } from "../../../i18n/ui/messages/purchase-copy";
@@ -148,7 +149,7 @@ export function CnAccountStep({
       </div>
       {error ? <p className="text-[12px] text-rose-600">{tt(error)}</p> : null}
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onBack} className="rounded-lg border border-neutral-200 px-3.5 py-1.5 text-[13px]">{tt("返回")}</button>
+        <BackButton onClick={onBack} label={tt("返回")} />
         <button type="button" disabled={busy || !roleArn.trim() || !externalId.trim()} onClick={() => void verify()} data-oceanleo-cc-cn-account-verify className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white disabled:opacity-50">{busy ? tt("验证中…") : tt(PURCHASE_COPY.cnSaveAndVerify)}</button>
       </div>
     </div>

@@ -18,6 +18,7 @@
 //   - 有参数但换不到会话 → 链接过期或已经用过了，让他回登录页再要一条。
 // ============================================================================
 
+import { BackButton } from "../ui/BackButton";
 import { useEffect, useState, type FormEvent } from "react";
 import { accessToken, updatePassword } from "../lib/auth/client";
 import { mapCaptchaError } from "../lib/auth/captcha";
@@ -117,6 +118,10 @@ export function PasswordResetPage({
   function Shell({ children }: { children: React.ReactNode }) {
     return (
       <div className="px-8 py-6" data-reset-page={phase}>
+        <BackButton data-reset-step-back label={tt("返回登录")} onClick={() => {
+          if (onBackToSignIn) onBackToSignIn();
+          else if (typeof window !== "undefined") window.location.href = "/";
+        }} />
         <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
           {tt("设置新密码")}
         </h1>

@@ -81,8 +81,8 @@ test("R06 点名的通用页、数据库卡片、表格输入和开关恢复紧�
     onBack() {},
   }, { "../i18n/ui/useUI": uiStub });
   const headerClass = classes(header, "button[aria-label='返回']");
-  assert.match(headerClass, /(?:^| )h-9(?: |$)/);
-  assert.match(headerClass, /(?:^| )w-9(?: |$)/);
+  assert.match(headerClass, /(?:^| )h-8(?: |$)/);
+  assert.match(headerClass, /(?:^| )w-8(?: |$)/);
   assert.doesNotMatch(headerClass, /(?:^| )(?:h-11|w-11)(?: |$)/);
 
   const general = await staticRender("src/pages/GeneralPage.tsx", "GeneralSettingsBody", {

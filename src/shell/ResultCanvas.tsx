@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../ui/BackButton";
 import {
   Component,
   lazy,
@@ -200,6 +201,11 @@ export interface ResultCanvasProps {
   ) => ReactNode;
 }
 
+function CanvasErrorBackButton({ onClick }: { onClick: () => void }) {
+  const tt = useUI();
+  return <BackButton onClick={onClick} label={tt("返回")} />;
+}
+
 class PluginModuleErrorBoundary extends Component<
   { label: string; onClose: () => void; children: ReactNode },
   { error: Error | null }
@@ -222,13 +228,7 @@ class PluginModuleErrorBoundary extends Component<
         title={`「${this.props.label}」暂时无法显示`}
         description={this.state.error.message || "模块渲染时发生错误。"}
         action={
-          <button
-            type="button"
-            onClick={this.props.onClose}
-            className="rounded-full border border-stone-200 px-3 py-1.5 text-[12px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
-          >
-            返回
-          </button>
+          <CanvasErrorBackButton onClick={this.props.onClose} />
         }
       />
     );
@@ -1089,9 +1089,9 @@ export function ResultCanvas({
       </div>
       {openingEntry && <div className="absolute inset-0 z-10 bg-[var(--card,#fff)]" data-workspace-entry-open={entryRequest.status}>
         {entryRequest.status === "loading"
-          ? <WorkspacePaneSkeleton action={<button type="button" onClick={() => { entryRequest.dismiss(); returnToTask(); }}>{tt("返回")}</button>} />
+          ? <WorkspacePaneSkeleton action={<BackButton onClick={() => { entryRequest.dismiss(); returnToTask(); }} label={tt("返回")} />} />
           : <CanvasEmpty title="无法打开这份素材" description={entryRequest.reason}
-              action={<button type="button" onClick={() => { entryRequest.dismiss(); returnToTask(); }}>{tt("返回")}</button>} />}
+              action={<BackButton onClick={() => { entryRequest.dismiss(); returnToTask(); }} label={tt("返回")} />} />}
       </div>}
       {foregroundContent && (
         <div

@@ -121,7 +121,7 @@ async function press(key) {
 
 function buttonByText(container, text) {
   const hit = [...container.querySelectorAll("button")].find(
-    (node) => node.textContent.trim() === text,
+    (node) => node.textContent.trim() === text || node.getAttribute("aria-label") === text,
   );
   assert.ok(hit, `找不到按钮「${text}」`);
   return hit;

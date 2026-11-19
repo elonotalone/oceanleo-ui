@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../../ui/BackButton";
 import { useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
@@ -15,9 +16,7 @@ export function PeoplePage({ title, onBack, children }: { title: string; onBack:
   const tt = useUI();
   return <section data-people-page className="flex min-h-0 flex-1 flex-col">
     <header className="flex shrink-0 items-center gap-3 border-b border-neutral-100 px-3 py-2">
-      <button type="button" onClick={onBack} title={tt("返回")} aria-label={tt("返回")} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)]">
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-      </button><h2 className="text-[14px] font-semibold">{title}</h2>
+      <BackButton onClick={onBack} label={tt("返回")} /><h2 className="text-[14px] font-semibold">{title}</h2>
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto p-3">{children}</div>
   </section>;

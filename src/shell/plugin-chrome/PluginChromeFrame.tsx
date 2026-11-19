@@ -8,6 +8,7 @@
 // 与 /canvas-board 是 self 的生产消费者）。D1/D7（2026-10-23）：没有主题键（明暗跟随站点）；
 // 分享 / 收藏 / 下载走与门户编辑器同一个 `···`，group === "download" 进它的下载子菜单。
 
+import { BackButton } from "../../ui/BackButton";
 import {
   createContext,
   useCallback,
@@ -524,11 +525,7 @@ export function PluginChromeFrame({
           <div className="flex min-w-0 items-center gap-2 pr-1">
             {showBack && onBack ? (
               <span data-global-row-slot="back">
-                <IconButton
-                  onClick={onBack}
-                  label={tt("返回库")}
-                  icon={<AdvancedEditorIcon name="back" className="h-4 w-4" />}
-                />
+                <BackButton onClick={onBack} label={tt("返回库")} />
               </span>
             ) : null}
             {showLibrary ? (

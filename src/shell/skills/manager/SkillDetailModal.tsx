@@ -7,6 +7,7 @@ import { AutoRecovery } from "../../AutoRecovery";
 // "View details" → left file tree / right file content (`FolderTreeViewer`).
 // Top right: share (official only: copies the public page link), download, close.
 
+import { BackButton } from "../../../ui/BackButton";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocale } from "next-intl";
 
@@ -20,7 +21,6 @@ import {
   FolderTreeViewer,
   KitIconAlert,
   KitIconCheck,
-  KitIconChevronLeft,
   KitIconDownload,
   KitIconFileText,
   KitIconPlus,
@@ -207,15 +207,10 @@ export function SkillDetailModal({ open, onClose, skill, projectId, onAdded }: S
 
   const dialogTitle: ReactNode =
     view === "files" ? (
-      <button
-        type="button"
-        onClick={() => setView("overview")}
-        data-skill-detail-back=""
-        className="-ml-1.5 inline-flex min-h-11 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[18px] font-semibold transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800"
-      >
-        <KitIconChevronLeft className="h-4 w-4" />
-        {tt("技能详情")}
-      </button>
+      <span className="inline-flex items-center gap-2 text-[18px] font-semibold">
+        <BackButton onClick={() => setView("overview")} data-skill-detail-back="" label={tt("技能详情")} />
+        <span>{tt("技能详情")}</span>
+      </span>
     ) : (
       <span className="block pr-28 text-[18px] leading-tight">{title || tt("技能详情")}</span>
     );

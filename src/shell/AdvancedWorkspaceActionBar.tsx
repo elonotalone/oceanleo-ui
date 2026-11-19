@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../ui/BackButton";
 import { useAutoRecovery } from "../lib/auto-recovery";
 
 import { WORKING_COPY_CONFLICT } from "./editor-working-copy";
@@ -203,11 +204,7 @@ export function AdvancedWorkspaceActionBar({
       <div className="flex h-full min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div data-global-row-slot="back">
           {showBack ? (
-            <IconButton
-              onClick={onBack}
-              label={tt("返回库")}
-              icon={<AdvancedEditorIcon name="back" className="h-4 w-4" />}
-            />
+            <BackButton onClick={onBack} label={tt("返回库")} />
           ) : null}
         </div>
         <div data-global-row-slot="library" className="flex items-center gap-0.5">

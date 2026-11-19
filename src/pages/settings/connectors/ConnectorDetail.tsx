@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../../ui/BackButton";
 import { useState, type ReactNode, type FormEvent } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { McpConnection, McpConnectorMeta } from "../../../lib/mcp-api";
@@ -40,9 +41,7 @@ export function ConnectorDetail({ connector, connection, busy, authorizing, onBa
 
   return (
     <article data-connector-detail={connector.id} className="min-w-0 space-y-6 pb-6" style={{ overflowWrap: "anywhere" }}>
-      <button type="button" data-connector-back onClick={onBack} className="inline-flex min-h-11 items-center gap-2 text-[13px] text-neutral-500">
-        <span aria-hidden="true">←</span>{tt("返回连接器")}
-      </button>
+      <BackButton data-connector-back onClick={onBack} label={tt("返回连接器")} />
       <ConnectSurface onSubmit={(event: FormEvent<HTMLElement>) => { event.preventDefault(); onConnect(inputs); }}>
         <header className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">

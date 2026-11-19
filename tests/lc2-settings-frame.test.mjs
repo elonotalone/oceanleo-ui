@@ -145,7 +145,11 @@ for(const [rel,name,props] of fixtures) test(`${name} uses its assigned frame an
   assert.ok(panel.querySelector('[data-message-settings-header]'),`${name}: title row`);
   // Some settings pages contain child settings cards; isolated collaborators are replaced above.
   if(!['ConversationInfoPanel','SettingsView','CallTestPanel','MessagesContentCases'].includes(name))assert.ok(hasClasses(panel,frame.CARD),`${name}: Settings CARD`);
-  assert.ok(hasClasses(panel,frame.QUIET),`${name}: Settings button`);
+  if (['BlockedList','NoticesView','NoticeDetailView'].includes(name)) {
+   const back=panel.querySelector('[data-back-button]');assert.ok(back,`${name}: Library back button`);
+   for(const value of ['h-8','w-8','rounded-lg','border'])assert.ok(back.classList.contains(value));
+   assert.equal(back.textContent,'');assert.ok(back.getAttribute('aria-label'));
+  } else assert.ok(hasClasses(panel,frame.QUIET),`${name}: Settings button`);
   assert.ok(hasClasses(panel,frame.CARD_TITLE),`${name}: Settings title`);
  } finally {await view.close();}
 });

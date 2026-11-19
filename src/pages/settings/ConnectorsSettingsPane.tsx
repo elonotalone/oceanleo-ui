@@ -5,6 +5,7 @@
 // 连接、授权等待、探活、停用和断开共用 useConnectorController。
 // 国内版的阿里云市场目录并进目录弹窗的「阿里云市场」页签。
 
+import { BackButton } from "../../ui/BackButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useUI } from "../../i18n/ui/useUI";
@@ -200,7 +201,7 @@ export function ConnectorsSettingsPane({
     </div>
   );
 
-  if (detailId && controller.registryStatus === "ready" && controller.connectionsReady && !controller.connByConnector.has(detailId) && !controller.registry.some((c) => c.id === detailId && (c.listed !== false || controller.connByConnector.has(detailId)))) return <section className="min-w-0 space-y-4"><button type="button" data-connector-back onClick={() => navigateDetail("")} className="min-h-11 text-[13px]">← {tt("返回连接器")}</button><p role="status">{tt("未找到这个连接器")}</p></section>;
+  if (detailId && controller.registryStatus === "ready" && controller.connectionsReady && !controller.connByConnector.has(detailId) && !controller.registry.some((c) => c.id === detailId && (c.listed !== false || controller.connByConnector.has(detailId)))) return <section className="min-w-0 space-y-4"><BackButton data-connector-back onClick={() => navigateDetail("")} label={tt("返回连接器")} /><p role="status">{tt("未找到这个连接器")}</p></section>;
   if (detailId && controller.selectedConnector?.id === detailId && controller.detail) return <section data-settings-connectors-pane className="min-w-0">{controller.detail}{controller.dialogs}</section>;
 
   return (

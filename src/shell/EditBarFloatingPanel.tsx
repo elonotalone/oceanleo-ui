@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../ui/BackButton";
 import {
   createContext, useContext, useCallback, useEffect, useId, useLayoutEffect, useRef, useState,
   type ReactNode, type RefObject,
@@ -203,7 +204,7 @@ export function EditBarFloatingPanel({
       style={{ position: "fixed", boxSizing: "border-box", zIndex: 2147483600, ...position, height: active.id === "materials" || active.id === "mine" ? position?.maxHeight : undefined, visibility: position ? "visible" : "hidden", display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: 16, border: "1px solid var(--awb-border,var(--border,#e7e5e4))", background: "var(--awb-popover-bg,var(--card,#fff))", color: "var(--awb-text,var(--fg,#292524))", boxShadow: "0 12px 40px #0003" }}
     >
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--awb-border,var(--border,#e7e5e4))] px-3" style={{ minHeight: 40 }}>
-        {panels.length > 1 && <button type="button" data-edit-bar-panel-back aria-label={tt("返回")} onClick={back} className="min-h-11 min-w-11 h-8 w-8 rounded-lg">‹</button>}
+        {panels.length > 1 && <BackButton data-edit-bar-panel-back onClick={back} label={tt("返回")} />}
         <h2 id={titleId} className="min-w-0 flex-1 truncate text-xs font-semibold">{active.label}</h2>
         <button type="button" aria-label={tt("关闭")} onClick={close} className="min-h-11 min-w-11 h-8 w-8 rounded-lg">×</button>
       </div>

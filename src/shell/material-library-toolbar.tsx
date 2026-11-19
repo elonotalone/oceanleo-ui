@@ -12,6 +12,7 @@ import { AutoRecovery } from "./AutoRecovery";
  * 与拆出来之前逐字相同。
  */
 
+import { BackButton } from "../ui/BackButton";
 import type { ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { ArtifactType } from "./artifact-contract";
@@ -149,13 +150,7 @@ export function MaterialShelfToolbar({
   ) : level === "primary" ? (
     seeAllControl
   ) : lockLevel ? null : (
-    <button
-      type="button"
-      onClick={() => onGoToLevel("primary")}
-      className={`${TOOLBAR_BUTTON} ${TOOLBAR_BUTTON_OFF}`}
-    >
-      ← {tt("所有素材")}
-    </button>
+    <div className="flex items-center gap-2"><BackButton onClick={() => onGoToLevel("primary")} label={tt("所有素材")} /><span>{tt("所有素材")}</span></div>
   );
 
   return (

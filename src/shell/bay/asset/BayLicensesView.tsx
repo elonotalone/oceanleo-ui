@@ -182,7 +182,7 @@ export function BayLicensesView({ onClose }: BayLicensesViewProps): ReactElement
             type="button"
             onClick={onClose}
             className="rounded-full p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-            aria-label={tt("返回")}
+            aria-label={tt("关闭")}
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />

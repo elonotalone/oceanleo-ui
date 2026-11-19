@@ -308,7 +308,7 @@ test("browser back/forward follows the desktop query and refresh restores only a
   try {
     assert.equal(document.querySelector("[data-oceanleo-remote-desktop]"), null);
     assert.match(unknown.text(), /当前账号找不到这台电脑/);
-    await unknown.click(unknown.button("返回设备"));
+    await unknown.click(unknown.host.querySelector('button[data-back-button][aria-label="返回设备"]'));
     assert.equal(new URLSearchParams(window.location.search).get("desktop"), null);
   } finally { await unknown.unmount(); }
 });

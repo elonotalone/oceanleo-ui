@@ -1,6 +1,7 @@
 "use client";
 
 // 会话：消息流、输入框、置顶条、「正在输入」。导出名与 props 不变（契约 §8.2）。
+import { BackButton } from "../../../ui/BackButton";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ForwardMessagesDialog } from "./ForwardMessagesDialog";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -13,7 +14,7 @@ import { MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
 import { RoutePageSkeleton } from "../../nav-source/route-boundary";
 import { Composer } from "../composer/Composer";
 import { openMessages } from "../host-state";
-import { ImBackIcon, ImInfoIcon, ImSearchIcon } from "../messages-surface";
+import { ImInfoIcon, ImSearchIcon } from "../messages-surface";
 import { SearchView } from "../search/SearchView";
 import { ProfileCard } from "../people/ProfileCard";
 import { useImEvent, useImResync, usePresence } from "../realtime/hooks";
@@ -443,9 +444,7 @@ function ConversationBody(props: ConversationViewProps & {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center gap-1 border-b border-neutral-200/80 px-2 py-2">
           {onBack ? (
-            <button type="button" data-im-chrome-btn onClick={onBack} aria-label={tt("返回")}>
-              <ImBackIcon />
-            </button>
+            <BackButton onClick={onBack} label={tt("返回")} />
           ) : null}
           <div className="min-w-0 flex-1 px-1">
             <div className="flex items-center gap-1.5">

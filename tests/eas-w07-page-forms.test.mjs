@@ -168,8 +168,8 @@ const lines = (html) => html.replace(/></g, ">\n<");
 
 const API_PAGE_SNAPSHOT = String.raw`<div class="px-8 py-6">
 <div class="relative flex items-center justify-center py-1">
-<button type="button" aria-label="返回" title="返回" class="absolute left-0 flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-900 active:scale-95">
-<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<button data-back-button="" aria-label="返回" title="返回" class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)] disabled:cursor-not-allowed disabled:opacity-50 absolute left-0" type="button">
+<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
 <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round">
 </path>
 </svg>
@@ -313,7 +313,7 @@ function bodyOf(view, selector) {
   return node.innerHTML;
 }
 
-test("ApiPage page 形态（缺省与 variant=page）与改动前逐字相同", async () => {
+test("ApiPage page 形态（缺省与 variant=page）使用统一返回键并保留正文", async () => {
   for (const props of [{}, { variant: "page" }]) {
     const view = await render(React.createElement(ApiPage, props), "/api");
     assert.equal(lines(view.html()), API_PAGE_SNAPSHOT, `props=${JSON.stringify(props)}`);

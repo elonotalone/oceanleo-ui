@@ -4,11 +4,12 @@
 // 收发、报价、合同都走 talent 现有接口，规则与 talent 站 `/messages` 一模一样；已读未读两边是同一份数据。
 // 新消息经消息通道即时到达（`useImEvent`）；通道没连上时每 30 秒补一次。
 
+import { BackButton } from "../../../ui/BackButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { ImMessage, ImProfile } from "../../../lib/im/types";
 import { useImConnection, useImEvent } from "../realtime/hooks";
-import { ImBackIcon, ImMoreIcon } from "../messages-surface";
+import { ImMoreIcon } from "../messages-surface";
 import { ReportDialog } from "../report/ReportDialog";
 import { TalentComposer } from "./TalentComposer";
 import { WorkConversationHeader } from "../conversation/WorkConversationHeader";
@@ -245,15 +246,7 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
     <div data-talent-view={layout} className="flex h-full min-h-0 flex-col text-neutral-900">
       <header className="flex items-center gap-1 border-b border-neutral-200/80 px-2 py-2">
         {onBack && layout !== "full" && (
-          <button
-            type="button"
-            data-action="back"
-            data-im-chrome-btn
-            onClick={onBack}
-            aria-label={tt("返回")}
-          >
-            <ImBackIcon />
-          </button>
+          <BackButton data-action="back" onClick={onBack} label={tt("返回")} />
         )}
         <div className="min-w-0 flex-1 px-1">
           <p data-talent-title className="truncate text-[13px] font-semibold tracking-tight">

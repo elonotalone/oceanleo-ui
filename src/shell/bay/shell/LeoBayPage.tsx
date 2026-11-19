@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../../ui/BackButton";
 import { BayFollowing } from "../following/BayFollowing";
 
 // LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按种类逛（人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他，出售与求购两边）。
@@ -82,9 +83,6 @@ const FRAME_CLASS = `${APP_PAGE_FRAME_CLASS} h-full`;
 const PAPER_FRAME_CLASS = "mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col px-4";
 const PAPER_HEADER_CLASS = "sticky top-0 z-0 flex min-h-14 shrink-0 items-center justify-between gap-3";
 const BTN_GHOST = COLLECTION_ACTION_BTN_GHOST;
-/** 详情页「返回」：无描边，左缘不留键内边距，贴着页框左边。 */
-const BTN_BACK =
-  "inline-flex shrink-0 items-center justify-center gap-1 rounded-full py-2 pr-4 text-[13px] font-medium text-neutral-900";
 const BTN_PRIMARY = COLLECTION_ACTION_BTN_PRIMARY;
 
 /** 页头：左 LeoBay；右侧 = 搜索 + 查看选项 + 网格/列表 + 我的/发布。 */
@@ -325,10 +323,7 @@ function Detail({ target, siteKey, sidebarToggle }: { target: Exclude<BayTarget,
   const header = (
     <header className={paper ? PAPER_HEADER_CLASS : APP_PAGE_HEADER_ROW_CLASS} data-bay-page-detail-header>
       <div className="flex min-w-0 items-center gap-3">
-        <button type="button" onClick={bayBack} data-bay-page-back className={BTN_BACK}>
-          <BayGlyph name="back" className="h-4 w-4" />
-          {tt("返回")}
-        </button>
+        <BackButton onClick={bayBack} data-bay-page-back label={tt("返回")} />
         <h2 className={`min-w-0 truncate ${APP_PAGE_TITLE_CLASS}`}>{title ? tt(title) : null}</h2>
       </div>
       {sidebarToggle}

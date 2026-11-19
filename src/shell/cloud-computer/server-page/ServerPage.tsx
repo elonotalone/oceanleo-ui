@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../../ui/BackButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -25,7 +26,6 @@ import {
   type ServerPageCard,
 } from "./href";
 import {
-  IconBack,
   IconCli,
   IconTerminal,
 } from "./chrome-icons";
@@ -398,14 +398,7 @@ function ServerPageContent({
           className={`grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 border-b ${tone.border}`}
         >
           <div className="flex min-w-0 items-center gap-2">
-          <a
-            href="/"
-            aria-label={tt("返回首页")}
-            title={tt("返回首页")}
-            className={tone.iconBtn}
-          >
-            <IconBack />
-          </a>
+          <BackButton href="/" label={tt("返回首页")} />
           <h1 className="min-w-0 truncate text-sm font-medium">
             {computer.name}
           </h1>

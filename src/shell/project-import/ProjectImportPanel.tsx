@@ -11,6 +11,8 @@
  * answer, and only uploads once the user has seen it.
  */
 
+import { BackButton } from "../../ui/BackButton";
+import { useUI } from "../../i18n/ui/useUI";
 import { HostingTierChoice } from "../website-platform/HostingTierChoice";
 import type { HostingTier } from "../website-platform/hosting-tier";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -51,6 +53,7 @@ export function ProjectImportPanel({
   defaultName = "",
   className = "",
 }: ProjectImportPanelProps) {
+  const tt = useUI();
   const [tier, setTier] = useState<HostingTier | "">("");
   const [stage, setStage] = useState<Stage>("idle");
   const [picked, setPicked] = useState<LocalProjectFile[]>([]);
@@ -396,13 +399,7 @@ export function ProjectImportPanel({
           </button>
         )}
         {onCancel && stage !== "uploading" && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="ml-auto text-sm text-neutral-500 underline"
-          >
-            返回
-          </button>
+          <BackButton onClick={onCancel} className="ml-auto" label={tt("返回")} />
         )}
       </footer>
     </div>

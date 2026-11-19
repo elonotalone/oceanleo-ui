@@ -83,8 +83,11 @@ test('category parent/current names share a bold row and back keeps shelf',async
   await flush();
   const row=el.querySelector('[data-bay-category-title]');assert.ok(row);
   assert.match(row.className,/flex/);assert.match(row.className,/justify-between/);
-  assert.match(row.querySelector('a').className,/text-lg font-semibold/);
-  assert.equal(row.querySelector('a').textContent,'‹ Presentations');
+  assert.match(row.className,/text-lg font-semibold/);
+  assert.ok(row.querySelector('a[data-back-button]'));
+  assert.equal(row.querySelector('a').getAttribute('aria-label'),'Presentations');
+  assert.equal(row.querySelector('a').textContent,'');
+  assert.equal(row.querySelector('a').nextElementSibling.textContent,'Presentations');
   assert.equal(row.querySelector('h2').textContent,'Business planning');
   await act(async()=>row.querySelector('a').dispatchEvent(new window.MouseEvent('click',{bubbles:true,cancelable:true})));
   assert.equal(new URLSearchParams(window.location.search).get('type'),'deck');
@@ -179,7 +182,7 @@ test('deep link recovers temporary resolve failures and preserves permanent fail
   for(const [status,text] of [[404,'这项内容不存在或已下架。'],[403,'你没有权限查看这项内容。']]){
     const resolve=async()=>{throw {status};};
     await act(async()=>root.render(React.createElement(BayArtifactDeepLink,{target:{kind:'template',id:String(status)},resolve,onBack:()=>{}})));await flush();
-    assert.match(el.textContent,new RegExp(text));assert.equal(el.querySelectorAll('button').length,1);assert.equal(el.querySelector('button').textContent,'返回列表');
+    assert.match(el.textContent,new RegExp(text));assert.equal(el.querySelectorAll('button').length,1);assert.equal(el.querySelector('button[data-back-button]').getAttribute('aria-label'),'返回列表');
   }
   await act(async()=>root.unmount());el.remove();t.mock.timers.reset();
 });

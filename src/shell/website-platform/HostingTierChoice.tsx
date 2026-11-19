@@ -1,6 +1,7 @@
 "use client";
 
 import { AutoRecovery } from "../AutoRecovery";
+import { BackButton } from "../../ui/BackButton";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { websiteConnectorsApi, type WebsiteConnectorPreset } from "../../api/website-connectors";
@@ -54,7 +55,7 @@ export function HostingTierChoice({ value, onChange, disabled = false }: {
   }
   if (sample) return createPortal(<div role="dialog" aria-modal="true" aria-label={tt("打开样板作品")} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/25 p-4">
     <section className="w-full max-w-3xl space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-xl" data-hosting-tier-sample="" onSubmit={event => event.stopPropagation()}>
-    <button type="button" className="text-sm underline" onClick={() => { onChange(sample.tier); setSample(null); }}>‹ {tt("服务层级")}</button>
+    <div className="flex items-center gap-2"><BackButton onClick={() => { onChange(sample.tier); setSample(null); }} label={tt("服务层级")} /><span>{tt("服务层级")}</span></div>
     {sampleError && <p role="alert" className="text-xs">{tt(sampleError)}</p>}
     <div className="h-[60vh] min-h-0 overflow-hidden rounded-xl border border-stone-200">
       <Suspense fallback={<p role="status" className="p-3 text-sm">{tt("加载中…")}</p>}><SampleWorkbench workId={"cloud:" + sample.project} /></Suspense>

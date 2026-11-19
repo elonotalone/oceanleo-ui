@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../../ui/BackButton";
 import { importWithChunkReload } from "../../../lib/lazy-with-retry";
 
 import { bayFailureKind, useBayAutoRetry } from "../shell/use-bay-auto-retry";
@@ -170,7 +171,7 @@ export function BayArtifactDeepLink({ accent, target, onBack, onEdit, onUseInTas
     {detail ? <AssetDetail {...detail} accent={accent} plain onBack={back} className="h-[70vh] min-h-[32rem]"
       actions={<BayAssetActions {...detail} services={{ resolve, ...services }} onResolved={(next) => setState({ key, detail: next })}
         onEdit={onEdit || setEditing} onUseInTask={onUseInTask} />} /> : <div className="px-3 py-5">
-      <button type="button" onClick={back} className="text-sm underline">{tt("返回列表")}</button>
+      <BackButton onClick={back} label={tt("返回列表")} />
       <p role="status" className="py-12 text-center text-sm text-stone-500">{tt(failure && failureKind === "missing" ? "这项内容不存在或已下架。" : failure && failureKind === "denied" ? "你没有权限查看这项内容。" : "正在打开这份素材…")}</p>
     </div>}
   </section>;

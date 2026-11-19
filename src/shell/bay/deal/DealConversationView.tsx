@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../../ui/BackButton";
 import { BayRecovery } from "../shell/BayRecovery";
 // 一笔交易一个会话（契约 §0 第 9、13 条）：消息窗的交易会话与 Bay 里的会话是同一个界面。
 // 头部：对方、回到主题（商品 / 需求 / 求助 / 订单）、举报与拉黑；顶上固定交易卡；中间消息（文字、文件、报价、灰字）；
@@ -282,15 +283,7 @@ export function DealConversationView({ threadId, layout, onBack }: DealConversat
   const header = (
     <header className="flex items-center gap-2 border-b border-neutral-200 px-3 py-2">
       {onBack && layout !== "full" ? (
-        <button
-          type="button"
-          data-action="back"
-          onClick={onBack}
-          aria-label={tt("返回")}
-          className="rounded-lg px-2 py-1 text-[14px] text-neutral-600 hover:bg-neutral-100"
-        >
-          ‹
-        </button>
+        <BackButton data-action="back" onClick={onBack} label={tt("返回")} />
       ) : null}
       <span
         aria-hidden="true"

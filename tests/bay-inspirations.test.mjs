@@ -207,7 +207,7 @@ test("restored card requests its app and reveals/fills its own left agent", asyn
     assert.equal(f.writes, 1);
     assert.equal(opens, 1);
     assert.match(f.right.textContent, /已填入对话输入框/);
-    await act(async () => [...f.right.querySelectorAll("button")].find(button => button.textContent === "返回").click());
+    await act(async () => f.right.querySelector('button[data-back-button][aria-label="返回"]').click());
     assert.ok(f.right.querySelector('[data-workspace-card="template"]'));
   } finally {
     await act(async () => root.unmount());

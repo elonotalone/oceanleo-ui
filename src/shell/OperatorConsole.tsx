@@ -10,6 +10,7 @@
 // 即可受控；想同步到 URL `?fn=`，在消费端用自己的 router 监听 onChange。
 // ============================================================================
 
+import { BackButton } from "../ui/BackButton";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
@@ -378,28 +379,7 @@ export function OperatorConsole({
       className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-hidden"
     >
       {directoryMode && (
-        <button
-          type="button"
-          onClick={backToDirectory}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
-          aria-label={tt("返回 App 目录")}
-          title={tt("返回 App 目录")}
-        >
-          <svg
-            aria-hidden="true"
-            className="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path
-              d="m15 18-6-6 6-6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
+        <BackButton onClick={backToDirectory} label={tt("返回 App 目录")} />
       )}
       {(appIconThumbSrc(active?.iconImage) || active?.icon != null) && (
         <span

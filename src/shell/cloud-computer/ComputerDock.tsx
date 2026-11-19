@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../ui/BackButton";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROGRAM_LABEL } from "./agent-dialog/types";
@@ -489,9 +490,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
       const program = computer.program;
       const views = [["chat", tt("对话"), null], ["cli", tt("命令行"), tt("在电脑的命令行窗口里继续，和这里的对话分开记录")]] as const;
       return <div data-dock-level="program" data-dock-program={program}>
-        <button type="button" className={`${row} font-medium`} data-dock-back aria-label={`${tt("返回")} · ${computer.name}`} onClick={() => setDrill({ id: computer.id, name: computer.name })}>
-          <span aria-hidden="true">‹</span><span className="min-w-0 flex-1 truncate">{PROGRAM_LABEL[program]}</span>
-        </button>
+        <div className="flex items-center gap-2 px-2.5 py-1.5"><BackButton data-dock-back onClick={() => setDrill({ id: computer.id, name: computer.name })} label={`${tt("返回")} · ${computer.name}`} /><span className="min-w-0 flex-1 truncate font-medium">{PROGRAM_LABEL[program]}</span></div>
         {views.map(([view, label, hint]) => {
           const isCurrent = current?.kind === "native" && current.computerId === computer.id && current.program === program && current.view === view;
           const exists = Boolean(existingSession(sessions, computer.id, view === "chat" ? "acp" : "cli", program));
@@ -507,9 +506,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     const oceanReason = oceanBlocked || (bound && oceanDisabled) ? lockedHint : null;
     const terminalCurrent = current?.kind === "terminal" && current.computerId === computer.id;
     return <div data-dock-level="computer" data-dock-computer={computer.id}>
-      <button type="button" className={`${row} font-medium`} data-dock-back aria-label={tt("返回")} onClick={() => setDrill(null)}>
-        <span aria-hidden="true">‹</span><span className="min-w-0 flex-1 truncate">{computer.name}</span>
-      </button>
+      <div className="flex items-center gap-2 px-2.5 py-1.5"><BackButton data-dock-back onClick={() => setDrill(null)} label={tt("返回")} /><span className="min-w-0 flex-1 truncate font-medium">{computer.name}</span></div>
       <button type="button" className={`${row} disabled:opacity-50`} disabled={oceanDisabled} aria-pressed={onOcean && sameTarget(oceanTarget, ocean)} data-dock-program-row="oceanleo"
         title={oceanReason ?? undefined} onClick={() => choose(ocean)}>
         {dot(ready === true)}<span className="min-w-0 flex-1"><span className="block truncate">OceanLeo</span>{oceanReason && <span className="mt-0.5 block text-[11px] leading-snug text-neutral-500" data-dock-locked-hint>{oceanReason}</span>}</span>{offline}{oceanMark(ocean)}

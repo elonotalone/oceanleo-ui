@@ -30,6 +30,7 @@
 // `editor.patchSlide`。笔迹同理：只在两块屏之间走，永远不进 `DeckSlide`。
 // ============================================================================
 
+import { BackButton } from "../../ui/BackButton";
 import {
   useCallback,
   useEffect,
@@ -967,7 +968,7 @@ export function DeckPresenterView({
         >
           <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-[#0b0b0f]">
             {clocks}
-            <button type="button" className={CONTROL_CLASS} onClick={closeNotes}>{tt("返回幻灯片")}</button>
+            <BackButton onClick={closeNotes} surface="dark" label={tt("返回幻灯片")} />
           </div>
           <p role="status" className="text-[12px] text-white/70">{tt("当前环境只支持一个窗口。演讲备注、下一页和计时在这里查看。")}</p>
           {notesPanel}

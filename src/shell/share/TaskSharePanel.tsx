@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../ui/BackButton";
 import { useEffect, useId, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { AutoRecovery } from "../AutoRecovery";
@@ -105,7 +106,7 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
         {share.notice && <p role="status" className={`px-2.5 py-1.5 text-xs ${share.notice.tone === "ok" ? "text-neutral-500 dark:text-neutral-400" : "text-rose-600 dark:text-rose-400"}`}>{share.notice.text}</p>}
       </div> : <div data-task-share-page={page}>
         <div className="flex min-w-0 items-center gap-2">
-          <div className="shrink-0"><FloatingMenuItem icon={<ShareIcon name="back" />} label={tt(copy.back)} onSelect={() => { setPage("actions"); setNotice(""); }} /></div>
+          <div className="shrink-0"><BackButton label={tt(copy.back)} onClick={() => { setPage("actions"); setNotice(""); }} /></div>
           <span className="min-w-0 flex-1 text-[13px] font-medium">{title}</span>
           {page === "collaborate" && <button type="button" aria-label={tt(text.help)} aria-expanded={help} onClick={() => setHelp(!help)} className="grid size-8 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-neutral-100 dark:hover:bg-white/10">?</button>}
         </div>
@@ -146,7 +147,6 @@ const SHARE_ICONS = {
   image: "M3 3h18v18H3zM21 15l-5-5-9 9M7 7h.01",
   document: "M14 2H4v20h16V8zM14 2v6h6M8 13h8M8 17h8",
   select: "M4 12l5 5L20 6",
-  back: "m12 19-7-7 7-7m-7 7h14",
 } as const;
 
 function ShareIcon({ name }: { name: keyof typeof SHARE_ICONS }) {

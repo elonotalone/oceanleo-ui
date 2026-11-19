@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../../ui/BackButton";
 import { BayRecovery } from "./BayRecovery";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "next-intl";
@@ -147,7 +148,7 @@ export function ReadyMaterialCatalog({ siteKey, appId, query, view, sellers, onl
     {online ? children : <>
       {selectedCategory && shelf ? <header className="mb-5 space-y-3">
         <div data-bay-category-title className="flex items-center justify-between gap-3 text-lg font-semibold">
-        <a href={`?${backSearch}`} className="text-lg font-semibold hover:text-neutral-900" onClick={(event) => { event.preventDefault(); choose(shelf); }}>‹ {materialLabel(shelf, locale)}</a>
+        <><BackButton href={`?${backSearch}`} onClick={(event) => { event.preventDefault(); choose(shelf); }} label={materialLabel(shelf, locale)} /><span>{materialLabel(shelf, locale)}</span></>
         <span aria-hidden="true">/</span>
         <h2 className="text-lg font-semibold">{materialLabel(selectedCategory, locale)}</h2>
         </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../ui/BackButton";
 import { useAutoRecovery } from "../lib/auto-recovery";
 
 /**
@@ -345,9 +346,7 @@ export function GamePlayDetail({ item }: { item: LibraryItem }) {
         className="flex h-full min-h-[520px] flex-col bg-stone-950"
       >
         <div className="flex items-center gap-3 bg-stone-50 p-3 text-sm">
-          <button type="button" className={barButton} onClick={() => setPlaying(false)}>
-            {tt("返回")}
-          </button>
+          <BackButton onClick={() => setPlaying(false)} label={tt("返回")} />
           <span className="min-w-0 flex-1 truncate font-medium text-stone-800">
             {item.title}
           </span>

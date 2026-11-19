@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../ui/BackButton";
 import { prepareRemoteWebRtcSocket } from "../api/remote-desktop-webrtc-preconnect";
 
 import { prepareRemoteDesktopStandby } from "../api/remote-desktop-webrtc-standby";
@@ -350,7 +351,7 @@ export function DevicesPage({ legacyImportError: legacyImportErrorProp, client =
     <header className="flex items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight text-neutral-900">{tt("Devices")}</h1><p className="mt-2 text-sm text-neutral-500">{tt("你的电脑与云电脑")}</p></div>{!loginRequired && <button type="button" className={DEVICE_BUTTON} onClick={() => setAdding(true)}><span aria-hidden="true">＋</span>{tt("添加设备")}</button>}</header>
     {loginRequired && <div role="status" className="mt-5 flex items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm"><span>{tt("请先登录")}</span><button type="button" className={DEVICE_PRIMARY_BUTTON} onClick={() => setShowAuth(true)}>{tt("登录")}</button></div>}
     {visiblePageError && <p role="alert" data-device-import-error={legacyImportError || undefined} className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(visiblePageError)}</p>}
-    {remoteOpenId && !selectedRemote && !loading && !loginRequired && !visiblePageError && <div role="status" className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600"><span>{tt("当前账号找不到这台电脑。")}</span><button type="button" onClick={closeDesktop} className="underline underline-offset-4">{tt("返回设备")}</button></div>}
+    {remoteOpenId && !selectedRemote && !loading && !loginRequired && !visiblePageError && <div role="status" className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600"><span>{tt("当前账号找不到这台电脑。")}</span><BackButton onClick={closeDesktop} label={tt("返回设备")} /></div>}
     <div className="mt-7 grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3" data-device-grid data-all-offline={devices.length > 0 && devices.every((item) => deviceAvailability(item, remoteStatus[item.device_id]) !== "online") ? "true" : "false"}>
       {loading ? <div className="min-h-[300px] animate-pulse rounded-[20px] bg-neutral-100" aria-label={tt("正在加载设备")} /> : devices.map((device) => <DeviceCard key={`${authRevision}-${device.device_id}`} device={device} client={settingsClient} isLocalDevice={device.device_id === localDeviceId} availability={deviceAvailability(device, remoteStatus[device.device_id])} onSettings={() => openSettingsModal("device-settings", { deviceId: device.device_id })} onTasks={() => setTasksId(device.device_id)} onControl={() => openDesktop(device.device_id)} />)}
       {!loading && !loginRequired && <CloudDeviceGrid key={`${authRevision}-${cloudRevision}`} client={cloudClient} activityClient={activityClient} onUnauthorized={() => { if (accountGeneration === generation.current) applyDeviceResult({ ok: false, status: 401 }); }} autoFocus={initialTab === "cloud" || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("tab") === "cloud" || window.location.hash === "#cloud"))} />}

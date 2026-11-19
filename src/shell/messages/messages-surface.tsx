@@ -54,14 +54,6 @@ export function ImCollapseIcon() {
   );
 }
 
-export function ImBackIcon() {
-  return (
-    <Icon>
-      <path d="M15 5l-7 7 7 7" />
-    </Icon>
-  );
-}
-
 export function ImPlusIcon() {
   return (
     <Icon>

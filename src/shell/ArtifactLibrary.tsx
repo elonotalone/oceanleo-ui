@@ -15,6 +15,7 @@
 // 不再上提到侧栏。
 // ============================================================================
 
+import { BackButton } from "../ui/BackButton";
 import {
   useCallback,
   useEffect,
@@ -700,16 +701,7 @@ function ArtifactLibraryLegacy({
       {selected && fill && (
         <div className="absolute inset-0 z-20 flex flex-col rounded-xl bg-white">
           <div className="flex items-center gap-2 border-b border-neutral-100 px-1 pb-2">
-            <button
-              type="button"
-              onClick={() => setSelectedIdx(null)}
-              className="flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              {tt("返回")}
-            </button>
+            <BackButton onClick={() => setSelectedIdx(null)} label={tt("返回")} />
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-neutral-800">
               {selected.title || tt("内容详情")}
             </span>

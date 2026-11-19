@@ -409,7 +409,7 @@ test("W4 dismissing a failed request restores the existing view without replay",
   const m = await mount(React.createElement(ResultCanvas, { tabs: [], active: "mine", openEntry: { nonce: "ref-denied", ref: { kind: "platform", id: "p" }, mode: "preview" } }));
   try {
     assert.match(m.container.textContent, /没有查看/);
-    await act(async () => [...m.container.querySelectorAll('[data-workspace-entry-open] button')].find(b=>b.textContent === '返回').click());
+    await act(async () => m.container.querySelector('[data-workspace-entry-open] button[data-back-button][aria-label="返回"]').click());
     assert.equal(m.container.querySelector('[data-workspace-entry-open]'), null);
     assert.equal(m.container.querySelector('[data-workspace-slot-panel="mine"]').hidden, false);
   } finally { await m.unmount(); delete globalThis.__w4Resolve; }
