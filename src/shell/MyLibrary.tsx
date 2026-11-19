@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useSearchParams } from "next/navigation";
 import { InheritedTeamLibrary } from "./InheritedTeamLibrary";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
 import { LibraryImportDialog, LibraryUploadQueue, LibraryPurchasedUpdates, type LibraryImportMode } from "./library-import";
@@ -744,14 +745,15 @@ export function MyLibrary({
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
   const uploadAnchorRef = useRef<HTMLButtonElement | null>(null);
   const uploadFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [detailOpen, setDetailOpen] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return Boolean(new URLSearchParams(window.location.search).get("item"));
-    } catch {
-      return false;
-    }
-  });
+  // Next supplies the same route on the server and the first client render.
+  const routeItemId = useSearchParams()?.get("item");
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [routeDetailPending, setRouteDetailPending] = useState(Boolean(routeItemId));
+  useEffect(() => setRouteDetailPending(Boolean(routeItemId)), [routeItemId]);
+  const onDetailOpenChange = useCallback((open: boolean) => {
+    setDetailOpen(open);
+    if (open) setRouteDetailPending(false);
+  }, []);
   const [documentFormat, setDocumentFormat] = useState("");
   const [internalCategory, setInternalCategory] = useState(category ?? "all");
   const [favoritesOnly, setFavoritesOnly] = useState(onlyFavorites);
@@ -2158,7 +2160,7 @@ export function MyLibrary({
     <LibraryScope
       {...libraryScope}
       header={
-        detailOpen ? null : (
+        detailOpen || (routeDetailPending && !failures.intent && !authRequired) ? null : (
         <div className="mb-3 shrink-0" data-library-collection-chrome="">
           <LibraryToolbar
             search={libraryQuery}
@@ -2245,7 +2247,7 @@ export function MyLibrary({
           onViewChange={setLibraryView}
           hideToolbar
           hideCategoryChips={Boolean(pageTitle)}
-          onDetailOpenChange={setDetailOpen}
+          onDetailOpenChange={onDetailOpenChange}
           onDetailItemChange={preloadPreviewEditor}
           category={activeCategory}
           onCategoryChange={changeCategory}
