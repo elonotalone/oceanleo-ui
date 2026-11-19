@@ -43,6 +43,9 @@ import {
 import {
   AUTH_STATE_EVENT,
   challengeAndVerify,
+  verifyMfaPasskey,
+  supportsMfaPasskeys,
+  type MfaFactor,
   currentAal,
   listMfaFactors,
   needsMfaChallenge,
@@ -1116,6 +1119,7 @@ function ForgotPasswordForm({ tt, onBack }: { tt: UITranslate; onBack: () => voi
 function MfaChallengeForm({ tt, onDone }: { tt: UITranslate; onDone: () => void }) {
   const [code, setCode] = useState("");
   const [factorId, setFactorId] = useState("");
+  const [passkeys, setPasskeys] = useState<MfaFactor[]>([]);
   const [loading, setLoading] = useState(false);
   // 存的是原始报错串，不是译好的句子：句子在渲染处才生成。否则 `tt` 得进
   // effect 依赖，用户中途换语言就会重新拉一次因子、把已经输了一半的这一屏冲掉。
@@ -1125,7 +1129,8 @@ function MfaChallengeForm({ tt, onDone }: { tt: UITranslate; onDone: () => void 
     let alive = true;
     listMfaFactors().then(({ factors, error: listError }) => {
       if (!alive) return;
-      const verified = factors.find((f) => f.status === "verified");
+      setPasskeys(supportsMfaPasskeys() ? factors.filter((f) => f.status === "verified" && f.factorType === "webauthn") : []);
+      const verified = factors.find((f) => f.status === "verified" && f.factorType !== "webauthn");
       if (verified) setFactorId(verified.id);
       else if (listError) setErrorRaw(listError);
     });
@@ -1133,6 +1138,16 @@ function MfaChallengeForm({ tt, onDone }: { tt: UITranslate; onDone: () => void 
       alive = false;
     };
   }, []);
+
+  async function passkey(factor: MfaFactor) {
+    setLoading(true); setErrorRaw("");
+    try {
+      const result = await verifyMfaPasskey(factor.id);
+      if (result.error) setErrorRaw(result.error);
+      else onDone();
+    } catch (cause) { setErrorRaw(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setLoading(false); }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -1154,10 +1169,11 @@ function MfaChallengeForm({ tt, onDone }: { tt: UITranslate; onDone: () => void 
       <div>
         <p className="text-[14px] font-medium text-neutral-900">{tt("再验一步")}</p>
         <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-500">
-          {tt("这个账号开了两步验证。打开验证器 App，输入它现在显示的 6 位码。")}
+          {tt("已开启。可使用通行密钥或验证器确认身份。")}
         </p>
       </div>
-      <input
+      {passkeys.map((factor) => <button key={factor.id} type="button" disabled={loading} className={SUBMIT_CLASS} style={SUBMIT_STYLE} onClick={() => void passkey(factor)}>{tt("使用通行密钥")}</button>)}
+      {factorId && <input
         id="oceanleo-auth-mfa-code"
         type="text"
         inputMode="numeric"
@@ -1168,11 +1184,11 @@ function MfaChallengeForm({ tt, onDone }: { tt: UITranslate; onDone: () => void 
         className={`${FIELD_CLASS} text-center text-[18px] tracking-[0.4em] tabular-nums`}
         style={FIELD_STYLE}
         placeholder={tt("6 位数字")}
-      />
+      />}
       {error && <ErrorNote text={error} />}
-      <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS} style={SUBMIT_STYLE}>
+      {factorId && <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS} style={SUBMIT_STYLE}>
         {loading ? <ButtonSpinner label={tt("处理中...")} /> : tt("验证并登录")}
-      </button>
+      </button>}
     </form>
   );
 }

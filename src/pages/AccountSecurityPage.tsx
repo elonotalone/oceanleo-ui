@@ -25,6 +25,9 @@ import {
   cnPhoneIsBound,
   currentAal,
   enrollTotp,
+  enrollMfaPasskey,
+  supportsMfaPasskeys,
+  verifyMfaPasskey,
   getAuthPhoneUser,
   listMfaFactors,
   maskCnPhone,
@@ -450,6 +453,7 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
   const [ok, setOk] = useState("");
   const [removing, setRemoving] = useState<MfaFactor | null>(null);
   const [removeCode, setRemoveCode] = useState("");
+  const [passkeysSupported, setPasskeysSupported] = useState(false);
 
   const reload = useCallback(async () => {
     const { factors: list } = await listMfaFactors();
@@ -458,10 +462,23 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
   }, []);
 
   useEffect(() => {
+    setPasskeysSupported(supportsMfaPasskeys());
     void reload();
   }, [reload]);
 
   const verified = factors.filter((f) => f.status === "verified");
+
+  async function startPasskeyEnroll() {
+    setError(""); setOk(""); setBusy(true);
+    try {
+      const result = await enrollMfaPasskey();
+      if (result.unsupported) setPasskeysSupported(false);
+      if (result.error) { setError(tt(result.unsupported ? "此处暂不支持通行密钥，请使用验证器。" : result.error)); return; }
+      setOk(tt("两步验证已开启。"));
+      await reload();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setBusy(false); }
+  }
 
   async function startEnroll() {
     setError("");
@@ -500,7 +517,9 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
     setOk("");
     setBusy(true);
     // 先验一次再移除：光有会话就能一键关掉 2FA 的话，这道锁等于没上。
-    const check = await challengeAndVerify(removing.id, removeCode);
+    const check = removing.factorType === "webauthn"
+      ? await verifyMfaPasskey(removing.id)
+      : await challengeAndVerify(removing.id, removeCode);
     if (check.error) {
       setBusy(false);
       setError(tt(check.error));
@@ -532,7 +551,7 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
     <Section
       slot="two-step"
       title={tt("两步验证")}
-      desc={verified.length > 0 ? tt("已开启。登录时除了密码，还要输一次验证器上的 6 位码。") : tt("还没开启。开启之后，别人光有你的密码也登不进来。")}
+      desc={verified.length > 0 ? tt("已开启。可使用通行密钥或验证器确认身份。") : tt("还没开启。开启之后，别人光有你的密码也登不进来。")}
     >
       {removing && (
         <ConfirmDialog
@@ -556,7 +575,7 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
             <li key={f.id} className="flex items-center justify-between py-2.5">
               <div className="min-w-0">
                 <p className="truncate text-[13px] text-neutral-900">
-                  {f.friendlyName || tt("未命名的验证器")}
+                  {f.friendlyName || tt(f.factorType === "webauthn" ? "通行密钥" : "未命名的验证器")}
                 </p>
                 {f.createdAt && (
                   <p className="text-[12px] text-neutral-500">
@@ -580,7 +599,7 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
         </ul>
       )}
 
-      {removing && (
+      {removing && removing.factorType !== "webauthn" && (
         <div className="mb-4">
           <label className="mb-1 block text-[12px] text-neutral-600" htmlFor="sec-remove-code">
             {tt("移除前先输一次验证器上的 6 位码。")}
@@ -659,6 +678,7 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
         <>
           {error && <Note kind="error" text={error} />}
           {!error && ok && <Note kind="ok" text={ok} />}
+          {passkeysSupported && <button type="button" disabled={busy || !loaded} className={`${PRIMARY} mt-2 mr-2`} onClick={() => void startPasskeyEnroll()}>{tt("添加通行密钥")}</button>}
           <button
             type="button"
             data-security-enroll

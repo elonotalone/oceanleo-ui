@@ -804,6 +804,7 @@ export interface MfaFactor {
   /** `verified` 才是真正生效的因子；`unverified` 是注册到一半的残留。 */
   status: "verified" | "unverified";
   createdAt?: string;
+  factorType?: "totp" | "webauthn";
 }
 
 /** 已登记的 TOTP 因子。取不到时回空数组而不是抛——账号页不许因此白屏。 */
@@ -818,16 +819,70 @@ export async function listMfaFactors(): Promise<{ factors: MfaFactor[]; error?: 
   for (const f of raw) {
     const id = String((f as { id?: string })?.id || "");
     if (!id || seen.has(id)) continue;
+    if (f.factor_type !== "totp" && f.factor_type !== "webauthn") continue;
     seen.add(id);
     const status = (f as { status?: string }).status === "verified" ? "verified" : "unverified";
     factors.push({
       id,
+      factorType: f.factor_type,
       friendlyName: (f as { friendly_name?: string }).friendly_name || undefined,
       status,
       createdAt: (f as { created_at?: string }).created_at || undefined,
     });
   }
   return { factors };
+}
+
+/** SDK/browser detection; server may explicitly reject disabled WebAuthn MFA. */
+export function supportsMfaPasskeys(): boolean {
+  return typeof window !== "undefined" && window.isSecureContext === true &&
+    typeof window.PublicKeyCredential !== "undefined" &&
+    Boolean(browserClient()?.auth.mfa.webauthn?.register);
+}
+
+export async function enrollMfaPasskey(): Promise<{ error?: string; unsupported?: boolean }> {
+  const c = browserClient();
+  if (!c || !supportsMfaPasskeys()) return { error: "此处暂不支持通行密钥，请使用验证器。", unsupported: true };
+  try {
+    const { error } = await c.auth.mfa.webauthn.register({ friendlyName: "OceanLeo", webauthn: {} });
+    if (error) return { error: error.message, unsupported: /mfa.*(disabled|not_enabled)|unsupported|not supported/i.test(String(error.code) + " " + error.message) };
+    await accessToken();
+    return {};
+  } catch (error) { return { error: error instanceof Error ? error.message : "这一步没有完成，请稍后重试。" }; }
+}
+
+export async function verifyMfaPasskey(factorId: string): Promise<{ error?: string }> {
+  const c = browserClient();
+  if (!c || !supportsMfaPasskeys()) return { error: "此处暂不支持通行密钥，请使用验证器。" };
+  try {
+    const { error } = await c.auth.mfa.webauthn.authenticate({ factorId, webauthn: {} });
+    if (error) return { error: error.message };
+    await accessToken();
+    return {};
+  } catch (error) { return { error: error instanceof Error ? error.message : "这一步没有完成，请稍后重试。" }; }
+}
+
+/** Only the current account's own verified address can receive a step-up code. */
+export async function sendStepUpEmail(): Promise<{ error?: string }> {
+  const c = browserClient();
+  if (!c) return { error: "登录服务尚未配置" };
+  const { data, error } = await c.auth.getUser();
+  if (error || !data.user?.email) return { error: error?.message || "此账号没有邮箱，请先在账号设置中添加。" };
+  const captcha = await captchaOptions();
+  const sent = await c.auth.signInWithOtp({ email: data.user.email, options: { shouldCreateUser: false, ...captcha } });
+  return { error: sent.error?.message };
+}
+
+export async function verifyStepUpEmail(token: string): Promise<{ error?: string }> {
+  const c = browserClient();
+  if (!c) return { error: "登录服务尚未配置" };
+  const { data, error } = await c.auth.getUser();
+  if (error || !data.user?.email) return { error: error?.message || "此账号没有邮箱，请先在账号设置中添加。" };
+  const result = await c.auth.verifyOtp({ email: data.user.email, token: token.trim(), type: "email" });
+  if (result.error) return { error: result.error.message };
+  if (!result.data.session || result.data.user?.id !== data.user.id) return { error: "这一步没有完成，请稍后重试。" };
+  _accessToken = result.data.session.access_token;
+  return {};
 }
 
 export interface TotpEnrollment {

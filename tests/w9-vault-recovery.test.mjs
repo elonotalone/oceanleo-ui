@@ -97,7 +97,7 @@ function harness() {
     deleteProjectVaultReference: async (projectId, id) => { state.writes.push({ op: "unbind", projectId, id }); if (state.failWrite) throw state.failWrite; return { reference: reference() }; },
   });
   const common = {
-    "../AuthDialog": { AuthPanel: () => null },
+    "../../shell/auth/StepUpDialog": { StepUpDialog: () => null },
     "../../lib/auth/client": { AUTH_STATE_EVENT: "oceanleo:auth-state", getUserId: async () => state.uid },
     "../../lib/vault-api": api,
   };

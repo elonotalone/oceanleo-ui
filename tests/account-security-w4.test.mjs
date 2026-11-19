@@ -74,6 +74,9 @@ const clientStubUrl = dataModule(`
   export const updatePassword = (...a) => g().updatePassword(...a);
   export const currentAal = (...a) => g().currentAal(...a);
   export const listMfaFactors = (...a) => g().listMfaFactors(...a);
+  export const supportsMfaPasskeys = () => g().supportsMfaPasskeys?.() ?? false;
+  export const enrollMfaPasskey = async () => g().enrollMfaPasskey?.() ?? {};
+  export const verifyMfaPasskey = async (...a) => g().verifyMfaPasskey?.(...a) ?? {};
   export const enrollTotp = (...a) => g().enrollTotp(...a);
   export const challengeAndVerify = (...a) => g().challengeAndVerify(...a);
   export const unenrollFactor = (...a) => g().unenrollFactor(...a);
@@ -308,7 +311,7 @@ test("有已验证因子时，密码通过之后必须多出 6 位码那一屏�
 
       assert.ok(find('[data-auth-form="mfa"]'), "开了两步验证的账号必须停在第二屏");
       assert.equal(succeeded, 0, "第二屏还没过就回调成功 = 2FA 形同虚设");
-      assert.ok(text().includes("这个账号开了两步验证。打开验证器 App，输入它现在显示的 6 位码。"));
+      assert.ok(text().includes("已开启。可使用通行密钥或验证器确认身份。"));
 
       // 6 位码交给 lib/auth 的 challengeAndVerify，因子 id 取自已验证的那一个。
       await type("#oceanleo-auth-mfa-code", "123456");
@@ -814,4 +817,43 @@ test("邮件落点与「这是找回密码」的判断对得上，且不会把�
   const stubRe = pageTest.match(/isPasswordResetLanding\(href\) \{\s*return (\/.+?\/)\.test/);
   assert.ok(stubRe, "account-page 替身里找不到 isPasswordResetLanding");
   assert.equal(stubRe[1], landingRe[1], "替身与真身的正则不一致，账户页那两条断言就是在验一个假东西");
+});
+
+
+test("passkey-only MFA login completes through WebAuthn without a TOTP field", async () => {
+  const auth = defaultAuth();
+  auth.supportsMfaPasskeys = () => true;
+  auth.currentAal = async () => ({ current: "aal1", next: "aal2" });
+  auth.listMfaFactors = async () => ({ factors: [{ id: "pk", factorType: "webauthn", status: "verified" }] });
+  auth.verifyMfaPasskey = async (id) => { auth.calls.push(["passkey", id]); return {}; };
+  let succeeded = 0;
+  await withDom(async ({ render, type, submit, find, findAll }) => {
+    await render(AuthPanel, { onClose() {}, onSuccess: () => succeeded++ });
+    await type("#oceanleo-auth-email", "invited@oceanleo.com");
+    await submit('[data-auth-form="email"]');
+    await type("#oceanleo-auth-password", "hunter2hunter2");
+    await submit('[data-auth-form="email"]');
+    assert.equal(find("#oceanleo-auth-mfa-code"), null);
+    const button = findAll("button").find((node) => node.textContent === "使用通行密钥");
+    assert.ok(button);
+    await act(async () => button.click());
+    assert.deepEqual(auth.calls.at(-1), ["passkey", "pk"]);
+    assert.equal(succeeded, 1);
+  }, { auth });
+});
+
+test("account security offers passkey beside authenticator and retains authenticator on unsupported platform", async () => {
+  const auth = defaultAuth();
+  auth.supportsMfaPasskeys = () => true;
+  auth.enrollMfaPasskey = async () => ({ error: "disabled", unsupported: true });
+  await withDom(async ({ render, find, findAll, text }) => {
+    await render(AccountSecurityPage, {});
+    const passkey = findAll("button").find((node) => node.textContent === "添加通行密钥");
+    assert.ok(passkey);
+    assert.ok(find("[data-security-enroll]"));
+    await act(async () => passkey.click());
+    assert.ok(text().includes("此处暂不支持通行密钥，请使用验证器。"));
+    assert.ok(find("[data-security-enroll]"));
+    assert.equal(findAll("button").some((node) => node.textContent === "添加通行密钥"), false);
+  }, { auth });
 });

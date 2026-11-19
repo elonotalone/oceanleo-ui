@@ -98,7 +98,7 @@ function harness() {
     "../../lib/vault-api": api,
   };
   const settings = load("settings", { ...common,
-    "../AuthDialog": { AuthPanel: ({ onSuccess, onClose }) => React.createElement("div", null,
+    "../../shell/auth/StepUpDialog": { StepUpDialog: ({ onSuccess, onClose }) => React.createElement("div", { "data-vault-reauth": "" },
       React.createElement("button", { onClick: () => { state.needsAuth = false; state.failWrite = null; window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", { detail: { userId: state.uid } })); onSuccess(); } }, "Confirm identity"),
       React.createElement("button", { onClick: onClose }, "Cancel sign-in")) },
     "./settings-tabs": { openSettingsModal: (tab) => state.managedNavigation.push(tab) },
@@ -596,14 +596,11 @@ test("secret surfaces contain no reveal/persistence/telemetry or raw-card form p
   assert.doesNotMatch(sources.settings, /name="(?:card_number|cvv|cvc)"/);
 });
 
-test("expired session prompts in place before entry and resumes Add for the same owner", async () => {
+test("old session opens the secret editor without step-up", async () => {
   const h = harness(); h.state.needsAuth = true;
   const view = await mount(h.VaultSettingsSection);
   try {
     await click(button(view.host, "Add item"));
-    assert.ok(view.host.querySelector('[data-vault-reauth]'));
-    assert.equal(view.host.querySelector('input[type="password"]'), null);
-    await click(button(view.host, "Confirm identity"));
     assert.equal(view.host.querySelector('[data-vault-reauth]'), null);
     assert.ok(view.host.querySelector('input[type="password"]'));
     assert.equal(h.state.writes.length, 0);
@@ -637,10 +634,11 @@ test("canceling in-page sign-in does not retry the pending write", async () => {
   const h = harness(); h.state.needsAuth = true;
   const view = await mount(h.VaultSettingsSection);
   try {
-    await click(button(view.host, "Add item"));
+    h.state.failWrite = new h.api.VaultApiError("reauth_required", 403);
+    await click(button(view.host, "Delete"));
+    await click(button(view.host, "Delete item"));
     await click(button(view.host, "Cancel sign-in"));
-    assert.equal(h.state.writes.length, 0);
-    assert.equal(view.host.querySelector("form"), null);
+    assert.equal(h.state.writes.length, 1);
     assert.equal(button(view.host, "Add item").disabled, false);
   } finally { await view.close(); }
 });
@@ -649,10 +647,12 @@ test("switching accounts during confirmation cancels the previous owner's pendin
   const h = harness(); h.state.needsAuth = true;
   const view = await mount(h.VaultSettingsSection);
   try {
-    await click(button(view.host, "Add item"));
+    h.state.failWrite = new h.api.VaultApiError("reauth_required", 403);
+    await click(button(view.host, "Delete"));
+    await click(button(view.host, "Delete item"));
     h.state.uid = "owner-2";
     await click(button(view.host, "Confirm identity"));
-    assert.equal(h.state.writes.length, 0);
+    assert.equal(h.state.writes.length, 1);
     assert.equal(view.host.querySelector("form"), null);
     assert.equal(view.host.querySelector('[data-vault-reauth]'), null);
   } finally { await view.close(); }

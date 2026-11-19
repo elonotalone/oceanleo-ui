@@ -57,6 +57,11 @@ export async function sendPasswordReset() { return { error: "登录服务尚未�
 export async function reauthenticate() { return { error: "登录服务尚未配置" }; }
 export async function updatePassword() { return { error: "登录服务尚未配置" }; }
 export async function listMfaFactors() { return { factors: [] }; }
+export function supportsMfaPasskeys() { return false; }
+export async function enrollMfaPasskey() { return { error: "unavailable" }; }
+export async function verifyMfaPasskey() { return { error: "unavailable" }; }
+export async function sendStepUpEmail() { return { error: "unavailable" }; }
+export async function verifyStepUpEmail() { return { error: "unavailable" }; }
 export async function enrollTotp() { return { error: "登录服务尚未配置" }; }
 export async function challengeAndVerify() { return { error: "登录服务尚未配置" }; }
 export async function unenrollFactor() { return { error: "登录服务尚未配置" }; }

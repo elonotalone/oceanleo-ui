@@ -4,11 +4,11 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 
 import { useLocale } from "../../i18n/useT.client";
 import { AUTH_STATE_EVENT, getUserId } from "../../lib/auth/client";
 import {
-  createVaultBrowserBinding, createVaultSecret, deleteVaultBrowserBinding, deleteVaultSecret, getVault, getVaultFenceStatus, getVaultProjectNames, getVaultReferences, getVaultSealKey, checkVaultWriteAccess, recoverVault,
+  createVaultBrowserBinding, createVaultSecret, deleteVaultBrowserBinding, deleteVaultSecret, getVault, getVaultFenceStatus, getVaultProjectNames, getVaultReferences, getVaultSealKey, recoverVault,
   normalizeVaultBrowserOrigin, safeVaultFingerprint, updateVaultSecret, vaultFenceState, vaultMutationWasCommitted, VaultApiError,
   type VaultFenceRow, type VaultKind, type VaultRecovery, type VaultReference, type VaultSecret, type VaultStatus,
 } from "../../lib/vault-api";
-import { AuthPanel } from "../AuthDialog";
+import { StepUpDialog } from "../../shell/auth/StepUpDialog";
 import { sealVaultValue } from "../../lib/vault-seal";
 
 export type VaultPrefill = { name?: string; kind?: string; target?: string };
@@ -128,7 +128,7 @@ function FenceNoticeBody({ fence, busy, site, className, onRecover, text }: Para
 export function vaultErrorText(cause: unknown, text: (zh: string, en: string) => string): string {
   switch (cause instanceof VaultApiError ? cause.code : "unavailable") {
     case "signed_out": return text("登录状态已失效，请重新登录。", "Your session has ended. Sign in again.");
-    case "reauth_required": return text("为保护密钥，请重新登录后再操作。", "Sign in again to confirm this vault change.");
+    case "reauth_required": return text("请验证身份后继续。", "Verify your identity to continue.");
     case "disabled": return text("你连接的服务尚未启用保险箱。", "Vault is not enabled on your connected service.");
     case "forbidden": return text("你没有权限修改这个保险箱。", "You do not have permission to change this vault.");
     case "not_found": return text("保险箱项目或引用已不存在，请刷新。", "This item or reference is no longer available. Refresh to continue.");
@@ -273,7 +273,6 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
 
   function openEditor(next: { secret?: VaultSecret; prefill?: VaultPrefill }) {
     void act(async (signal) => {
-      await checkVaultWriteAccess(signal);
       if (!signal.aborted) { setEditor(next); setDeleting(null); setRemovingBrowser(null); }
     });
   }
@@ -319,9 +318,7 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
 
   return <section data-settings-pane="vault" aria-label={text("保险箱", "Vault")} aria-busy={loading || busy} className="space-y-4 text-[13px] text-neutral-700 dark:text-neutral-300">
     <p className="text-[12px] text-neutral-500">{text("安全保存和管理密钥。", "Securely store and manage secrets.")}</p>
-    {reauth && <div data-vault-reauth="" className="rounded-2xl border border-neutral-200 p-5 dark:border-neutral-700">
-      <AuthPanel title={text("确认身份后继续", "Sign in to continue")} closeOnSuccess={false} onSuccess={() => void authenticated()} onClose={cancelAuthentication} />
-    </div>}
+    {reauth && <StepUpDialog onSuccess={() => void authenticated()} onClose={cancelAuthentication} />}
     {loading && <p role="status">{text("正在读取保险箱…", "Loading vault…")}</p>}
     {error && <div role="alert" className="space-y-2 rounded-lg bg-red-50 p-3 text-red-700 dark:bg-red-950/30">
       <p>{error}</p><button type="button" disabled={busy} className={QUIET} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button>

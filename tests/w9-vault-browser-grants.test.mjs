@@ -93,7 +93,7 @@ function harness() {
   } } });
   const settings = load("settings", {
     "../../lib/vault-api": api,
-    "../AuthDialog": { AuthPanel: ({ onClose }) => React.createElement("button", { onClick: onClose }, "Cancel sign-in") },
+    "../../shell/auth/StepUpDialog": { StepUpDialog: ({ onClose }) => React.createElement("button", { "data-vault-reauth": "", onClick: onClose }, "Cancel sign-in") },
     "../../lib/auth/client": { AUTH_STATE_EVENT: "oceanleo:auth-state", getUserId: async () => state.uid },
     "../../i18n/useT.client": { useLocale: () => state.locale },
     "../../lib/vault-seal": { sealVaultValue: async () => { throw new Error("browser grants must not seal or read values"); } },
@@ -286,7 +286,7 @@ test("a language rerender during browser revocation preserves its controller and
 // Safe metadata-mutation errors retain no submitted secret and change no untrusted-content boundary (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("network, recent-auth, quota and fence refusals release controls and can be retried through existing recovery", async () => {
   for (const [raw, expected] of [
-    [{ status: 0 }, /Cannot reach the vault/], [{ status: 403, code: "reauth_required" }, /Sign in again to confirm/],
+    [{ status: 0 }, /Cannot reach the vault/], [{ status: 403, code: "reauth_required" }, /Verify your identity to continue/],
     [{ status: 409, code: "vault_quota" }, /item limit/], [{ status: 429 }, /Too many requests/],
     [{ status: 403, code: "forbidden" }, /permission/], [{ status: 503 }, /could not be completed/],
     [{ status: 409, code: "vault_runtime_fence_busy" }, /Another vault change/],
