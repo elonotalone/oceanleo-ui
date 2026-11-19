@@ -48,10 +48,10 @@ export function InheritedTeamLibrary({ ownerUserId, query = "" }: { ownerUserId:
       if (result.ownerUserId !== ownerUserId || !Array.isArray(result.assets)) throw new Error("owner mismatch");
       if (!result.available) { setSnapshot({ owner: ownerUserId, rows: [], more: false }); return; }
       setSnapshot((current) => ({ owner: ownerUserId, rows: offset && current.owner === ownerUserId ? [...current.rows, ...result.assets] : result.assets, more: result.hasMore }));
-    }).catch((cause) => { if (alive) { setFailedRead("list"); setError(orgErrorCopy(orgApiCode(cause), tt)); } })
+    }).catch((cause) => { if (alive) { setFailedRead("list"); setError(orgErrorCopy(orgApiCode(cause), (key) => key)); } })
       .finally(() => { clearTimeout(timeout); if (alive) setLoading(false); });
     return () => { alive = false; clearTimeout(timeout); controller.abort(); };
-  }, [ownerUserId, offset, revision, tt]);
+  }, [ownerUserId, offset, revision]);
 
   useEffect(() => {
     if (!openId) return;
@@ -62,11 +62,11 @@ export function InheritedTeamLibrary({ ownerUserId, query = "" }: { ownerUserId:
     void getCurrentArtifactItem(openId, controller.signal).then((result) => {
       if (!alive) return;
       if (result.ok && result.data) setPreview({ owner: ownerUserId, item: result.data });
-      else { setFailedRead("preview"); setError(tt("暂时无法预览")); }
-    }).catch(() => { if (alive) { setFailedRead("preview"); setError(tt("暂时无法预览")); } })
+      else { setFailedRead("preview"); setError("暂时无法预览"); }
+    }).catch(() => { if (alive) { setFailedRead("preview"); setError("暂时无法预览"); } })
       .finally(() => { clearTimeout(timeout); if (alive) setOpening(false); });
     return () => { alive = false; clearTimeout(timeout); controller.abort(); };
-  }, [openId, openRevision, ownerUserId, tt]);
+  }, [openId, openRevision, ownerUserId]);
 
   const rows = snapshot.owner === ownerUserId ? snapshot.rows : [];
   const shown = rows.filter((row) => `${row.title} ${row.summary} ${row.publishedBy} ${row.assetRef}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
@@ -90,7 +90,7 @@ export function InheritedTeamLibrary({ ownerUserId, query = "" }: { ownerUserId:
       </li>;
     })}</ul>}
     {loading && <p role="status">{tt("加载中…")}</p>}
-    {error && <div role="status"><p>{error}</p><button type="button" className={COLLECTION_ACTION_BTN_GHOST} onClick={() => { if (failedRead === "preview") setOpenRevision((value) => value + 1); else { setOffset(0); setRevision((value) => value + 1); } }}>{tt("重试")}</button></div>}
+    {error && <div role="status"><p>{tt(error)}</p><button type="button" className={COLLECTION_ACTION_BTN_GHOST} onClick={() => { if (failedRead === "preview") setOpenRevision((value) => value + 1); else { setOffset(0); setRevision((value) => value + 1); } }}>{tt("重试")}</button></div>}
     {snapshot.owner === ownerUserId && snapshot.more && !currentPreview && <button type="button" className={COLLECTION_ACTION_BTN_GHOST} disabled={loading} onClick={() => setOffset(rows.length)}>{tt("加载更多")}</button>}
   </section>;
 }

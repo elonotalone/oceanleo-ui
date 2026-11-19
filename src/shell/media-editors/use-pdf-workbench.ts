@@ -95,7 +95,10 @@ export function usePdfWorkbench(
   siteId = "",
   options: { readOnly?: boolean } = {},
 ) {
-  const tt = useUI();
+  const translate = useUI();
+  const translateRef = useRef(translate);
+  translateRef.current = translate;
+  const tt = useCallback((...args: Parameters<typeof translate>) => translateRef.current(...args), []);
   const readOnly = Boolean(options.readOnly);
   const [handle, setHandle] = useState<PdfStageHandle | null>(null);
   const handleRef = useRef<PdfStageHandle | null>(null);

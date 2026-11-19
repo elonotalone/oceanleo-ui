@@ -12,7 +12,7 @@ require.cache[canvas] = { id: canvas, filename: canvas, loaded: true, exports: {
 const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
 if (previousCanvas) require.cache[canvas] = previousCanvas; else delete require.cache[canvas];
 const reactUrl = pathToFileURL(require.resolve("react")).href;
-const ui = dataModule('const tt=(text,vars={})=>text.replace(/\\{(\\w+)\\}/g,(m,k)=>vars[k]??m); export function useUI(){return tt;}');
+const ui = dataModule('const tt=(text,vars={})=>text.replace(/\\{(\\w+)\\}/g,(m,k)=>vars[k]??m); export function useUI(){return globalThis.__uf1Translate ?? tt;}');
 const apiUrl = await compileModule("src/lib/org-api.ts", {
   "./auth/client": dataModule('export async function accessToken(){return "test-only";}'),
   "./auth/config": dataModule('export const GATEWAY_BASE="https://gateway.test";'),
@@ -150,6 +150,29 @@ test("a failed canonical preview retries that preview without rereading the inhe
       assert.equal(reads,2);assert.equal(calls.length,1);assert.equal(v.q("[data-reference-preview]").textContent,"Retried content");
     });
   });
+});
+
+test("locale changes translate list and preview errors without restarting either read", async () => {
+  for (const preview of [false, true]) {
+    let previewReads = 0;
+    try {
+      await withFetch(() => preview ? json(result("owner", [asset])) : json({ detail: { code: "server_error" } }, 503), async calls => {
+        globalThis.__bdArtifact = async () => { previewReads++; return { ok: false }; };
+        await render(React.createElement(InheritedTeamLibrary, { ownerUserId: "owner" }), async v => {
+          if (preview) await v.click(v.q("li button"));
+          const before = v.q('[role="status"] p')?.textContent;
+          assert.ok(before, "a real read failure is visible");
+          assert.equal(calls.length, 1);
+          assert.equal(previewReads, preview ? 1 : 0);
+          globalThis.__uf1Translate = text => `translated:${text}`;
+          await v.rerender(React.createElement(InheritedTeamLibrary, { ownerUserId: "owner" }));
+          assert.equal(v.q('[role="status"] p')?.textContent, `translated:${before}`);
+          assert.equal(calls.length, 1, "changing locale does not reload the inherited list");
+          assert.equal(previewReads, preview ? 1 : 0, "changing locale does not reopen the preview");
+        });
+      });
+    } finally { delete globalThis.__uf1Translate; }
+  }
 });
 
 
