@@ -186,7 +186,7 @@ test("click, Enter and Space on the card call onOpen once each", async () => {
   });
 });
 
-test("the corner + opens the card exactly once and does not run addAction", async () => {
+test("the corner + runs its add action exactly once without opening the card", async () => {
   await withDom(async ({ renderRoot, find, click }) => {
     let opened = 0;
     let added = 0;
@@ -196,8 +196,8 @@ test("the corner + opens the card exactly once and does not run addAction", asyn
       addAction: { label: "+", ariaLabel: "Add skill", onClick: () => (added += 1) },
     });
     await click(find('[data-project-config-action="add"]'));
-    assert.equal(opened, 1, "+ goes through onOpen, not twice via bubbling");
-    assert.equal(added, 0);
+    assert.equal(opened, 0, "+ does not bubble into the card action");
+    assert.equal(added, 1);
   });
 });
 

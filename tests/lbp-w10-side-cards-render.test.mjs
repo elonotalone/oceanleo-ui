@@ -38,9 +38,8 @@ const h = React.createElement;
 globalThis.__w10 = { React, api: {}, toasts: [] };
 
 const i18nStub = dataModule(`
-  export function useUI() {
-    return (zh, vars) => zh.replace(/\\{(\\w+)\\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m));
-  }
+  const translate = (zh, vars) => zh.replace(/\\{(\\w+)\\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m));
+  export function useUI() { return translate; }
 `);
 const sonnerStub = dataModule(`
   export const toast = {
@@ -53,7 +52,9 @@ const projectsStub = dataModule(`
   export const listProjectFeed = (...a) => api().listProjectFeed(...a);
   export const listProjectTodos = (...a) => api().listProjectTodos(...a);
   export const createProjectTodo = (...a) => api().createProjectTodo(...a);
-  export const listProjectAssets = (...a) => api().listProjectAssets(...a);
+  export const listProjectLibraryItems = (...a) => api().listProjectLibraryItems(...a);
+  export const addProjectLibraryItem = (...a) => api().addProjectLibraryItem(...a);
+  export const removeProjectLibraryItem = (...a) => api().removeProjectLibraryItem(...a);
   export const uploadProjectAsset = (...a) => api().uploadProjectAsset(...a);
 `);
 const iconsStub = dataModule(`export const IconPlus = () => null;`);
@@ -114,11 +115,12 @@ async function load() {
       await kit("kit-icons.tsx"),
     ]
       .map((url) => `export * from ${JSON.stringify(url)};`)
-      .join("\n"),
+      .join("\n") + `\nexport const listMyArtifacts = (...a) => globalThis.__w10.api.listMyArtifacts(...a);`,
   );
   const card = (name) => join(PORTAL, "components/project", name);
   const resourceUrl = await compileModule(card("ProjectSideResource.ts"), { react: reactUrl });
   const common = {
+    "@oceanleo/ui/ui": await compileModule("src/ui/index.tsx", { "../i18n/ui/useUI": useUIStub }),
     "@oceanleo/ui/i18n": i18nStub,
     "@oceanleo/ui/shell": frameUrl,
     "@/lib/projects": projectsStub,
@@ -280,6 +282,7 @@ async function withDom(run) {
 }
 
 const ok = (data) => Promise.resolve({ ok: true, data });
+const asset = (title, kind, updated_at) => ({ id: title, kind: "artifact", added_at: updated_at, item: { title, kind, updated_at } });
 const todo = (id, status, title = id) => ({ id, status, title, project_id: "p1", description: "", position: 0 });
 const skipPortal = { skip: !HAVE_PORTAL && "portal checkout not next to oceanleo-ui" };
 
@@ -411,18 +414,6 @@ test("计划卡 · 读取失败：说明 + 重试", skipPortal, async () => {
 // 资产
 // ---------------------------------------------------------------------------
 
-const asset = (id, kind, updated_at, extra = {}) => ({
-  id,
-  kind,
-  name: id,
-  size_bytes: kind === "folder" ? 0 : 2048,
-  updated_at,
-  created_at: updated_at,
-  project_id: "p1",
-  parent_id: null,
-  mime_type: null,
-  ...extra,
-});
 
 // 2026-11-10 sidebar wave (operator: 「点击这个页面中的assets为什么不打开右侧侧边栏中的library？」): the card opens the
 // product's shared right sidebar on the project's materials through onOpenAssets; there is no Assets dialog any more.
@@ -431,7 +422,7 @@ test("资产卡 · 空、编辑者：一句话 + 右上 +「添加资产」，�
   await withDom(async ({ renderRoot, find, text, click }) => {
     let uploads = 0;
     globalThis.__w10.api = {
-      listProjectAssets: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 1024 ** 3 } }),
+      listProjectLibraryItems: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 1024 ** 3 } }),
       uploadProjectAsset: () => {
         uploads += 1;
         return ok({});
@@ -439,13 +430,20 @@ test("资产卡 · 空、编辑者：一句话 + 右上 +「添加资产」，�
     };
     let opened = 0;
     await renderRoot(h(Assets, { projectId: "p1", canEdit: true, onOpenAssets: () => (opened += 1) }));
-    assert.match(text(), /还没有文件。上传或从 Library 导入资料，团队成员都能看到。/);
+    assert.match(text(), /还没有素材。点击「添加资产」从资料库选择。/);
     assert.equal(find('input[type="file"]'), null, "the card no longer carries its own file input");
     assert.equal(find('[data-project-config-action="open"]'), null);
     const plus = find('[data-project-config-action="add"]');
     assert.equal(plus.getAttribute("aria-label"), "添加资产");
+    globalThis.__w10.api.listMyArtifacts = () => ok({ items: [{ artifactId: "library-doc", title: "Library document" }], serverWorks: [], nextCursor: null });
+    let added;
+    globalThis.__w10.api.addProjectLibraryItem = (...args) => { added = args; return ok({}); };
     await click(plus);
-    assert.equal(opened, 1, "+ opens the shared sidebar on the project's materials");
+    assert.equal(opened, 0, "+ opens the Library reference picker without opening the sidebar");
+    assert.ok(find("[data-project-library-picker]"));
+    await click('[data-project-library-choice="artifact:library-doc"]');
+    assert.deepEqual(added, ["p1", "artifact", "library-doc"]);
+    assert.equal(find("[data-project-library-picker]"), null);
     assert.equal(find("[data-config-dialog]"), null, "no Assets dialog");
     assert.equal(uploads, 0);
   });
@@ -454,7 +452,7 @@ test("资产卡 · 空、编辑者：一句话 + 右上 +「添加资产」，�
 test("资产卡 · 整卡点击打开右侧边栏（没有自己的弹窗，也就没有 holdOpen）", skipPortal, async () => {
   const { Assets } = await load();
   await withDom(async ({ renderRoot, find, click }) => {
-    globalThis.__w10.api = { listProjectAssets: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 10 } }) };
+    globalThis.__w10.api = { listProjectLibraryItems: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 10 } }) };
     let opened = 0;
     await renderRoot(h(Assets, { projectId: "p1", canEdit: true, onOpenAssets: () => (opened += 1) }));
     await click("[data-project-config-card]");
@@ -466,10 +464,10 @@ test("资产卡 · 整卡点击打开右侧边栏（没有自己的弹窗，也�
 test("资产卡 · 空、只读成员：没有上传入口，也没有 +；仍能打开看资产", skipPortal, async () => {
   const { Assets } = await load();
   await withDom(async ({ renderRoot, find, text, click }) => {
-    globalThis.__w10.api = { listProjectAssets: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 10 } }) };
+    globalThis.__w10.api = { listProjectLibraryItems: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 10 } }) };
     let opened = 0;
     await renderRoot(h(Assets, { projectId: "p1", canEdit: false, onOpenAssets: () => (opened += 1) }));
-    assert.match(text(), /还没有文件。有编辑权限的成员上传后会显示在这里。/);
+    assert.match(text(), /暂无素材/);
     assert.equal(find('input[type="file"]'), null);
     assert.equal(find("[data-project-config-action]"), null);
     await click("[data-project-config-card]");
@@ -477,15 +475,15 @@ test("资产卡 · 空、只读成员：没有上传入口，也没有 +；仍�
   });
 });
 
-test("资产卡 · 有文件：根层条目数、用量、最近改动的 3 个，整卡打开右侧边栏的项目素材", skipPortal, async () => {
+test("资产卡 · 有文件：项目引用数、按最近改动排序并可打开具体素材，整卡打开右侧边栏的项目素材", skipPortal, async () => {
   const { Assets } = await load();
   await withDom(async ({ renderRoot, find, findAll, text, click }) => {
     globalThis.__w10.api = {
-      listProjectAssets: () =>
+      listProjectLibraryItems: () =>
         ok({
           items: [
             asset("旧.txt", "file", "2026-01-01T00:00:00Z"),
-            asset("新.pdf", "file", "2026-10-22T00:00:00Z", { size_bytes: 5 * 1024 * 1024 }),
+            asset("新.pdf", "file", "2026-10-22T00:00:00Z"),
             asset("资料", "folder", "2026-10-20T00:00:00Z"),
             asset("中.png", "file", "2026-05-01T00:00:00Z"),
           ],
@@ -495,12 +493,10 @@ test("资产卡 · 有文件：根层条目数、用量、最近改动的 3 个�
     let opened = 0;
     await renderRoot(h(Assets, { projectId: "p1", canEdit: true, onOpenAssets: () => (opened += 1) }));
     assert.equal(find("[data-project-config-count]").textContent, "4");
-    assert.match(text(), /3 个文件 · 1 个文件夹/);
-    assert.match(text(), /已用 5\.0 MB \/ 1\.00 GB/);
     const rows = findAll("[data-project-side-assets-list] li").map((li) => li.textContent);
-    assert.equal(rows.length, 3);
-    assert.match(rows[0], /新\.pdf.*5\.0 MB/);
-    assert.match(rows[1], /资料.*文件夹/);
+    assert.equal(rows.length, 4);
+    assert.match(rows[0], /新\.pdf/);
+    assert.match(rows[1], /资料/);
     assert.match(rows[2], /中\.png/);
 
     await click("[data-project-config-card]");

@@ -31,7 +31,7 @@ const files = [
   "app/projects/page.tsx",
   "components/project/ProjectPlanTab.tsx",
   "components/project/ProjectTasksTab.tsx",
-  "components/project/ProjectAssetsTab.tsx",
+  "components/project/ProjectSideAssetsCard.tsx",
   "components/project/ProjectAutomationDialog.tsx",
   "components/project/ProjectConnectorDialog.tsx",
   "components/project/ProjectInstructionDialog.tsx",
