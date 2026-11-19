@@ -92,8 +92,8 @@ export type CallOwner = "meeting" | "leo-realtime";
 
 /** `callActions` 的形状（合同 §3.9，签名不许改）。 */
 export interface CallActions {
-  startOrJoin(conversationId: string, ctx?: { title?: string }): Promise<void>;
-  join(callId: string, conversationId: string, ctx?: { title?: string }): Promise<void>;
+  startOrJoin(conversationId: string, ctx?: { title?: string; camera?: boolean }): Promise<void>;
+  join(callId: string, conversationId: string, ctx?: { title?: string; camera?: boolean }): Promise<void>;
   leave(reason?: string): Promise<void>;
   setMic(on: boolean): Promise<void>;
   setCamera(on: boolean): Promise<void>;

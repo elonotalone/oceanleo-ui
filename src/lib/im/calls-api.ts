@@ -28,11 +28,11 @@ export const callsApi = {
     return imFetch<CallStatusResponse>(conversationCallPath(conversationId));
   },
   /** 有进行中的就加入，没有就新建并加入（私聊新建时向对方响铃）。 */
-  startOrJoin(conversationId: string): Promise<JoinResponse> {
-    return imFetch<JoinResponse>(conversationCallPath(conversationId), { method: "POST" });
+  startOrJoin(conversationId: string, media: CallMedia = { mic: true, camera: false, screen: false }): Promise<JoinResponse> {
+    return imFetch<JoinResponse>(conversationCallPath(conversationId), { method: "POST", json: heartbeatBody(media) });
   },
-  join(callId: string): Promise<JoinResponse> {
-    return imFetch<JoinResponse>(`${callPath(callId)}/join`, { method: "POST" });
+  join(callId: string, media: CallMedia = { mic: true, camera: false, screen: false }): Promise<JoinResponse> {
+    return imFetch<JoinResponse>(`${callPath(callId)}/join`, { method: "POST", json: heartbeatBody(media) });
   },
   /** `opts.keepalive`：页面关闭时尽力发出（fetch keepalive），不保证送达；网关 2 分钟无心跳也会清掉。 */
   leave(callId: string, opts?: { keepalive?: boolean }): Promise<LeaveResponse> {

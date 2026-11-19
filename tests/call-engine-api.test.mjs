@@ -43,8 +43,8 @@ test("callsApi: every §3.2 route, method and body; ids are URL-encoded; respons
     assert.deepEqual(await callsApi.testToken(), { rtc });
     assert.deepEqual(globalThis.__CALLS, [
       { path: "/v1/im/conversations/conv%2F1/call", method: "GET", json: undefined, keepalive: undefined },
-      { path: "/v1/im/conversations/conv-1/call", method: "POST", json: undefined, keepalive: undefined },
-      { path: "/v1/im/calls/call-1/join", method: "POST", json: undefined, keepalive: undefined },
+      { path: "/v1/im/conversations/conv-1/call", method: "POST", json: { media: { mic: true, camera: false, screen: false } }, keepalive: undefined },
+      { path: "/v1/im/calls/call-1/join", method: "POST", json: { media: { mic: true, camera: false, screen: false } }, keepalive: undefined },
       { path: "/v1/im/calls/call-1/leave", method: "POST", json: undefined, keepalive: undefined },
       { path: "/v1/im/calls/call-1/leave", method: "POST", json: undefined, keepalive: true },
       { path: "/v1/im/calls/call-1/token", method: "POST", json: undefined, keepalive: undefined },
@@ -305,4 +305,18 @@ test("D8: upload/download rates come from media stats first; an RTCP-only candid
   now += 6_000;
   assert.equal(tracker.stats().upKbps, 0, "stale media samples are ignored; transport fallback");
   assert.equal(tracker.stats().downKbps, 0);
+});
+
+
+test("callsApi sends explicit initial voice/video media on both entry routes", async () => {
+  globalThis.__CALLS = [];
+  try {
+    const { callsApi } = await loadCallsApi();
+    await callsApi.startOrJoin("conv", { mic: false, camera: true, screen: false });
+    await callsApi.join("call", { mic: true, camera: false, screen: false });
+    assert.deepEqual(globalThis.__CALLS.map((call) => call.json), [
+      { media: { mic: false, camera: true, screen: false } },
+      { media: { mic: true, camera: false, screen: false } },
+    ]);
+  } finally { delete globalThis.__CALLS; }
 });

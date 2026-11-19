@@ -101,7 +101,7 @@ test("enterCall idle：直接 startOrJoin（带标题），不问任何问题、
     { conversationId: "c1", title: "设计组" },
   );
   assert.equal(out, "entered");
-  assert.deepEqual(calls, [["startOrJoin", "c1", { title: "设计组" }]]);
+  assert.deepEqual(calls, [["startOrJoin", "c1", { title: "设计组", camera: false }]]);
   assert.equal(asked, 0, "不弹任何确认 / 设置框");
   assert.equal(focused, 0);
 });
@@ -112,7 +112,7 @@ test("enterCall 给了 callId（卡片 / 列表标记）→ join 那一通", asy
     conversationId: "c1",
     callId: "call-9",
   });
-  assert.deepEqual(calls, [["join", "call-9", "c1", undefined]]);
+  assert.deepEqual(calls, [["join", "call-9", "c1", { camera: false }]]);
 });
 
 test("enterCall 已在这通：只展开小窗，不碰引擎", async () => {
@@ -135,7 +135,7 @@ test("enterCall 在别的通话里：确认后先离开再加入；取消则什�
     title: "乙",
   });
   assert.equal(out, "entered");
-  assert.deepEqual(yes.calls, [["leave", "switch"], ["startOrJoin", "c1", { title: "乙" }]]);
+  assert.deepEqual(yes.calls, [["leave", "switch"], ["startOrJoin", "c1", { title: "乙", camera: false }]]);
 
   const no = fakeActions();
   const cancelled = await enterCall({ actions: no.actions, confirmSwitch: async () => false, focusDock() {} }, "in_other_call", {
@@ -260,7 +260,7 @@ test("CallButton：交易会话不渲染任何东西", async () => {
   await view.unmount();
 });
 
-test("CallButton idle：耳机图标 +「通话」，aria-label 同文案；点一下直接 startOrJoin，不出任何对话框", async () => {
+test("CallButton idle：耳机图标 +「通话」，选择语音后 startOrJoin，不出设置对话框", async () => {
   reset();
   const view = await mount(React.createElement(CallButton, { conversationId: "c1", title: "设计组", kind: "group" }));
   const button = view.q("button[data-call-button]");
@@ -270,7 +270,8 @@ test("CallButton idle：耳机图标 +「通话」，aria-label 同文案；点�
   assert.match(button.textContent, /通话/);
   assert.ok(button.querySelector('svg[data-call-icon="headphones"]'), "图标是耳机");
   await view.click("button[data-call-button]");
-  assert.deepEqual(globalThis.__W08_CALL.calls, [["startOrJoin", "c1", { title: "设计组" }]]);
+  if (view.q('[role="menuitem"]')) await view.click('[role="menuitem"]');
+  assert.deepEqual(globalThis.__W08_CALL.calls, [["startOrJoin", "c1", { title: "设计组", camera: false }]]);
   assert.equal(document.querySelector("[data-confirm]"), null, "没有确认框");
   assert.equal(document.querySelector('[role="dialog"]'), null, "没有设置 / 预览 / 检查麦克风的对话框");
   await view.unmount();
@@ -287,6 +288,7 @@ test("CallButton 已在这通：写「通话中」，点击只发展开小窗事
   assert.equal(button.getAttribute("data-call-button"), "in_this_call");
   assert.equal(button.getAttribute("aria-label"), "通话中");
   await view.click("button[data-call-button]");
+  if (view.q('[role="menuitem"]')) await view.click('[role="menuitem"]');
   assert.equal(focusEvents, 1);
   assert.deepEqual(globalThis.__W08_CALL.calls, [], "不重复入会");
   window.removeEventListener(CALL_DOCK_FOCUS_EVENT, onFocus);
@@ -298,15 +300,17 @@ test("CallButton 在别的会话通话里：先问「离开当前通话并加入
   setCall({ phase: "connected", conversationId: "other", callId: "call-x" });
   const view = await mount(React.createElement(CallButton, { conversationId: "c1", title: "乙", kind: "dm" }));
   await view.click("button[data-call-button]");
+  if (view.q('[role="menuitem"]')) await view.click('[role="menuitem"]');
   const dialog = view.q("[data-confirm]");
   assert.ok(dialog, "出现切换确认");
   assert.equal(dialog.getAttribute("data-confirm"), "离开当前通话并加入这里？");
   assert.deepEqual(globalThis.__W08_CALL.calls, [], "确认之前不离开");
   await view.click("[data-confirm-ok]");
-  assert.deepEqual(globalThis.__W08_CALL.calls, [["leave", "switch"], ["startOrJoin", "c1", { title: "乙" }]]);
+  assert.deepEqual(globalThis.__W08_CALL.calls, [["leave", "switch"], ["startOrJoin", "c1", { title: "乙", camera: false }]]);
 
   globalThis.__W08_CALL.calls = [];
   await view.click("button[data-call-button]");
+  if (view.q('[role="menuitem"]')) await view.click('[role="menuitem"]');
   await view.click("[data-confirm-cancel]");
   assert.deepEqual(globalThis.__W08_CALL.calls, []);
   assert.equal(view.q("[data-confirm]"), null);
@@ -318,6 +322,7 @@ test("CallButton 入会失败（例如满员）：给一条站内提示，不弹
   globalThis.__W08_CALL.fail = Object.assign(new Error("full"), { code: "call_full", status: 409 });
   const view = await mount(React.createElement(CallButton, { conversationId: "c1", title: "设计组", kind: "group" }));
   await view.click("button[data-call-button]");
+  if (view.q('[role="menuitem"]')) await view.click('[role="menuitem"]');
   assert.deepEqual(globalThis.__W08_TOASTS, ["通话人数已满（最多 50 人）"]);
   await view.unmount();
 });
@@ -327,6 +332,7 @@ test("CallButton 与 Leo 实时通话互斥（引擎 busy_leo_realtime）：提�
   globalThis.__W08_CALL.fail = Object.assign(new Error("busy"), { code: "busy_leo_realtime" });
   const view = await mount(React.createElement(CallButton, { conversationId: "c1", title: "设计组", kind: "group" }));
   await view.click("button[data-call-button]");
+  if (view.q('[role="menuitem"]')) await view.click('[role="menuitem"]');
   assert.deepEqual(globalThis.__W08_TOASTS, ["正在与 Leo 实时通话，请先结束"]);
   await view.unmount();
 });
@@ -337,6 +343,7 @@ test("引擎进了 error 阶段（小窗自己写原因）时不再重复弹提�
   const view = await mount(React.createElement(CallButton, { conversationId: "c1", title: "设计组", kind: "group" }));
   globalThis.__W08_CALL.snapshot = { ...IDLE, phase: "error" };
   await view.click("button[data-call-button]");
+  if (view.q('[role="menuitem"]')) await view.click('[role="menuitem"]');
   assert.deepEqual(globalThis.__W08_TOASTS, []);
   await view.unmount();
 });
@@ -555,3 +562,20 @@ test("D5 会话视图：hidden（只是不显示）与别的会话的移出事�
   await view.unmount();
 });
 
+
+test("CallButton offers two choices and propagates each initial camera selection", async () => {
+  for (const camera of [false, true]) {
+    reset();
+    const view = await mount(React.createElement(CallButton, { conversationId: "c1", title: "Group", kind: "group" }));
+    try {
+      await view.click("button[data-call-button]");
+      assert.deepEqual(globalThis.__W08_CALL.calls, [], "opening the menu does not join");
+      const items = Array.from(view.host.querySelectorAll('[role="menuitem"]'));
+      assert.deepEqual(items.map((item) => item.textContent), ["语音通话", "视频通话"]);
+      assert.equal(document.activeElement, items[0], "keyboard focus enters the menu");
+      await act(async () => items[camera ? 1 : 0].click());
+      assert.deepEqual(globalThis.__W08_CALL.calls, [["startOrJoin", "c1", { title: "Group", camera }]]);
+      assert.equal(view.q('[role="menu"]'), null);
+    } finally { await view.unmount(); }
+  }
+});

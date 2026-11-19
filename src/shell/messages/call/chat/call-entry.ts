@@ -1,6 +1,6 @@
 // 「通话」入口的判定与动作（任务书 P1；合同 §1 A1/A3/A20）。纯 TS，tests/call-chat-entry.test.mjs 直接跑。
 //
-// 产品规则（操作员已定）：点了就进——不预览、不检查麦克风、不邀请审批、不弹任何设置框。
+// 先选语音或视频，再直接进入；选择只控制这次加入时的摄像头。
 // 唯一的确认：已经在**别的**会话通话里时，先问「离开当前通话并加入这里？」。
 // 交易（talent）会话没有通话；已解散 / 非成员不显示（由会话视图判，不传进来就不渲染）。
 import type { ImConversationKind } from "../../../../lib/im/types";
@@ -55,8 +55,8 @@ export function callEntryState(input: {
 }
 
 export interface CallEntryActions {
-  startOrJoin(conversationId: string, ctx?: { title?: string }): Promise<void>;
-  join(callId: string, conversationId: string, ctx?: { title?: string }): Promise<void>;
+  startOrJoin(conversationId: string, ctx?: { title?: string; camera?: boolean }): Promise<void>;
+  join(callId: string, conversationId: string, ctx?: { title?: string; camera?: boolean }): Promise<void>;
   leave(reason?: string): Promise<void>;
 }
 
@@ -78,7 +78,7 @@ export type CallEntryOutcome = "entered" | "focused" | "cancelled" | "ignored";
 export async function enterCall(
   deps: CallEntryDeps,
   state: CallEntryState,
-  target: { conversationId: string; title?: string; callId?: string | null },
+  target: { conversationId: string; title?: string; callId?: string | null; camera?: boolean },
 ): Promise<CallEntryOutcome> {
   if (state === "hidden" || state === "busy") return "ignored";
   if (state === "in_this_call") {
@@ -90,7 +90,7 @@ export async function enterCall(
     if (!ok) return "cancelled";
     await deps.actions.leave("switch");
   }
-  const ctx = target.title ? { title: target.title } : undefined;
+  const ctx = { ...(target.title ? { title: target.title } : {}), camera: target.camera ?? false };
   if (target.callId) await deps.actions.join(target.callId, target.conversationId, ctx);
   else await deps.actions.startOrJoin(target.conversationId, ctx);
   return "entered";

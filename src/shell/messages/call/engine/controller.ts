@@ -106,8 +106,8 @@ export const CALL_ERROR_MESSAGES: Readonly<Record<string, string>> = {
 // 依赖
 // ---------------------------------------------------------------------------
 export interface CallApi {
-  startOrJoin(conversationId: string): Promise<JoinResponse>;
-  join(callId: string): Promise<JoinResponse>;
+  startOrJoin(conversationId: string, media?: CallMedia): Promise<JoinResponse>;
+  join(callId: string, media?: CallMedia): Promise<JoinResponse>;
   leave(callId: string, opts?: { keepalive?: boolean }): Promise<LeaveResponse>;
   refreshToken(callId: string): Promise<TokenResponse>;
   heartbeat(callId: string, media: CallMedia): Promise<OkResponse>;
@@ -1347,7 +1347,7 @@ export function createCallController(deps: CallControllerDeps): CallController {
 
   async function begin(
     target: { conversationId: string; callId: string | null },
-    ctx: { title?: string } | undefined,
+    ctx: { title?: string; camera?: boolean } | undefined,
   ): Promise<void> {
     ensureHub();
     const current = session;
@@ -1384,7 +1384,7 @@ export function createCallController(deps: CallControllerDeps): CallController {
       joined: false,
       micCaptured: false,
       wantMic: prefs.mic,
-      wantCamera: prefs.camera,
+      wantCamera: ctx?.camera ?? false,
       rejoining: false,
       refreshRetried: false,
     };
@@ -1414,7 +1414,8 @@ export function createCallController(deps: CallControllerDeps): CallController {
       if (!support.support) throw namedError("artc_unsupported");
       s.screenShareSupported = support.detail?.isScreenShareSupported !== false;
       if (session !== s) return;
-      const res = target.callId ? await api.join(target.callId) : await api.startOrJoin(target.conversationId);
+      const media = { mic: s.wantMic, camera: s.wantCamera, screen: false };
+      const res = target.callId ? await api.join(target.callId, media) : await api.startOrJoin(target.conversationId, media);
       if (session !== s) {
         void api.leave(res.call.call_id).catch(() => undefined);
         return;
@@ -1540,7 +1541,7 @@ export function createCallController(deps: CallControllerDeps): CallController {
       if (session !== s) return;
       try {
         const sdk = s.sdk ?? (await deps.loadSdk());
-        const res = await api.join(s.callId);
+        const res = await api.join(s.callId, { mic: s.wantMic, camera: s.wantCamera, screen: false });
         if (session !== s) return;
         const old = s.engine;
         s.engine = null;

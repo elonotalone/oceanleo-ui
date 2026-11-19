@@ -49,7 +49,7 @@ export interface CallEntryHandle {
   pending: boolean;
   /** 引擎当前通话 id（卡片判断「是不是我正在的这一通」）。 */
   activeCallId: string | null;
-  run(target?: { title?: string; callId?: string | null }): Promise<CallEntryOutcome | "failed">;
+  run(target?: { title?: string; callId?: string | null; camera?: boolean }): Promise<CallEntryOutcome | "failed">;
   /** 「离开当前通话并加入这里？」确认框；没在确认时为 null。调用方把它放进自己的渲染树。 */
   dialog: ReactNode;
 }
@@ -70,7 +70,7 @@ export function useCallEntry(conversationId: string, hidden: boolean): CallEntry
   const busy = useRef(false);
 
   const run = useCallback(
-    async (target: { title?: string; callId?: string | null } = {}): Promise<CallEntryOutcome | "failed"> => {
+    async (target: { title?: string; callId?: string | null; camera?: boolean } = {}): Promise<CallEntryOutcome | "failed"> => {
       if (busy.current) return "ignored";
       busy.current = true;
       setPending(true);
@@ -86,7 +86,7 @@ export function useCallEntry(conversationId: string, hidden: boolean): CallEntry
             focusDock: () => requestDockFocus(),
           },
           state,
-          { conversationId, title: target.title, callId: target.callId ?? null },
+          { conversationId, title: target.title, callId: target.callId ?? null, camera: target.camera ?? false },
         );
       } catch (error) {
         // 引擎进了 error 阶段时小窗自己会写原因；否则这里补一条提示，不让点击石沉大海。

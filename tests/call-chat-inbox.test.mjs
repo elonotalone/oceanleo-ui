@@ -364,13 +364,16 @@ test("列表行：有 active_call 就在右列显示耳机 + 人数；标记不�
   await view.unmount();
 });
 
-test("点标记直接加入那一通（带会话标题），不会同时打开会话", async () => {
+test("点标记选择语音后加入那一通（带会话标题），不会同时打开会话", async () => {
   reset();
   const row = item("g-2", { title: "产品组", active_call: { call_id: "call-2", participant_count: 2, started_at: "2026-10-23T01:00:00Z" } });
   globalThis.__W08N.items = [row];
   const view = await mountRow(row);
   await view.click(view.badge());
-  assert.deepEqual(globalThis.__W08N.calls.filter(([n]) => n === "join"), [["join", "call-2", "g-2", { title: "产品组" }]]);
+  assert.deepEqual(Array.from(view.host.querySelectorAll('[role="menuitem"]')).map((item) => item.textContent), ["语音通话", "视频通话"]);
+  assert.equal(globalThis.__W08N.calls.filter(([n]) => n === "join").length, 0);
+  await view.click(view.host.querySelector('[role="menuitem"]'));
+  assert.deepEqual(globalThis.__W08N.calls.filter(([n]) => n === "join"), [["join", "call-2", "g-2", { title: "产品组", camera: false }]]);
   assert.deepEqual(view.opened, [], "点标记不触发打开会话");
   await view.click(view.host.querySelector('[data-testid="inbox-row"]'));
   assert.deepEqual(view.opened, ["g-2"], "点行本身照旧打开会话");

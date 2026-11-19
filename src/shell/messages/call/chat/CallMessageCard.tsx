@@ -18,6 +18,7 @@ import { useCallChatContext } from "./call-chat-context";
 import { callMetaOf, formatBytes, formatCallDuration, secondsBetween, type CallCardMeta } from "./call-meta";
 import { AvatarStack, HeadphonesIcon, RecordDotIcon, TranscriptIcon } from "./call-visuals";
 import { conversationCalls, useConversationCallEntry } from "./use-conversation-call";
+import { CallMediaMenu } from "./CallMediaMenu";
 import { useCallEntry } from "./use-call-entry";
 
 export interface CallMessageCardProps {
@@ -148,20 +149,21 @@ function CallStartedCard({ message, meta }: { message: ImMessage; meta: CallCard
             <div className="truncate text-[12px] text-neutral-500 dark:text-neutral-400">{starter}</div>
           </div>
           {showJoin ? (
-            <button
-              type="button"
-              data-call-join={inThis ? "mine" : join.state}
-              disabled={join.pending || join.state === "busy" || join.state === "hidden"}
-              onClick={() => void join.run({ title: ctx.conversationTitle || undefined, callId: meta.callId })}
-              className={
-                "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors duration-[var(--leo-dur-2)] disabled:opacity-60 " +
-                (inThis
-                  ? "bg-neutral-50 text-neutral-700 hover:bg-neutral-100 dark:bg-neutral-900/15 dark:text-neutral-300"
-                  : "bg-neutral-900 text-white hover:bg-neutral-900")
-              }
-            >
-              {inThis ? tt("通话中") : tt("加入通话")}
-            </button>
+            <CallMediaMenu inCall={inThis} onChoose={(camera) => void join.run({ title: ctx.conversationTitle || undefined, callId: meta.callId, camera })} onFocus={() => void join.run()}>
+              <button
+                type="button"
+                data-call-join={inThis ? "mine" : join.state}
+                disabled={join.pending || join.state === "busy" || join.state === "hidden"}
+                className={
+                  "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors duration-[var(--leo-dur-2)] disabled:opacity-60 " +
+                  (inThis
+                    ? "bg-neutral-50 text-neutral-700 hover:bg-neutral-100 dark:bg-neutral-900/15 dark:text-neutral-300"
+                    : "bg-neutral-900 text-white hover:bg-neutral-900")
+                }
+              >
+                {inThis ? tt("通话中") : tt("加入通话")}
+              </button>
+            </CallMediaMenu>
           ) : null}
         </div>
         {people.length > 0 ? (

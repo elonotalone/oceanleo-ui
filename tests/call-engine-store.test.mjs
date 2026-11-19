@@ -324,7 +324,7 @@ function setup({ storage = null, devices = null, sinkSupported = true, busy = fa
 
 async function joined(options) {
   const t = setup(options);
-  await t.actions.startOrJoin("conv-1", { title: "设计组" });
+  await t.actions.startOrJoin("conv-1", { title: "设计组", camera: options?.initialCamera ?? false });
   await settle();
   return t;
 }
@@ -371,13 +371,13 @@ test("start: SDK loads before the gateway; A-11 setup and single-param token joi
   assert.equal(t.active.at(-1), engine, "the active engine is registered for getLocalMicTrack");
 });
 
-test("remembered choices are applied and user toggles persist; passive failures do not overwrite memory", async () => {
-  const t = await joined({ storage: { mic: false, camera: true, micDeviceId: "mic-2", cameraDeviceId: "cam-1" } });
+test("remembered devices and microphone are applied with explicit video choice; user toggles persist", async () => {
+  const t = await joined({ initialCamera: true, storage: { mic: false, camera: true, micDeviceId: "mic-2", cameraDeviceId: "cam-1" } });
   const engine = t.engine();
   assert.deepEqual(engine.named("publishAudio"), [["publishAudio", false]], "remembered mic-off means no capture at join");
   assert.equal(engine.named("startAudioCapture").length, 0);
   assert.deepEqual(engine.named("cameraConfig"), [["cameraConfig", { deviceId: "cam-1" }]]);
-  assert.deepEqual(engine.named("publishVideo").at(-1), ["publishVideo", true], "remembered camera-on turns on after join");
+  assert.deepEqual(engine.named("publishVideo").at(-1), ["publishVideo", true], "explicit video choice turns on after join");
   assert.equal(t.snap().me.camera, true);
   assert.equal(t.snap().me.mic, false);
 
@@ -1137,4 +1137,24 @@ test("D2: repeated status events after the call ended do not postpone returning 
   assert.equal(t.snap().phase, "idle", "still exactly ENDED_RESET_MS after the end");
   await t.actions.leave();
   assert.equal(t.snap().phase, "idle");
+});
+
+
+test("voice overrides remembered camera-on; video overrides remembered camera-off on start and join", async () => {
+  for (const joinExisting of [false, true]) for (const camera of [false, true]) {
+    const t = setup({ storage: { mic: true, camera: !camera } });
+    let media;
+    const method = joinExisting ? "join" : "startOrJoin";
+    const original = t.api[method];
+    t.api[method] = async (id, value) => { media = value; return original(id); };
+    if (joinExisting) await t.actions.join("call-1", "conv-1", { camera });
+    else await t.actions.startOrJoin("conv-1", { camera });
+    await settle();
+    assert.deepEqual(media, { mic: true, camera, screen: false });
+    assert.equal(t.snap().me.camera, camera);
+    assert.equal(t.engine().named("publishVideo").some((call) => call[1] === true), camera);
+    await t.actions.setCamera(!camera);
+    assert.equal(t.snap().me.camera, !camera, "in-call toggle stays available");
+    await t.actions.leave();
+  }
 });

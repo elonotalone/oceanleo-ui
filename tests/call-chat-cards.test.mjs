@@ -330,7 +330,8 @@ test("call_started 进行中：按 GET …/call 显示人数与头像叠，「�
   const join = view.q("[data-call-join]");
   assert.equal(join.textContent, "加入通话");
   await view.click("[data-call-join]");
-  assert.deepEqual(globalThis.__W08C.calls.filter(([n]) => n === "join"), [["join", "call-1", "c-active", { title: "设计组" }]]);
+  if (view.q('[role="menuitem"]')) await view.click('[role="menuitem"]');
+  assert.deepEqual(globalThis.__W08C.calls.filter(([n]) => n === "join"), [["join", "call-1", "c-active", { title: "设计组", camera: false }]]);
   await view.unmount();
 });
 
@@ -376,6 +377,7 @@ test("call_started 我正在这通：按钮写「通话中」，点击只展开�
   assert.equal(button.getAttribute("data-call-join"), "mine");
   assert.equal(button.textContent, "通话中");
   await view.click("[data-call-join]");
+  if (view.q('[role="menuitem"]')) await view.click('[role="menuitem"]');
   assert.equal(focus, 1);
   assert.equal(globalThis.__W08C.calls.filter(([n]) => n === "join" || n === "startOrJoin").length, 0);
   window.removeEventListener(chat.CALL_DOCK_FOCUS_EVENT, onFocus);
