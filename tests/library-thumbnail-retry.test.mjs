@@ -2,7 +2,8 @@ import './helpers/w1-jsdom-window.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import React, { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { compileModule, dataModule } from './helpers/module-bench.mjs';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -26,19 +27,34 @@ const { WorkspaceThumbnail } = await import(await compileModule('src/shell/works
   './library-editor-category': dataModule('export const libraryEditorLabel=()=>"网站";export const translateLibraryTypeLabel=(tt,s)=>tt(s);'),
   './works/link-work-item': dataModule('export const linkWorkFromLibraryItem=()=>null;'),
 }));
-async function bench(missing = false) {
+const { CollectionItemCard, CollectionItemRow } = await import(await compileModule("src/shell/collection-items.tsx"));
+
+async function bench(missing = false, collection = {}) {
   let id=0, failures=0, retries=0;
   const timers=new Map(), originalSet=globalThis.setTimeout, originalClear=globalThis.clearTimeout;
   globalThis.setTimeout=(fn,ms)=>{ const key=++id;timers.set(key,{fn,ms});return key; };
   globalThis.clearTimeout=key=>timers.delete(key);
   globalThis.__retryRendition={url:'',version:0,loading:false,error:'',rendition:null,resourceFailed(){failures++;},retry(){retries++;}};
-  const host=document.createElement('div'),root=createRoot(host);
+  const host=document.createElement('div');
+  document.body.appendChild(host);
+  let root, opened=0, starred=0;
   const item={key:'cover',id:'cover',source:'creation',kind:'website',title:'Site',siteId:'',favorite:false,meta:{},thumbUrl:missing ? undefined : 'https://files.test/small.webp'};
-  await act(async()=>root.render(React.createElement(WorkspaceThumbnail,{url:missing ? undefined : 'https://files.test/full.png',item,alt:'Site',kind:'website',accent:'#333333',imageClassName:'cover'})));
+  const thumbnail = React.createElement(WorkspaceThumbnail,{url:missing ? undefined : 'https://files.test/full.png',item,alt:'Site',kind:'website',accent:'#333333',imageClassName:'cover'});
+  const content = collection.Item ? React.createElement(collection.Item, {
+    cover:thumbnail, title:'Site', openHref:collection.href,
+    onOpen(event){event?.preventDefault();opened++;},
+    actions:React.createElement('button',{type:'button',onClick(){starred++;}},'Favorite'),
+  }) : thumbnail;
+  await act(async()=>{
+    if(collection.Item){
+      host.innerHTML=renderToString(content);
+      root=hydrateRoot(host,content,{onRecoverableError(error){collection.errors.push(error);}});
+    }else{root=createRoot(host);root.render(content);}
+  });
   await act(async()=>observer.emit(true));
-  return {host,hasTimer(ms){return [...timers.values()].some(t=>t.ms===ms);},get failures(){return failures;},get retries(){return retries;},
+  return {host,get opened(){return opened;},get starred(){return starred;},hasTimer(ms){return [...timers.values()].some(t=>t.ms===ms);},get failures(){return failures;},get retries(){return retries;},
     async tick(ms){const entry=[...timers.entries()].find(([,t])=>t.ms===ms);assert.ok(entry,`timer ${ms}`);timers.delete(entry[0]);await act(async()=>entry[1].fn());},
-    async close(){await act(async()=>root.unmount());globalThis.setTimeout=originalSet;globalThis.clearTimeout=originalClear;}
+    async close(){await act(async()=>root.unmount());host.remove();globalThis.setTimeout=originalSet;globalThis.clearTimeout=originalClear;}
   };
 }
 test('cover timeout preserves image and a late 200 load recovers',async()=>{
@@ -70,3 +86,34 @@ test('an actually missing cover keeps its explanation instead of timing out to a
     assert.equal(b.hasTimer(15000),false);
   }finally{await b.close();}
 });
+
+for (const Item of [CollectionItemCard, CollectionItemRow]) {
+  for (const href of [undefined, '/library/site']) {
+    test(`${Item.name}: failed real cover hydrates with independent retry and ${href ? 'link' : 'button'} primary action`, async(t)=>{
+      const errors=[];
+      t.mock.method(console,'error',(...args)=>errors.push(args));
+      const b=await bench(false,{Item,href,errors});
+      try{
+        await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
+        const retry=b.host.querySelector('button[aria-label="重试"]');
+        assert.ok(retry,'failed real cover exposes retry');
+        assert.equal(retry.closest('button, a'),retry);
+        assert.equal(retry.parentElement.closest('button, a'),null,'retry is outside the primary action');
+        const primary=b.host.querySelector('.leo-collection-open');
+        assert.equal(primary.tagName,href ? 'A' : 'BUTTON');
+        if(href) assert.equal(primary.getAttribute('href'),href);
+        assert.equal(document.getElementById(primary.getAttribute('aria-labelledby')).textContent,'Site');
+        primary.focus();assert.equal(document.activeElement,primary);
+        retry.focus();assert.equal(document.activeElement,retry);
+        await act(async()=>retry.click());
+        assert.equal(b.retries,1);assert.equal(b.opened,0);
+        await act(async()=>[...b.host.querySelectorAll('button')].find(button=>button.textContent==='Favorite').click());
+        assert.equal(b.starred,1);assert.equal(b.opened,0);
+        await act(async()=>primary.click());
+        assert.equal(b.opened,1);
+        assert.equal(b.host.querySelector('button button, button a, a button, a a'),null);
+      }finally{await b.close();}
+      assert.deepEqual(errors,[],'no console.error or recoverable hydration error');
+    });
+  }
+}

@@ -415,7 +415,14 @@ test("浏览器：那颗上传按钮点下去照旧是系统文件选择器，�
 
   const upload = buttonLabelled(view.container, "上传文件（可多选）");
   assert.ok(upload, "上传按钮不见了");
+  const input = view.container.querySelector('input[type="file"]');
+  assert.ok(input, "file picker input exists");
+  assert.equal(input.closest("button"), null, "file input is outside the upload button");
+  let pickerClicks = 0;
+  input.click = () => { pickerClicks++; };
   await view.click(upload);
+
+  assert.equal(pickerClicks, 1, "upload button opens its sibling file input once");
 
   assert.equal(stableHtml(view.container.innerHTML), before, "浏览器里点上传竟然多渲染了东西");
   await view.unmount();

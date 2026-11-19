@@ -1,3 +1,4 @@
+import './helpers/w1-jsdom-window.mjs';
 import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
@@ -9,17 +10,14 @@ const ui = dataModule('export const useUI = () => (s) => s;');
 const { AppDirectory } = await import(await compileModule("src/shell/AppDirectory.tsx", { "../i18n/ui/useUI": ui }));
 
 for (const Item of [CollectionItemCard, CollectionItemRow]) {
-  test(`${Item.name}: open and favorite remain independent keyboard controls`, () => {
-    let opened = 0, starred = 0;
-    const props = { cover: React.createElement("img", { src: "/cover.jpg", alt: "" }), title: "Example", metadata: "Image · Today", onOpen() { opened++; }, actions: React.createElement("button", { type: "button", onClick() { starred++; } }, "Favorite") };
-    const tree = Item(props);
-    const open = tree.props.children[0];
-    assert.equal(open.type, "button");
-    open.props.onClick();
-    props.actions.props.onClick();
-    assert.equal(opened, 1);
-    assert.equal(starred, 1);
+  test(`${Item.name}: renders separate primary and favorite controls`, () => {
+    const props = { cover: React.createElement("img", { src: "/cover.jpg", alt: "" }), title: "Example", metadata: "Image · Today", onOpen() {}, actions: React.createElement("button", { type: "button", onClick() {} }, "Favorite") };
     const html = renderToStaticMarkup(React.createElement(Item, props));
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    assert.equal(host.querySelector(".leo-collection-open").tagName, "BUTTON");
+    assert.equal(host.querySelectorAll("button").length, 2);
+    assert.equal(host.querySelector("button button"), null);
     assert.match(html, /text-\[13px\] font-medium/);
     assert.match(html, /text-\[11px\]/);
     assert.doesNotMatch(html, /<button[^>]*>(?:(?!<\/button>)[\s\S])*<button/);
@@ -41,13 +39,15 @@ test("list uses one enclosing border and shared dividers", () => {
 
 test("cards without metadata keep the same reserved second line", () => {
   const props = { cover: "cover", title: "Project", onOpen() {} };
-  const empty = CollectionItemCard(props);
-  const filled = CollectionItemCard({ ...props, metadata: "Image" });
-  const body = (tree) => tree.props.children[0].props.children[1];
-  assert.equal(body(empty).props.children.length, 2);
-  assert.equal(body(empty).props.children[1].type, "p");
-  assert.equal(body(empty).props.children[1].props.children, "\u00a0");
-  assert.equal(body(empty).props.children[1].props.className, body(filled).props.children[1].props.className);
+  const body = (values) => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(React.createElement(CollectionItemCard, values));
+    return host.querySelectorAll("p");
+  };
+  const empty = body(props), filled = body({ ...props, metadata: "Image" });
+  assert.equal(empty.length, 2);
+  assert.equal(empty[1].textContent, "\u00a0");
+  assert.equal(empty[1].className, filled[1].className);
 });
 
 test("live Workspace AppDirectory cards retain actions and use Library geometry", () => {

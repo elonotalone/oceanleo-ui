@@ -1,0 +1,21 @@
+/* The primary action stretches behind the content; cover controls stay separate. */
+.leo-collection-main {
+  position: relative;
+}
+.leo-collection-open {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border-radius: inherit;
+}
+.leo-collection-content {
+  position: relative;
+  pointer-events: none;
+}
+.leo-collection-content :is(button, a, input, select, textarea, summary, [tabindex], [role="button"], [role="link"], [contenteditable="true"]) {
+  pointer-events: auto;
+}
+.leo-collection-main:has(> .leo-collection-open:focus-visible) {
+  outline: 2px solid var(--fg-2, #57534e);
+  outline-offset: -2px;
+}

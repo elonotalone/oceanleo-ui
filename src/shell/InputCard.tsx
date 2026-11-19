@@ -238,21 +238,23 @@ export function InputCard({
       {nativeHandoff.panel}
 
       {onFiles && (
-        <button
-          type="button"
-          onClick={() =>
-            nativeSheetActions.length > 0
-              ? setNativeSheetOpen((v) => !v)
-              : fileRef.current?.click()
-          }
-          className={`flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-3 text-[13px] font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              nativeSheetActions.length > 0
+                ? setNativeSheetOpen((v) => !v)
+                : fileRef.current?.click()
+            }
+            className={`flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-3 text-[13px] font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
  dragging
  ? "border-stone-400 bg-stone-50 text-stone-700"
  : "border-stone-300 text-stone-600 hover:border-stone-400 hover:bg-stone-50"
  }`}
-        >
-          <ImageGlyph />
-          {uploadLabel}
+          >
+            <ImageGlyph />
+            {uploadLabel}
+          </button>
           <input
             ref={fileRef}
             type="file"
@@ -264,7 +266,7 @@ export function InputCard({
               e.target.value = "";
             }}
           />
-        </button>
+        </>
       )}
 
       {submitLabel && onSubmit && (
