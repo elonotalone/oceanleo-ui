@@ -272,6 +272,9 @@ test("End all calls end-all once and shows the empty list it returns; errors are
     await click(panel().querySelector('[data-activity-end="acp-s1"]'));
     assert.equal(panel().querySelector("[data-device-activity-error]").textContent, "node_offline: the computer is offline");
     assert.ok(panel().querySelector('[data-activity-end="acp-s1"]'), "the list stays as it was");
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    assert.equal(failing.calls.filter(([kind]) => kind === "end").length, 1, "read recovery never repeats a failed destructive action");
+    assert.equal(panel().querySelector("[data-device-activity-error]").textContent, "node_offline: the computer is offline", "a successful read cannot imply that ending the session succeeded");
   } finally { second.cleanup(); }
 });
 

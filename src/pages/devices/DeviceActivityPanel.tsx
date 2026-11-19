@@ -70,6 +70,7 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
   const tt = useUI();
   const [activity, setActivity] = useState<ComputerActivity | null>(initial);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ programs: ActivityProgram[]; terminals: ActivityTerminal[] } | null>(null);
   const [upgradingTo, setUpgradingTo] = useState<string | null>(null);
@@ -95,6 +96,7 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
     if (gateway === undefined) return false;
     setConfirm(null);
     setError(null);
+    setActionError(null);
     if (activity) {
       const next = { ...activity, online: true, reachable: false, gateway };
       setActivity(next);
@@ -120,8 +122,9 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
   async function act(key: string, request: () => Promise<ComputerActivity>) {
     if (busy) return;
     setBusy(key); setError(null);
+    if (key !== "refresh") setActionError(null);
     try { await read(request); }
-    catch (cause) { if (alive.current && !markHeldElsewhere(cause)) setError(errorText(cause)); }
+    catch (cause) { if (alive.current && !markHeldElsewhere(cause)) (key === "refresh" ? setError : setActionError)(errorText(cause)); }
     finally { if (alive.current) setBusy(null); }
   }
 
@@ -131,7 +134,7 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
 
   async function upgrade(confirmed: boolean) {
     if (busy) return;
-    setBusy("upgrade"); setError(null);
+    setBusy("upgrade"); setError(null); setActionError(null);
     try {
       const result = await client.upgradeNode(computerId, confirmed ? { confirm: true } : {});
       if (!alive.current) return;
@@ -140,7 +143,7 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
       if (!alive.current) return;
       const list = confirmed ? null : upgradeConfirmList(cause);
       setConfirm(list);
-      if (!list && !markHeldElsewhere(cause)) setError(errorText(cause));
+      if (!list && !markHeldElsewhere(cause)) setActionError(errorText(cause));
     } finally { if (alive.current) setBusy(null); }
   }
 
@@ -153,6 +156,7 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
   const at = now();
 
   const content = <>
+    {actionError && <p role="alert" data-device-activity-error className="mb-4 break-words rounded-xl bg-red-50 p-3 text-sm text-red-600">{tt(actionError)}</p>}
     {error && <AutoRecovery identity="src/pages/devices/DeviceActivityPanel.tsx:0" error={error} recover={() => act("refresh", () => client.getActivity(computerId))} />}
     {!activity ? (!error && <p role="status" className="py-8 text-center text-sm text-neutral-500">{tt("正在加载…")}</p>) : <>
       <section className="flex flex-wrap items-start justify-between gap-4 pb-6" data-device-activity-machine>
