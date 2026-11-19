@@ -85,6 +85,14 @@ const clientStubUrl = dataModule(`
   export async function verifyPhoneChange(...a) {
     return g().verifyPhoneChange ? g().verifyPhoneChange(...a) : {};
   }
+  export async function getUserId(){ return "phone-user"; }
+  export async function sendStepUpEmail(){ return {}; }
+  export async function verifyStepUpEmail(){ return {}; }
+  export function supportsPasskeys(){ return false; }
+  export async function listPasskeys(){ return { passkeys: [] }; }
+  export async function registerPasskey(){ return { error: "unavailable" }; }
+  export async function removePasskey(){ return {}; }
+  export async function verifyPasskeyForUser(){ return {}; }
   export async function listMfaFactors() { return { factors: [] }; }
   export async function currentAal() { return { current: "aal1", next: "aal1" }; }
   export async function enrollTotp() { return {}; }

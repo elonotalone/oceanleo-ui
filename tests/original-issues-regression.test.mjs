@@ -36,10 +36,11 @@ test("task menu exposes complete management actions", () => {
     new URL("../src/shell/TaskActionsMenu.tsx", import.meta.url),
     "utf8",
   );
+  assert.doesNotMatch(menu, /label=\{tt\("(?:复制链接|分享)"\)\}/, "sharing lives in its separate panel");
+  const share = readFileSync(new URL("../src/shell/share/TaskSharePanel.tsx", import.meta.url), "utf8");
+  assert.match(share, /copyLink/);
   for (const action of [
     "在新标签打开",
-    "复制链接",
-    "分享",
     "重命名",
     "置顶",
     "收藏",

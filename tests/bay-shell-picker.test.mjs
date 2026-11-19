@@ -68,7 +68,7 @@ test("发帖白板贴着页的上下边，页框不再上下留白；编辑页�
   const page = readFileSync(join(REPO, "src/shell/bay/shell/LeoBayPage.tsx"), "utf8");
   assert.match(page, /PAPER_FRAME_CLASS/);
   assert.match(page, /paperPage \? PAPER_FRAME_CLASS : FRAME_CLASS/);
-  assert.match(page, /PAPER_FRAME_CLASS = "mx-auto flex h-\[calc\(100dvh-1px\)\] min-h-0 w-full max-w-6xl flex-col px-4"/);
+  assert.match(page, /PAPER_FRAME_CLASS = "mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col px-4"/);
   assert.doesNotMatch(page, /PAPER_FRAME_CLASS = "[^"]*\bbg-white\b/);
   assert.doesNotMatch(page, /PAPER_FRAME_CLASS = "[^"]*\bpt-3\b/);
   assert.doesNotMatch(page, /PAPER_FRAME_CLASS = "[^"]*\bpb-5\b/);

@@ -136,10 +136,8 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
     agentChatSource,
     /if \(loadedTaskRef\.current === taskId\) return;[\s\S]*?void refresh\(taskId\)/,
   );
-  assert.match(
-    agentChatSource,
-    /workspace\.mode !== "history"[\s\S]*?<RestartDraftButton[\s\S]*?label=\{tt\("新建"\)\}/,
-  );
+  assert.doesNotMatch(agentChatSource, /RestartDraftButton/, "new conversations start on the home page");
+  assert.match(agentChatSource, /<TaskActionsMenu/, "the task header keeps its task actions");
   assert.match(agentChatSource, /appId="home-agent"/);
   assert.match(agentChatSource, /startFreshSession/);
   assert.match(

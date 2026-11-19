@@ -16,7 +16,7 @@ test('retry after project task creation failed preserves the project, message id
     await act(async()=>view.host.querySelector('[data-acp-pending-retry]').click());await settle();
     const creates=globalThis.__gateway.filter(call=>call.method==='POST'&&call.path.endsWith('/task-sessions'));
     assert.equal(creates.length,1);
-    assert.deepEqual(creates[0].body,{kind:'acp',program:'claude',request_id:requestId,project_id:projectId});
+    assert.deepEqual(creates[0].body,{kind:'acp',program:'claude',request_id:requestId,initial_input:'Project task',project_id:projectId});
     const send=posts('/v1/tasks/t_new/send')[0];
     assert.equal(send.body.client_message_id,requestId);
     assert.equal(send.body.model,'opus');

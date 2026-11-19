@@ -147,6 +147,7 @@ globalThis.fetch = async (url, init = {}) => {
   const body = init.body ? JSON.parse(init.body) : null;
   globalThis.__acpCalls.push({ path, method, body });
   const route = await globalThis.__acpRoute?.(path, method, body);
+  if (route?.bytes) return new Response(route.bytes, { status: route.status ?? 200, headers: { "content-type": route.mime || "application/octet-stream" } });
   const payload = route?.body ?? (path.endsWith("/catalog") ? (globalThis.__catalog ?? {}) : {});
   return new Response(JSON.stringify(payload), { status: route?.status ?? 200, headers: { "content-type": "application/json" } });
 };
@@ -195,7 +196,7 @@ const OVERRIDES = {
   "./CloudBrowserPanel": dataModule("export function CloudBrowserPanel(){ return null; }"),
   "./ResultCanvas": dataModule(`
     import React from ${reactUrl};
-    export function ResultCanvas(){ return React.createElement("div", { "data-preview-content": true }, "preview"); }
+    export function ResultCanvas(props){ globalThis.__canvasProps = props; return React.createElement("div", { "data-preview-content": true }, "preview"); }
     export function CanvasEmpty(){ return null; }
     export function CanvasSubTabs(){ return null; }
   `),
@@ -335,6 +336,7 @@ async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails 
   globalThis.__acpRoute = acpRoute ?? null;
   globalThis.__catalog = catalog;
   globalThis.__pickerDialog = null;
+  globalThis.__canvasProps = null;
   globalThis.__followUpBodies = [];
   globalThis.__followUps = [];
   globalThis.__pushed = [];
@@ -395,7 +397,7 @@ test("a native computer task shows one frames stream: the socket's rows through 
     assert.equal(composer.textContent.startsWith("elon · codex"), true);
     assert.deepEqual(composer.__props.boundExecutionTarget, { kind: "computer", id: "cc_elon", name: "elon" });
     assert.equal(composer.__props.sendBlocked, false);
-    assert.equal(composer.__props.placeholder, "继续追问", "a host placeholder naming OceanLeo does not fit a Codex task");
+    assert.equal(composer.__props.placeholder, "继续给 Codex 布置任务，可上传文件或使用语音…", "the shared placeholder uses the session display name");
     assert.doesNotMatch(view.host.textContent, /在下方输入|正在理解问题|正在重新连接|已排队|未发送|重试/);
     assert.equal(globalThis.__acpCalls.some((call) => /timeline|transcript|messages/.test(call.path)), false, "no old reads");
   } finally { await view.unmount(); }
@@ -804,22 +806,24 @@ test("long rows load full text only on Expand, keep errors beside that row, and 
   } finally { await view.unmount(); }
 });
 
-test("a truncated image expands into its own user chip without appending a conversation-tail image", async () => {
+test("a truncated image displays inline from its frame block and opens the task preview", async () => {
   const short = { ...row('client', { id: 704, method: 'session/prompt', params: { sessionId: 's1', prompt: [{ type: 'text', text: '截图' }, { type: 'image', data: '', mimeType: 'image/png' }] } }), truncated: { bytes: 70 * 1024 } };
-  const full = { ...short, raw: short.raw.replace('"data":""', '"data":"aGVsbG8="'), truncated: undefined };
-  let reads = 0;
-  const view = await mount({ taskId: 't1' }, { task: computerTask(), sessions: codexSessions,
-    acpRoute: (path) => path.includes('/history?') ? { body: historyPage([short]) } : path.endsWith(`/frames/${short.id}`) ? (reads++, { body: full }) : null });
+  const taskId = '11111111-1111-4111-8111-111111111111';
+  const detail = computerTask(); detail.task.id = taskId;
+  const view = await mount({ taskId }, { task: detail, sessions: codexSessions.map(session => ({ ...session, task_id: taskId })),
+    acpRoute: (path) => path.includes('/history?') ? { body: historyPage([short]) }
+      : path.includes(`/frames/${short.id}/blocks/1`) ? { bytes: new Uint8Array([137, 80, 78, 71]), mime: 'image/png' } : null });
   try {
-    assert.equal(view.host.querySelector('[data-acp-full-image]'), null); assert.equal(reads, 0);
-    await act(async () => { view.host.querySelector('[data-acp-truncated-row] button').click(); });
-    await settle();
-    assert.equal(reads, 1);
+    assert.equal(view.host.querySelector('[data-acp-truncated-row]'), null, "images need no expand step");
     assert.equal(view.host.querySelector('[data-acp-full-image]'), null);
     const chip = view.host.querySelector('[data-testid="task-user-bubble"] img');
-    assert.ok(chip);
-    assert.equal(chip.getAttribute('src'), 'data:image/png;base64,aGVsbG8=');
-    assert.equal(chip.closest('button').style.width, '64px');
+    assert.ok(chip, "an inline thumbnail is present immediately");
+    assert.match(chip.getAttribute('src'), /^blob:/);
+    assert.ok(globalThis.__acpCalls.some(call => call.path.endsWith(`/frames/${short.id}/blocks/1?thumbnail=true`)), "thumbnail bytes use the task-scoped block route");
+    assert.equal(globalThis.__acpCalls.some(call => call.path.endsWith(`/frames/${short.id}`)), false, "the full frame is never fetched");
+    await act(async () => chip.closest('button').click());
+    await settle();
+    assert.ok(globalThis.__canvasProps?.openItem, "click opens the task's preview sidebar");
   } finally { await view.unmount(); }
 });
 
