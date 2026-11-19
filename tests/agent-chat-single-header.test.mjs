@@ -388,10 +388,11 @@ test("backLabel 只改返回键的 title；自定义 headerExtra 渲染在搜索
 // 2 标题占位
 // ---------------------------------------------------------------------------
 
-test("没有对话总结时：有消息 → 正在总结本次对话…；没消息 → 新任务", async () => {
+test("没有标题时显示首句用户消息；没消息显示新任务", async () => {
   const summarizing = await mountChat({ taskId: "t1" }, taskData({ title: "" }));
   try {
-    assert.ok(summarizing.header().textContent.includes("正在总结本次对话…"));
+    assert.ok(summarizing.header().textContent.includes("帮我算个同比"));
+    assert.equal(summarizing.header().querySelector('button[aria-label="新建"]'), null);
   } finally {
     await summarizing.unmount();
   }

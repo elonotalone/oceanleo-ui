@@ -163,7 +163,7 @@ import {
   WorkspaceSessionProvider,
   useOptionalWorkspaceSession,
 } from "./WorkspaceSession";
-import { RestartDraftButton } from "./RestartDraftButton";
+import { composerCapsFor, taskComposerPlaceholder, taskHeaderTitle } from "./task-composer-config";
 import {
   activeAgentProgressKey,
   agentTurnActionTargets,
@@ -2223,8 +2223,8 @@ function AgentChatInner({
   // A native task's message: POST send (or switch, when the dock names another
   // program). A draft creates its task first. On a refusal (409) the composer keeps
   // the text; the user's own row, and the program's error row, arrive on the socket.
-  async function sendAcpMessage(retry?: (typeof acpPendingSends)[number]) {
-    const text = retry ? retry.text : input.trim();
+  async function sendAcpMessage(retry?: (typeof acpPendingSends)[number], providedText?: string) {
+    const text = retry ? retry.text : (providedText ?? input).trim();
     const uploaded = retry ? retry.attachments : toolsOn ? atts.ready() : [];
     if ((!text && uploaded.length === 0) || acpBusy || (pendingInFlight && !retry?.restored) || acpComposerDisabled || (!taskId && !retry && (!acpProgram || !acpComputerId))) return;
     if (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
@@ -3064,26 +3064,25 @@ function AgentChatInner({
   // 本次对话「总结」= 后端自动生成的 task.title（agent_engine._finalize_extras：首轮
   // 收尾时 AI 概括≤14 字会话标题，存 agent_tasks.title；getTask 已带回）。全 OceanLeo
   // 系列 agent 都走同一后端，故任何站的对话都有这个总结——它就是这一行顶栏的标题。
-  const convoSummary = (taskTitle || "").trim();
+  const firstUserMessage = computerTask
+    ? acpView.turns.find((turn) => turn.text.trim())?.text || messages.find((message) => message.role === "user")?.content
+    : messages.find((message) => message.role === "user")?.content;
+  const convoSummary = taskHeaderTitle(taskTitle, firstUserMessage, tt("新任务"));
 
   // ---------------------------------------------------------------------
   // 单行顶栏（操作员 2026-09-07：图 466f833a 布局 + 3f9d0f8c 图标 + 662b8bb0 搜索态）
   // ---------------------------------------------------------------------
   // 对话区**只有这一行**——它就是 SplitWorkspace 左栏的 PaneHeader：
-  //   [‹ 仅 onBack] [对话总结 | 正在总结… | 新任务] [所属 app] [新建] …… [headerExtra] [🔍] [↪] [▯]
+  //   [‹ 仅 onBack] [标题 | 首句用户消息 | 新任务] [所属 app] …… [headerExtra] [🔍] [↪] [▯]
   // 最右的 [▯] 右栏开关由 SplitWorkspace 接在本节点之后渲染。原来 onBack 时多出来的那条
   // 原先独立的「‹ 返回 + 总结 + 分享」那一行与正文区浮着的分享键都已并入此处，不再有两行。
   const backTitle = backLabel ?? tt("返回");
-  const summaryNode = convoSummary ? (
+  const summaryNode = (
     <span
       className="min-w-0 flex-1 truncate text-[13px] font-medium text-stone-700"
       title={convoSummary}
     >
       {convoSummary}
-    </span>
-  ) : (
-    <span className="min-w-0 flex-1 truncate text-[13px] text-stone-400">
-      {messages.length > 0 ? tt("正在总结本次对话…") : tt("新任务")}
     </span>
   );
   const searchControl = searchOpen ? (
@@ -3196,12 +3195,6 @@ function AgentChatInner({
           {tt("所属 app · {app}", { app: resolvedApp })}
         </span>
       )}
-      {canManageTask && workspace && workspace.mode !== "history" && (
-        <RestartDraftButton
-          label={tt("新建")}
-          className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
-        />
-      )}
       {accessRights.canSend && <CollabTaskPresence taskId={taskId} />}
       {canManageTask && headerExtra}
       {searchControl}
@@ -3243,6 +3236,23 @@ function AgentChatInner({
     ) : (
       composerInlineSlot
     );
+
+  const cloudComposerCaps = composerCapsFor("cloud");
+  const acpComposerCaps = composerCapsFor("acp");
+  const programDisplayName = PROGRAM_LABEL[acpRowsProgram as keyof typeof PROGRAM_LABEL] || acpRowsProgram || "agent";
+  const composerConfigFor = (pane: "cloud" | "acp") => {
+    const caps = pane === "cloud" ? cloudComposerCaps : acpComposerCaps;
+    return {
+      leoSuggest: caps.leoSuggest,
+      leoContext: { page: "task" as const, taskId: taskId || undefined },
+      inlineSlot: caps.mentions ? inlineSlot : undefined,
+      contextActions: caps.getHelp ? getHelpMenu : undefined,
+      showPlugins: caps.showPlugins,
+      showAppsBar: caps.showAppsBar,
+      showPayerSelector: caps.showPayerSelector,
+      placeholder: taskComposerPlaceholder(placeholder, pane === "cloud" ? "OceanLeo" : programDisplayName, toolsOn, tt),
+    };
+  };
 
   const openArtifactMessage = useCallback((message: AgentMessage) => {
     setRightOpen(true);
@@ -3527,7 +3537,7 @@ function AgentChatInner({
     ) : (
             <>
           {composerHeader}
-          <QuickActionChips onFire={(prompt) => void fireAgentText(prompt)} />
+          {cloudComposerCaps.quickChips && <QuickActionChips onFire={(prompt) => void fireAgentText(prompt)} />}
           {branchFromMessageId && (
             <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2 text-[12px] text-indigo-700">
               <span>{tt("将从所选消息之前创建新分支；原对话保持不变。")}</span>
@@ -3554,16 +3564,7 @@ function AgentChatInner({
             disabled={readOnly}
             showModelPicker={canManageTask}
             showComputerDock={canManageTask}
-            leoSuggest
-            leoContext={{ page: "task", taskId: taskId || undefined }}
-            inlineSlot={inlineSlot}
-            placeholder={
-              placeholder ??
-              (toolsOn
-                ? tt("继续追问，或上传文件让 agent 分析…")
-                : // 关闭态复用既有的已翻译词条，不新增 key（17 语都已有译文）。
-                  tt("继续追问"))
-            }
+            {...composerConfigFor("cloud")}
             rows={1}
             onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}
             attachments={toolsOn ? atts.composerAttachments : undefined}
@@ -3573,7 +3574,6 @@ function AgentChatInner({
             draftKey={taskId ? `task:${taskId}` : undefined}
             onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
             onVoiceTranscript={handleVoiceTranscript}
-            contextActions={getHelpMenu}
             {...conversationProps}
           />
             </>
@@ -3648,6 +3648,7 @@ function AgentChatInner({
       <TaskAccessComposer taskId={taskId} {...accessState} onRefresh={accessState.refresh} />
     ) : (
       <>
+        {acpComposerCaps.quickChips && <QuickActionChips onFire={(prompt) => void sendAcpMessage(undefined, prompt)} />}
         <AcpBackgroundTaskStrip tasks={acpView.backgroundTasks} onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined} />
         <LeoComposer
           optimizeImages
@@ -3663,8 +3664,7 @@ function AgentChatInner({
           readOnly={readOnly}
           sendBlocked={acpSendBlocked}
           sendBlockedReason={acpSendBlockedReason}
-          // A host placeholder that names OceanLeo does not fit a Claude / Codex task.
-          placeholder={placeholder && !/oceanleo/i.test(placeholder) ? placeholder : tt("继续追问")}
+          {...composerConfigFor("acp")}
           rows={1}
           onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}
           attachments={toolsOn ? atts.composerAttachments : undefined}
@@ -3673,10 +3673,6 @@ function AgentChatInner({
           draftKey={taskId ? `task:${taskId}` : undefined}
           onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
           onVoiceTranscript={handleVoiceTranscript}
-          // Controls that do nothing for a computer program's message are not shown.
-          showPlugins={false}
-          showPayerSelector={false}
-          showAppsBar={false}
           showModelPicker={canManageTask}
           showComputerDock={canManageTask}
           modelPickerSlot={canManageTask ? acpPicker.picker : null}
