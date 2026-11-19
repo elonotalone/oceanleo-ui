@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act } from "react";
 import ts from "typescript";
+import { familyForHost } from "../src/contracts/domain-family.ts";
 
 // Offline DOM checks, with only browser auth and the gateway replaced.
 const require = createRequire(import.meta.url);
@@ -71,7 +72,7 @@ function harness(factors = [], passkeys = []) {
     "@supabase/ssr": { createBrowserClient: (_url, _key, options) => { state.constructors.push(options); return sdk; } },
     "./config": config,
     "../../contracts/client-host-config": { clientHostConfigGeneration: () => 0, getClientHostConfig: () => state.hostConfig || null, createMemoryAuthStorage: () => ({}) },
-    "../../contracts/domain-family": { currentDomainFamily: () => state.family },
+    "../../contracts/domain-family": { currentDomainFamily: () => state.family, familyForHost },
     "./oauth-return": { waitForBrowserOauthReturn: async () => true, previewOauthReturnCode: () => null },
     "./captcha": { getCaptchaToken: async () => null },
   }, "\nexports.setClient = value => { _client = value; _hostClientGeneration = 0; };");

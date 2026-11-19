@@ -8,7 +8,7 @@ import {
   getClientHostConfig,
   type ClientHostLoginProgress,
 } from "../../contracts/client-host-config";
-import { currentDomainFamily, runtimePageOrigin } from "../../contracts/domain-family";
+import { currentDomainFamily, familyForHost, runtimePageOrigin } from "../../contracts/domain-family";
 import { authFetch } from "./auth-fetch";
 import { browserAuthLock } from "./refresh-lock";
 import {
@@ -838,7 +838,7 @@ export function supportsPasskeys(): boolean {
   if (typeof window === "undefined" || !window.isSecureContext ||
       !window.PublicKeyCredential || currentDomainFamily() === "cn") return false;
   const host = window.location.hostname.toLowerCase();
-  return window.location.protocol === "https:" && (host === "oceanleo.com" || host.endsWith(".oceanleo.com"));
+  return window.location.protocol === "https:" && familyForHost(host) === "com";
 }
 
 export interface AccountPasskey {
