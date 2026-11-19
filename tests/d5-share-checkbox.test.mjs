@@ -56,10 +56,13 @@ test("message checkbox and its SVG toggle once while the message row remains sel
   try {
     await act(async () => root.render(React.createElement(Transcript)));
     const checkbox = host.querySelector('[role="checkbox"]');
+    assert.match(checkbox.className, /border-stone-300 bg-white text-transparent/);
+    assert.doesNotMatch(checkbox.className, /var\(--(?:background|foreground|border)\)/);
     const click = async (node) => act(async () => {
       node.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
     });
     await click(checkbox);
+    assert.match(checkbox.className, /border-stone-900 bg-stone-900 text-white/);
     assert.equal(toggles, 1, "checkbox click must not toggle again in the containing row");
     assert.equal(checkbox.getAttribute("aria-checked"), "true");
     await click(checkbox.querySelector("path"));

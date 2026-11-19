@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
-import { AnchoredPopover } from "../anchored-popover";
+import { FloatingMenu } from "../../ui/menu/FloatingMenu";
 
 /** Top sheet on narrow screens; room above the composer is the maximum panel height. */
-export function AccessPopover({ open, anchorRef, onClose, title, id, width = 480, children }: {
+export function AccessPopover({ open, anchorRef, onClose, title, id, width = 480, role = "dialog", ignoreOutsideSelector, children }: {
   open: boolean; anchorRef: RefObject<HTMLElement | null>; onClose: () => void;
-  title: string; id?: string; width?: number; children: ReactNode;
+  title: string; id?: string; width?: number; role?: "menu" | "dialog"; ignoreOutsideSelector?: string; children: ReactNode;
 }) {
   const [room, setRoom] = useState(320);
   const [narrow, setNarrow] = useState(false);
@@ -27,10 +27,10 @@ export function AccessPopover({ open, anchorRef, onClose, title, id, width = 480
     if (footer) observer?.observe(footer);
     return () => { window.removeEventListener("resize", measure); observer?.disconnect(); };
   }, [open, anchorRef]);
-  return <AnchoredPopover open={open} anchorRef={anchorRef} onClose={onClose} id={id}
-    role="dialog" ariaLabel={title} align="end" preferredPlacement="below" maxHeight={room}
-    className="z-[100] overflow-y-auto overscroll-contain rounded-2xl border border-[var(--border)] bg-[var(--background)] p-3 text-[var(--foreground)] shadow-xl"
+  return <FloatingMenu open={open} anchorRef={anchorRef} onClose={onClose} id={id}
+    role={role} ignoreOutsideSelector={ignoreOutsideSelector} ariaLabel={title} align="end" preferredPlacement="below" maxHeight={room}
+    initialFocusSelector={role === "dialog" ? 'button:not(:disabled), input:not(:disabled), select:not(:disabled)' : undefined}
     style={{ width: narrow ? "calc(100vw - 16px)" : width }} attributes={{ "data-access-popover": narrow ? "sheet" : "popover" }}>
     {children}
-  </AnchoredPopover>;
+  </FloatingMenu>;
 }

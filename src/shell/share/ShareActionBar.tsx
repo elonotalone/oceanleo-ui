@@ -7,7 +7,7 @@
 // existing consumers; neither task transcript mounts it anymore.
 // ============================================================================
 
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { ShareModeState } from "./useShareMode";
 
@@ -170,8 +170,8 @@ export function ShareCheckbox({
       }}
       className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-90 ${
  checked
- ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
- : "border-[var(--border)] bg-[var(--background)] text-transparent hover:border-[var(--foreground)]"
+ ? "border-stone-900 bg-stone-900 text-white"
+ : "border-stone-300 bg-white text-transparent hover:border-stone-500"
  }`}
     >
       <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
@@ -187,18 +187,26 @@ export function ShareEntryButton({
   className = "",
   showLabel = false,
   active,
+  anchorRef, expanded, panelId,
 }: {
   onClick: () => void;
   className?: string;
   showLabel?: boolean;
   /** Select mode is on: the button stays, pressed (neutral grey), and a click leaves. */
   active?: boolean;
+  anchorRef?: RefObject<HTMLButtonElement | null>;
+  expanded?: boolean;
+  panelId?: string;
 }) {
   const tt = useUI();
   return (
     <button
       type="button"
       onClick={onClick}
+      ref={anchorRef}
+      aria-haspopup={expanded === undefined ? undefined : "menu"}
+      aria-expanded={expanded}
+      aria-controls={expanded ? panelId : undefined}
       title={tt("分享")}
       aria-label={tt("分享")}
       aria-pressed={active === undefined ? undefined : active}

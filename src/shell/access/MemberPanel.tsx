@@ -20,7 +20,7 @@ export interface MemberPanelProps {
 }
 
 function Avatar({ name, initial }: { name: string; initial?: string | null }) {
-  return <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--surface)] text-sm font-medium text-[var(--fg)]">{initial || [...name.trim()][0]?.toLocaleUpperCase() || "?"}</span>;
+  return <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-full bg-neutral-100 dark:bg-white/10 text-sm font-medium text-neutral-800 dark:text-neutral-100">{initial || [...name.trim()][0]?.toLocaleUpperCase() || "?"}</span>;
 }
 
 /** Invitations never send a notification. All mutations render immediately and restore the row on failure. */
@@ -78,42 +78,42 @@ export function MemberPanel({ owner, members, canManage, busy = false, onInvite,
     setItems(items.filter((item) => item.id !== member.id));
     try { await onRemove(member.id); inputRef.current?.focus(); } catch { setItems(previous); setError(tt(copy.saveFailed)); } finally { end(); }
   };
-  return <section data-member-panel="" className="min-w-0 text-[var(--fg)]" aria-busy={disabled}>
-    {canManage && <form onSubmit={(event) => void invite(event)} className="mb-4 flex min-w-0 gap-2">
+  return <section data-member-panel="" className="min-w-0 px-2.5 py-1.5 text-neutral-800 dark:text-neutral-100" aria-busy={disabled}>
+    {canManage && <form onSubmit={(event) => void invite(event)} className="mb-2 flex min-w-0 gap-2">
       <input ref={inputRef} type="email" required autoComplete="email" value={email} disabled={disabled}
         aria-label={tt(copy.email)} placeholder={tt(copy.email)} aria-describedby={error ? errorId : undefined}
         onChange={(event) => setEmail(event.target.value)}
-        className="min-h-10 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--fg)] placeholder:text-[var(--muted)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:opacity-50" />
-      <button type="submit" disabled={disabled || !email.trim()} className="min-h-10 shrink-0 rounded-xl bg-[var(--fg)] px-4 text-sm font-medium text-[var(--card)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-50">{tt(copy.invite)}</button>
+        className="min-h-8 min-w-0 flex-1 rounded-lg border border-neutral-200/80 dark:border-white/10 bg-white dark:bg-neutral-950 px-3 text-sm text-neutral-800 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus-visible:outline-2 focus-visible:outline-neutral-400 disabled:opacity-50" />
+      <button type="submit" disabled={disabled || !email.trim()} className="min-h-8 shrink-0 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 text-sm font-medium text-white dark:text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 disabled:opacity-50">{tt(copy.invite)}</button>
     </form>}
-    {error && <p id={errorId} role="alert" className="mb-3 text-sm text-[var(--fg)]">{error}</p>}
-    <ul className="space-y-3" aria-label={tt(copy.share)}>
+    {error && <p id={errorId} role="alert" className="mb-2 text-[13px] text-rose-600 dark:text-rose-400">{error}</p>}
+    <ul className="space-y-2" aria-label={tt(copy.share)}>
       <li data-member-owner="" className="flex min-w-0 items-center gap-3">
         <Avatar name={owner.name} initial={owner.initial} />
-        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{owner.name}</span>{owner.email && canManage && <span className="block truncate text-xs text-[var(--muted)]">{owner.email}</span>}</span>
-        <span className="shrink-0 text-xs text-[var(--muted)]">{tt(copy.owner)}</span>
+        <span className="min-w-0 flex-1"><span className="block truncate text-[13px]">{owner.name}</span>{owner.email && canManage && <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">{owner.email}</span>}</span>
+        <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{tt(copy.owner)}</span>
       </li>
       {items.filter((member) => member.role !== "owner" && ["invited", "accepted"].includes(member.status)).map((member) => {
         const name = member.name || member.email || tt(copy.sender);
         return <li key={member.id} data-member-id={member.id} className="flex min-w-0 items-center gap-2">
           <Avatar name={name} initial={member.initial} />
-          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{name}</span>{member.name && member.email && <span className="block truncate text-xs text-[var(--muted)]">{member.email}</span>}
-            {member.status === "invited" && <span className="block text-xs text-[var(--muted)]">{tt(copy.invited)}</span>}</span>
+          <span className="min-w-0 flex-1"><span className="block truncate text-[13px]">{name}</span>{member.name && member.email && <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">{member.email}</span>}
+            {member.status === "invited" && <span className="block text-xs text-neutral-500 dark:text-neutral-400">{tt(copy.invited)}</span>}</span>
           {canManage ? <><RolePicker value={member.role === "collaborate" ? "collaborate" : "view"} memberName={name} disabled={disabled || member.id.startsWith("pending:")} onChange={(role) => void changeRole(member.id, role)} />
             <button type="button" disabled={disabled || member.id.startsWith("pending:")} aria-label={tt(copy.removeMember, { name })} onClick={(event) => { removalAnchorRef.current = event.currentTarget; setRemoving(member); }}
-              className="grid size-9 shrink-0 place-items-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--fg)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:opacity-50">
+              className="grid size-9 shrink-0 place-items-center rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-neutral-800 dark:hover:text-neutral-100 focus-visible:outline-2 focus-visible:outline-neutral-400 disabled:opacity-50">
               <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7" /></svg>
-            </button></> : <span className="shrink-0 text-xs text-[var(--muted)]">{tt(member.role === "collaborate" ? copy.collaborate : copy.view)}</span>}
+            </button></> : <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{tt(member.role === "collaborate" ? copy.collaborate : copy.view)}</span>}
         </li>;
       })}
     </ul>
-    {removing && canManage && <AnchoredPopover open anchorRef={removalAnchorRef} role="dialog" ariaModal ariaLabelledBy={titleId} onClose={closeRemoval} align="end" style={{ width: 384 }} className="z-[1200] rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--fg)] shadow-xl">
+    {removing && canManage && <AnchoredPopover open anchorRef={removalAnchorRef} role="dialog" ariaModal ariaLabelledBy={titleId} onClose={closeRemoval} align="end" style={{ width: 384 }} className="z-[1200] rounded-lg border border-neutral-200/80 dark:border-white/10 bg-white dark:bg-neutral-950 text-neutral-800 dark:text-neutral-100 shadow-[0_8px_32px_rgba(0,0,0,0.14)]">
       <div className="p-5">
         <h2 id={titleId} className="text-base font-semibold">{tt(copy.confirmRemoval)}</h2>
-        <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{tt(copy.removalDescription, { name: removing.name || removing.email || tt(copy.sender) })}</p>
+        <p className="mt-2 text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">{tt(copy.removalDescription, { name: removing.name || removing.email || tt(copy.sender) })}</p>
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={closeRemoval} className="min-h-10 rounded-lg border border-[var(--border)] px-4 text-sm focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{tt(copy.cancel)}</button>
-          <button type="button" disabled={disabled} onClick={() => void remove()} className="min-h-10 rounded-lg bg-[var(--fg)] px-4 text-sm text-[var(--card)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-50">{tt(copy.remove)}</button>
+          <button type="button" onClick={closeRemoval} className="min-h-8 rounded-lg border border-neutral-200/80 dark:border-white/10 px-4 text-sm focus-visible:outline-2 focus-visible:outline-neutral-400">{tt(copy.cancel)}</button>
+          <button type="button" disabled={disabled} onClick={() => void remove()} className="min-h-8 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 text-sm text-white dark:text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 disabled:opacity-50">{tt(copy.remove)}</button>
         </div>
       </div>
     </AnchoredPopover>}

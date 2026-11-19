@@ -43,7 +43,7 @@ export function TaskContentPanel({ taskId, accessKey = "", client = taskContentC
   </div>;
   if (snapshot?.key !== key || !snapshot.items.length) return null;
   return <section data-task-content-panel className="min-w-0 space-y-2 p-3 text-[var(--fg)]" aria-label={tt("产出")}>
-    {snapshot.items.map(item => <details key={item.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+    {snapshot.items.map(item => <details key={item.id} className="rounded-lg border border-neutral-200/80 dark:border-white/10 bg-[var(--card)] p-3">
       <summary className="cursor-pointer break-words text-sm font-medium">{item.title || tt("产出")}</summary>
       <pre className="mt-3 max-h-[60dvh] overflow-auto whitespace-pre-wrap break-words text-sm leading-relaxed">{item.content}</pre>
     </details>)}

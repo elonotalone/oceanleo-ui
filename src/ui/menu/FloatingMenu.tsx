@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode, RefObject } from "react";
+import type { CSSProperties, KeyboardEventHandler, ReactNode, RefObject } from "react";
 import { AnchoredPopover } from "../../shell/anchored-popover";
 
 export type FloatingMenuProps = {
@@ -18,6 +18,13 @@ export type FloatingMenuProps = {
   className?: string;
   /** Defaults to `z-50`. Settings overlays need `z-[180]` to sit above the settings frame. */
   zClassName?: string;
+  id?: string;
+  role?: "menu" | "dialog";
+  maxHeight?: number;
+  style?: CSSProperties;
+  attributes?: Record<string, string | number | boolean | undefined>;
+  initialFocusSelector?: string;
+  ignoreOutsideSelector?: string;
   children: ReactNode;
 };
 
@@ -32,6 +39,8 @@ export function FloatingMenu({
   ariaLabel,
   className = "",
   zClassName = "z-50",
+  id, role = "menu", maxHeight, style, attributes, ignoreOutsideSelector,
+  initialFocusSelector = '[role="menuitem"]:not([aria-disabled="true"]):not(:disabled), [role="menuitemradio"][aria-checked="true"]',
   children,
 }: FloatingMenuProps) {
   return (
@@ -39,14 +48,18 @@ export function FloatingMenu({
       open={open}
       anchorRef={anchorRef}
       onClose={() => onClose()}
-      role="menu"
+      id={id}
+      role={role}
+      maxHeight={maxHeight}
+      attributes={attributes}
       ariaLabel={ariaLabel}
       align={align}
       preferredPlacement={preferredPlacement}
       side={side}
-      initialFocusSelector='[role="menuitem"]:not([aria-disabled="true"]):not(:disabled)'
+      initialFocusSelector={initialFocusSelector}
+      ignoreOutsideSelector={ignoreOutsideSelector}
       className={`${zClassName} overflow-y-auto overscroll-contain rounded-xl border border-neutral-200/80 bg-white p-1 shadow-[0_8px_32px_rgba(0,0,0,0.14)] dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100 ${className}`}
-      style={{ width }}
+      style={{ width, ...style }}
     >
       {children}
     </AnchoredPopover>
@@ -64,6 +77,10 @@ export type FloatingMenuItemProps = {
   disabled?: boolean;
   selected?: boolean;
   onSelect?: () => void;
+  title?: string;
+  role?: "menuitem" | "menuitemradio";
+  wrapDescription?: boolean;
+  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
 };
 
 export function FloatingMenuItem({
@@ -76,7 +93,7 @@ export function FloatingMenuItem({
   external = false,
   disabled = false,
   selected = false,
-  onSelect,
+  onSelect, title, role = "menuitem", wrapDescription = false, onKeyDown,
 }: FloatingMenuItemProps) {
   const className = `flex min-h-8 w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-not-allowed disabled:opacity-50 ${
     danger
@@ -89,7 +106,7 @@ export function FloatingMenuItem({
       <span className="min-w-0 flex-1">
         <span className="block truncate">{label}</span>
         {description ? (
-          <span className="block truncate text-[11px] text-neutral-500 dark:text-neutral-400">{description}</span>
+          <span className={`${wrapDescription ? "block whitespace-normal" : "block truncate"} text-[11px] text-neutral-500 dark:text-neutral-400`}>{description}</span>
         ) : null}
       </span>
       {trailing ? <span className="shrink-0 text-neutral-400">{trailing}</span> : null}
@@ -121,7 +138,10 @@ export function FloatingMenuItem({
   return (
     <button
       type="button"
-      role="menuitem"
+      role={role}
+      title={title}
+      onKeyDown={onKeyDown}
+      aria-checked={role === "menuitemradio" ? selected : undefined}
       disabled={disabled}
       aria-disabled={disabled || undefined}
       aria-current={selected ? "true" : undefined}

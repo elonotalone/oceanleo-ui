@@ -107,7 +107,7 @@ export function ProjectInvitationActions({
       <button type="button" disabled={pending !== null} onClick={() => void respond("accept")}
         className="min-h-10 flex-1 rounded-lg bg-[var(--fg)] px-4 py-2 text-sm font-medium text-[var(--bg)] disabled:opacity-50">{tt("接受邀请")}</button>
       <button type="button" disabled={pending !== null} onClick={() => void respond("decline")}
-        className="min-h-10 flex-1 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--fg)] disabled:opacity-50">{tt("拒绝")}</button>
+        className="min-h-10 flex-1 rounded-lg border border-neutral-200/80 dark:border-white/10 px-4 py-2 text-sm text-[var(--fg)] disabled:opacity-50">{tt("拒绝")}</button>
     </div>
     {error && <p role="alert" className="text-sm text-[var(--fg)]">{tt("未能保存更改，请重试。")}</p>}
   </div>;
@@ -176,7 +176,7 @@ export function ProjectAccessBoundary({
     return () => { controller.abort(); clearInterval(interval); window.removeEventListener("focus", onFocus); };
   }, [projectId, signedIn, client, version]);
 
-  if (!signedIn) return <button type="button" onClick={onSignIn} className="m-4 rounded-lg border border-[var(--border)] px-4 py-2 text-[var(--fg)]">{tt("登录")}</button>;
+  if (!signedIn) return <button type="button" onClick={onSignIn} className="m-4 rounded-lg border border-neutral-200/80 dark:border-white/10 px-4 py-2 text-[var(--fg)]">{tt("登录")}</button>;
   if (error) return <div role="alert" className="p-4 text-sm text-[var(--fg)]">
     <p>{tt("无法读取访问权限，请重试。")}</p>
     <button type="button" onClick={() => setVersion(value => value + 1)} className="mt-2 underline">{tt("重试")}</button>

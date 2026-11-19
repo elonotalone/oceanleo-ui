@@ -508,6 +508,8 @@ export interface AnchoredPopoverProps {
   style?: CSSProperties;
   attributes?: Record<string, string | number | boolean | undefined>;
   initialFocusSelector?: string | false;
+  /** Related controls may stay interactive while this surface is open. */
+  ignoreOutsideSelector?: string;
   restoreFocusOnEscape?: boolean;
   /** Tab 循环。默认只给 `role="dialog"`：菜单该让 Tab 走出去，对话框不该。 */
   trapFocus?: boolean;
@@ -545,6 +547,7 @@ export function AnchoredPopover({
   style,
   attributes,
   initialFocusSelector = DEFAULT_FOCUS_SELECTOR,
+  ignoreOutsideSelector,
   restoreFocusOnEscape = true,
   trapFocus = role === "dialog",
   lockScroll = role === "dialog",
@@ -717,6 +720,7 @@ export function AnchoredPopover({
       if (
         anchorRef.current?.contains(target) ||
         internalPanelRef.current?.contains(target) ||
+        (ignoreOutsideSelector && target instanceof Element && target.closest(ignoreOutsideSelector)) ||
         targetBelongsToLineage(event.target, popoverId)
       ) {
         return;
@@ -732,6 +736,7 @@ export function AnchoredPopover({
       document.removeEventListener("pointerdown", closeOutside);
     };
   }, [
+    ignoreOutsideSelector,
     anchorRef,
     nativeOpen,
     popoverId,

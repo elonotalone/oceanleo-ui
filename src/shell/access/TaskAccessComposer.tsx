@@ -41,8 +41,8 @@ export function TaskAccessComposer({ taskId, access, signedIn, loading, error, o
       else setFailure(tt(copy.saveFailed));
     } finally { setBusy(false); }
   };
-  const buttonClass = "rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2 text-sm hover:bg-[var(--surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
-  return <div data-task-access-composer={loading ? "loading" : access?.state ?? "unavailable"} className="space-y-2 py-2 text-[var(--foreground)]" aria-busy={busy || loading}>
+  const buttonClass = "rounded-xl border border-neutral-200/80 dark:border-white/10 bg-white dark:bg-neutral-950 px-4 py-2 text-sm hover:bg-[var(--surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
+  return <div data-task-access-composer={loading ? "loading" : access?.state ?? "unavailable"} className="space-y-2 py-2 text-neutral-800 dark:text-neutral-100" aria-busy={busy || loading}>
     {loading ? <span role="status" className="v-spinner" /> : error || !access || access.state === "none" ? <p role="alert" className="text-sm">{tt(error ? copy.loadFailed : copy.noAccess)} <button type="button" className="underline" onClick={() => void onRefresh()}>{tt(copy.retry)}</button></p> : <>
       <p className="text-sm text-[var(--muted-foreground)]">{tt(access.state === "removed" ? copy.removed : copy.readOnly)}</p>
       {access.state === "invited" ? <div className="flex flex-wrap gap-2">
