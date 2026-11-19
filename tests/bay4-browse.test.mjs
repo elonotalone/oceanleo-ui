@@ -1,3 +1,4 @@
+import { PAGE_WORKSPACE_STUBS } from "./helpers/page-workspace-stubs.mjs";
 // LeoBay 第三波 W1：逛页只有「我的 / 发布」、供给/需求切换、专业咨询专区、素材货架只走深链。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -126,6 +127,7 @@ const exploreStub = dataModule(`
 `);
 
 const stubs = {
+  ...PAGE_WORKSPACE_STUBS,
   "next-intl": dataModule(`export function useLocale(){ return "zh"; }`),
   "../../../i18n/ui/useUI": uiStub,
   "../../ExplorePage": exploreStub,

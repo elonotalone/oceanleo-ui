@@ -138,6 +138,8 @@ export function NewConversationDialog(){return null;}
 export function InviteAcceptDialog(){return null;}
 `);
 const aliases={...OVERRIDES,
+ './HistoryMasterDetail':dataModule(`import React from ${JSON.stringify(reactUrl)}; export function HistoryInlineList(){ return React.createElement('div',{'data-shared-task-list':true},'Shared tasks'); }`),
+ 'next/navigation':dataModule(`export function useRouter(){ return {push(href){(globalThis.__taskRoutes ||= []).push(href);}}; }`),
  './workspace-panels/registry':dataModule('export function getWorkspacePanel(){return function Panel(){return null;};}'),
  './messages/host-state':hostStub,
  './SplitWorkspace': undefined,
@@ -252,10 +254,10 @@ const {ArtifactCardView}=await import(await compileModule('src/shell/messages/co
 const {BayOrderCard}=await import(await compileModule('src/shell/bay/orders/BayOrderCard.tsx',{
  '../../../i18n/ui/useUI':uiStub,
  './order-store':dataModule('export function useBayOrder(){return {order:null,error:null,loading:false};} export function useBayPaymentsGate(){return {};}'),
- '../shell/bay-state':dataModule('export function openBay(){throw new Error("must stay in the workspace");}'),
+ '../shell/bay-state':dataModule('export function openBay(target){globalThis.__bayOrderNavigation=target;}'),
 }));
 
-test('artifact and order cards target exact content in the page sidebar without changing its URL',async()=>{
+test('artifact cards open the sidebar; order cards use Bay navigation when Bay is omitted',async()=>{
  const page=await mount(React.createElement(LeoChatPage,{siteKey:'oceanleo'}));
  const cards=await mount(React.createElement('div',null,
    React.createElement(ArtifactCardView,{card:{type:'artifact',id:'artifact-1',title:'Report',open_path:'https://music.oceanbizs.com/library?item=artifact-1&revisionId=revision-2'}}),
@@ -269,7 +271,9 @@ test('artifact and order cards target exact content in the page sidebar without 
  assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'mine');
  await click(cards.container.querySelector('[data-bay-order-open]'));
  assert.equal(received.at(-1).tab,'bay');assert.equal(new URL(received.at(-1).url).searchParams.get('bay'),'order:order-1');
- assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'bay');
+ assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'mine');
+ assert.deepEqual(globalThis.__bayOrderNavigation,{kind:'order',id:'order-1'});
+ assert.equal(page.container.querySelector('[data-workspace-panel="bay"]'),null);
  assert.equal(window.location.href,before);
  window.removeEventListener(WORKSPACE_ACTION_EVENT,receive);
  await cards.close();await page.close();
@@ -364,7 +368,7 @@ test('F5: a validated LeoDev host routes only its own recognized URLs, retaining
  for(const href of [`${dev}:8443/library?item=owned`,`${dev}/unrelated?tab=library&item=owned`,`${dev}/library/extra?item=owned`])assert.equal(workspaceActionForHref(href,dev),null,href);
 });
 
-test('F5: own Library/artifact and Bay links on LeoDev open its sidebar; another preview does not dispatch',async()=>{
+test('F5: own Library/artifact links open the sidebar; omitted Bay and another preview are not claimed',async()=>{
  const dev='https://p-0123456789abcdef0123456789abcdef.dev.oceanleo.com';
  const other='https://p-abcdef0123456789abcdef0123456789.dev.oceanleo.com';
  const descriptor=Object.getOwnPropertyDescriptor(window,'location');
@@ -382,8 +386,8 @@ test('F5: own Library/artifact and Bay links on LeoDev open its sidebar; another
    card=await mount(React.createElement(ArtifactCardView,{card:{type:'artifact',id:'dev-owned',title:'Dev file',open_path:'/library?item=dev-owned'}}));
    assert.equal(card.container.querySelector('a').getAttribute('target'),null);
    assert.equal((await click(card.container.querySelector('a'))).defaultPrevented,true);
-   await act(()=>assert.equal(openWorkspaceHref('/bay?listingId=dev-listing'),true));
-   assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'bay');
+   await act(()=>assert.equal(openWorkspaceHref('/bay?listingId=dev-listing'),false));
+   assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'mine');
    const received=[];const record=(event)=>received.push(event.detail);
    window.addEventListener(WORKSPACE_ACTION_EVENT,record);
    try {assert.equal(openWorkspaceHref(`${other}/library?item=other-owned`),false);assert.deepEqual(received,[]);}
@@ -393,4 +397,64 @@ test('F5: own Library/artifact and Bay links on LeoDev open its sidebar; another
    if(card)await card.close();if(messages)await messages.close();if(page)await page.close();
    Object.defineProperty(window,'location',descriptor);
  }
+});
+
+
+test('LS: LeoChat sidebar offers the shared My Tasks list, home creation and return, with no Bay panel',async()=>{
+ globalThis.__taskRoutes=[];
+ const page=await mount(React.createElement(LeoChatPage,{siteKey:'oceanleo'}));
+ try {
+   await click(page.container.querySelector('button[title="展开"]'));
+   assert.equal(page.container.querySelector('[data-workspace-card="bay"]'),null);
+   await click(page.container.querySelector('[data-workspace-card="tasks"]'));
+   for(let attempt=0; attempt<30 && !page.container.querySelector('[data-my-tasks-workspace-panel]'); attempt++) {
+     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20));});
+   }
+   assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'tasks');
+   assert.ok(page.container.querySelector('[data-my-tasks-workspace-panel] [data-shared-task-list]'));
+   await click(page.container.querySelector('[data-my-tasks-new]'));
+   assert.deepEqual(globalThis.__taskRoutes,['/']);
+   const locationDescriptor=Object.getOwnPropertyDescriptor(window,'location');
+   try {
+     Object.defineProperty(window,'location',{configurable:true,value:new URL('https://oceanleo.com/s/image/bay')});
+     await click(page.container.querySelector('[data-my-tasks-new]'));
+     assert.deepEqual(globalThis.__taskRoutes,['/','/s/image']);
+   } finally {Object.defineProperty(window,'location',locationDescriptor);}
+   await click(page.container.querySelector('[data-workspace-back]'));
+   assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'home');
+ } finally {await page.close();}
+});
+
+const {LeoBayPage}=await import(await compileModule('src/shell/bay/shell/LeoBayPage.tsx',{
+ ...aliases,
+ '../../i18n/ui/useUI':uiStub,
+ '../../TaskWorkspaceShell':shellUrl,
+ '../../SplitWorkspace':splitUrl,
+ './bay-state':dataModule(`export function bayEnabledHere(){return true;} export function useBayFilter(){return {kind:'service'};} export function useBaySiteKey(){return 'oceanleo';} export function useBayState(){return {current:{kind:'feed'}};} export function setBaySiteKey(){} export function registerBayPage(){return ()=>{};} export function bayBack(){}`),
+ './BayDetail':dataModule('export function BayDetailPane(){return null;} export function bayDetailTitleKey(){return "";}'),
+ './BayList':dataModule(`import React from ${JSON.stringify(reactUrl)}; export const BayListingChromeContext=React.createContext({}); export function useBaySearchText(){return {text:'',change(){},commit(){}};} export function openMine(){} export function startPublish(){} export function BayViewSwitch(){return null;} export function BayFeed(){return React.createElement('div',{'data-bay-feed-kept':true});}`),
+ '../asset/BayAssetLibrary':dataModule('export function BayAssetLibrary(){return null;}'),
+ '../asset/BayArtifactDeepLink':dataModule('export function useBayAssetRoute(){return {target:null};} export function BayArtifactDeepLink(){return null;}'),
+ '../needs/LibraryWorkPicker':dataModule('export function LibraryWorkPickerHost(){return null;}'),
+ './bay-auth-host':dataModule('export function BayAuthHost(){return null;}'),
+ '../apps/BayAppShelf':dataModule('export function BayAppShelf(){return null;}'),
+ '../lessons/BayLessonShelf':dataModule('export function BayLessonShelf(){return null;}'),
+}));
+
+test('LS: Bay opens the real shared sidebar, browses My Tasks, and keeps its feed mounted',async()=>{
+ const page=await mount(React.createElement(LeoBayPage,{siteKey:'oceanleo'}));
+ try {
+   const feed=page.container.querySelector('[data-bay-feed-kept]');
+   assert.ok(feed);
+   assert.equal(page.container.querySelector('[data-workspace-pane="main"]').dataset.workspacePaneState,'closed');
+   await click(page.container.querySelector('[data-bay-sidebar-toggle]'));
+   assert.equal(page.container.querySelector('[data-workspace-pane="main"]').dataset.workspacePaneState,'open');
+   assert.equal(page.container.querySelector('[data-workspace-card="bay"]'),null);
+   await click(page.container.querySelector('[data-workspace-card="tasks"]'));
+   assert.ok(page.container.querySelector('[data-my-tasks-workspace-panel] [data-shared-task-list]'));
+   assert.equal(page.container.querySelector('[data-bay-feed-kept]'),feed);
+   await click(page.container.querySelector('button[aria-label="关闭右侧面板"]'));
+   assert.equal(page.container.querySelector('[data-workspace-pane="main"]').dataset.workspacePaneState,'closed');
+   assert.equal(page.container.querySelector('[data-bay-feed-kept]'),feed);
+ } finally {await page.close();}
 });

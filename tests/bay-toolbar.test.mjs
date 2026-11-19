@@ -1,3 +1,4 @@
+import { PAGE_WORKSPACE_STUBS } from "./helpers/page-workspace-stubs.mjs";
 // LeoBay 一行工具条：页上 flex-nowrap、服务栏站点下拉、素材栏筛选槽、BayFilterSelect 触发器文案、无 Provider 就地画。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -112,6 +113,7 @@ const paneModule = (exports) =>
   `);
 
 const stubs = {
+  ...PAGE_WORKSPACE_STUBS,
   "next-intl": dataModule(`export function useLocale(){ return "zh"; }`),
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/official": dataModule(`export async function getBayOfficialPublisher(){ return { user_id: null, handle: "oceanleo", display_name: "OceanLeo", avatar_url: null, official: true }; }`),

@@ -1,3 +1,4 @@
+import { PAGE_WORKSPACE_STUBS } from "./helpers/page-workspace-stubs.mjs";
 // LeoBay `/bay` 这一张页：页头两个键、供给/需求切换、类目专区、素材货架只走深链。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -132,6 +133,7 @@ const officialStub = dataModule(`
 `);
 
 const stubs = {
+  ...PAGE_WORKSPACE_STUBS,
   "next-intl": dataModule(`export function useLocale(){ return "zh"; }`),
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/official": officialStub,
@@ -505,4 +507,26 @@ test("W5 2026-10-31：首帧（服务端 / 水合）是页面级骨架，不是�
   assert.match(markup, /data-route-page-skeleton="grid"/, "LeoBay 打开时用 RoutePageSkeleton（与 /projects 同一套）");
   assert.match(markup, /role="status"/);
   assert.match(markup, /aria-busy="true"/);
+});
+
+
+test("LS: Bay headers toggle the shared sidebar on browse, details, and materials-only pages", async () => {
+  for (const patch of [{}, { current: { kind: "service", id: "service-1" } }, { current: { kind: "publish" } }, { enabled: false }]) {
+    reset(patch);
+    const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
+    try {
+      const toggle = view.host.querySelector('[data-bay-sidebar-toggle]');
+      assert.ok(toggle);
+      assert.equal(view.host.querySelectorAll('[data-bay-sidebar-toggle]').length, 1);
+      assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+      await act(() => toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true })));
+      assert.equal(view.host.querySelector('[data-test-workspace-open]').dataset.testWorkspaceOpen, 'true');
+      assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+      assert.equal(globalThis.__bayWorkspaceProps.canvas.showBay, false);
+      assert.equal(globalThis.__bayWorkspaceProps.canvas.showMyTasks, true);
+      assert.deepEqual(globalThis.__bayWorkspaceProps.ignoredWorkspaceTabs, ['bay']);
+      await act(() => toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true })));
+      assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+    } finally { await view.unmount(); }
+  }
 });

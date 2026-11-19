@@ -1,3 +1,4 @@
+import { PAGE_WORKSPACE_STUBS } from "./helpers/page-workspace-stubs.mjs";
 // leobay-projects W04：「我的」页。
 // 三块下划线页签（交易 / 我的主页 / 数据面板）、交易里两个下拉、地址兼容、不铺整页白板、
 // 「我买到的」每行付款金额与对账单、退役种类名清扫、新文案 17 语。jsdom 真渲染，接口用 http 替身。
@@ -500,6 +501,7 @@ const emptyShelf = (name) =>
 
 const { LeoBayPage } = await import(
   await compileModule("src/shell/bay/shell/LeoBayPage.tsx", {
+    ...PAGE_WORKSPACE_STUBS,
     "../../../i18n/ui/useUI": uiStub,
     "./bay-state": pageStateStub,
     "./BayList": listStub,

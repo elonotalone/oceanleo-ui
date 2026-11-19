@@ -1,3 +1,4 @@
+import { PAGE_WORKSPACE_STUBS } from "./helpers/page-workspace-stubs.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import React, { act } from "react";
@@ -67,6 +68,7 @@ const libraryUrl = await compileModule("src/shell/bay/asset/BayAssetLibrary.tsx"
 });
 const { BayAssetLibrary } = await import(libraryUrl);
 const { LeoBayPage } = await import(await compileModule("src/shell/bay/shell/LeoBayPage.tsx", {
+    ...PAGE_WORKSPACE_STUBS,
  "../../../i18n/ui/useUI":ui, "./bay-state":state, "./use-bay-data":data,
  "next-intl":dataModule('export function useLocale(){return "zh";}'),
  "../asset/BayAssetLibrary":libraryUrl, "../asset/BayArtifactDeepLink":routeUrl,
