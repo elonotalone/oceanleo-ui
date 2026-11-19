@@ -98,7 +98,7 @@ const viewModule = await compileModule("src/shell/messages/notices/NoticeDetailV
     export function browserNoticeActions(){ return {}; }
     export function runNoticeTarget(target){ globalThis.__noticeDetailView.runs.push(target); }
   `),
-  "./use-notices": dataModule("export function useNoticeState(){ return globalThis.__noticeDetailView.state; }")
+  "./use-notices": dataModule("export function activeNoticeSection(){} export function useNoticeState(){ return globalThis.__noticeDetailView.state; }")
 });
 const { NoticeDetailView } = await import(viewModule);
 globalThis.__noticeDetailView = detailState;

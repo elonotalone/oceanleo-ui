@@ -31,7 +31,7 @@ test("notice source clients GET, PATCH and DELETE use owner API, encoded paths a
 
 test("notice source client failures resolve ok:false on HTTP, transport and auth errors", async (t) => {
   const fetch = t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 403 }));
-  assert.deepEqual(await api.listComputerNoticeSources(), { ok: false });
+  assert.deepEqual(await api.listComputerNoticeSources(), { ok: false, status: 403 });
   fetch.mock.mockImplementation(async () => { throw new Error("offline"); });
   assert.deepEqual(await api.updateComputerNoticeSource("pc", "backup", { enabled: false }), { ok: false });
   globalThis.__noticeAuthFails = true;

@@ -1,14 +1,14 @@
 "use client";
 
-// 左下角的 LeoChat 图标。LeoChat 还能从左侧边栏整页、对话右侧栏打开；一次只显示一处。
-// 未登录不出现；境内外一样。角标 = 会话未读 + 平台通知未读（notices/notice-unread.ts 的合计规则）。
+// Bottom-left notifications entry. Messages have their own sidebar badge.
 import { useEffect } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { useImEnabled } from "../../lib/im/client";
 import { attachBayDeepLinks, useBayEnabled } from "../bay/shell/bay-state";
-import { useMessagesHost } from "../messages/host-state";
+import { openMessages, useMessagesHost } from "../messages/host-state";
 import { ensureMessagesSurfaceStyles } from "../messages/messages-surface";
 import { useLeoChatUnread } from "../messages/notices/use-notices";
+import { NoticeBellIcon } from "../messages/notices/notice-icons";
 import { dispatchWorkspaceAction } from "../workspace-actions";
 
 /** Button-to-canvas request. A mounted ResultCanvas marks it handled synchronously. */
@@ -63,7 +63,7 @@ export function LeoChatButton({ className = "" }: { className?: string }) {
   const bayOn = useBayEnabled();
   const unread = useLeoChatUnread(imOn);
   const { open, surface } = useMessagesHost();
-  const count = imOn ? unread.total : 0;
+  const count = imOn ? unread.notices : 0;
   const surfaceOpen = open && surface !== "window";
 
   // 别的页面上的 `?bay=` 深链由 LeoBay 自己接（跳到 /bay），这里顺手挂上监听：每个页面都有这个图标。
@@ -74,15 +74,15 @@ export function LeoChatButton({ className = "" }: { className?: string }) {
 
   if (!imOn) return null;
 
-  const label = count > 0 ? tt("LeoChat：{n} 条新消息", { n: count }) : "LeoChat";
+  const label = count > 0 ? tt("通知：{n} 条未读", { n: count }) : tt("通知");
 
   return (
     <div className={`relative ${className}`} data-leochat-button>
       <button
         type="button"
         onClick={() => {
-          if (isLeoChatPage()) return;
-          requestLeoChatPanel();
+          if (!isLeoChatPage() && !surfaceOpen) requestLeoChatPanel();
+          openMessages({ view: "notices" });
         }}
         aria-label={label}
         aria-pressed={surfaceOpen}
@@ -91,9 +91,9 @@ export function LeoChatButton({ className = "" }: { className?: string }) {
         data-leochat-surface={surfaceOpen ? surface : "none"}
         className="leo-tap-target relative flex items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800"
       >
-        <LeoChatGlyph />
+        <NoticeBellIcon />
         {count > 0 ? (
-          <span data-leochat-badge className="absolute right-0.5 top-0.5 flex min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-4 text-white">
+          <span data-leochat-badge className="absolute right-0.5 top-0.5 flex min-w-[16px] items-center justify-center rounded-full bg-neutral-900 px-1 text-[10px] font-semibold leading-4 text-white">
             {count > 99 ? "99+" : count}
           </span>
         ) : null}

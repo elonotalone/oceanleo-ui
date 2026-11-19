@@ -27,7 +27,7 @@ import { InviteAcceptDialog } from "./invite/InviteAcceptDialog";
 import { closeMessages, hostState, isSubView, tabOfView, useMessagesHost, type MessagesView } from "./host-state";
 import { MessagesLayout } from "./MessagesLayout";
 import { MessagesSubView } from "./notices/MessagesSubView";
-import { combineUnread } from "./notices/notice-unread";
+import { cleanCount } from "./notices/notice-unread";
 import { setNoticeNavigator } from "./notices/open-notice";
 import { noticeStore, useLeoChatUnread, useNoticePolling } from "./notices/use-notices";
 import { attachMessageSound, createBrowserMessageSound } from "./notify/sound";
@@ -106,21 +106,18 @@ function MessagesHostBody() {
     if (enabled && state.open) void noticeStore().refresh();
   }, [enabled, state.open]);
 
-  // 标签页标题前的未读数 = 会话未读（静音会话不计入，数字来自状态仓的 unread.total）+ 平台通知未读。
+  // Browser title counts unread messages only.
   // 消息不可用（未登录）时整段不挂，标题一个字都不动。
   useEffect(() => {
     if (!enabled) return undefined;
     const badge = attachBrowserTitleBadge();
     if (!badge) return undefined;
     const store = imStore();
-    const notices = noticeStore();
-    const sync = () => badge.setCount(combineUnread(store.unread()?.total, notices.getState().unread));
+    const sync = () => badge.setCount(cleanCount(store.unread()?.total));
     sync();
     const offChat = store.subscribe(sync);
-    const offNotices = notices.subscribe(sync);
     return () => {
       offChat();
-      offNotices();
       badge.detach();
     };
   }, [enabled]);
@@ -175,7 +172,7 @@ function MessagesHostBody() {
 function MessagesOverlay() {
   const state = useMessagesHost();
   const host = hostState();
-  // 「聊天」标签上的数字 = 会话未读 + 平台通知未读；联系人标签只是联系请求。
+  // Messages and notifications keep separate counts.
   const unread = useLeoChatUnread(true);
   const windowOpen = state.open && state.surface === "window";
   const [newOpen, setNewOpen] = useState(false);
@@ -227,7 +224,7 @@ function MessagesOverlay() {
     </div>
   );
   const tabs = (
-    <LeoChatTabs active={tabOfView(state.view)} onSelect={setView} badges={{ inbox: unread.total, people: unread.requests }} />
+    <LeoChatTabs active={tabOfView(state.view)} onSelect={setView} badges={{ inbox: unread.chat, people: unread.requests }} />
   );
 
   // 放大后右边一直是当前会话（左边切到联系人也不收走）；小窗里只有聊天栏会滑进会话。

@@ -11,7 +11,7 @@ export interface LeoChatTabsProps {
 }
 
 const TABS: ReadonlyArray<{ id: LeoChatTabId; label: string }> = [
-  { id: "inbox", label: "聊天" },
+  { id: "inbox", label: "消息" },
   { id: "people", label: "联系人" },
 ];
 

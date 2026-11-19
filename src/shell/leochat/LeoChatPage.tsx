@@ -111,7 +111,7 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
         <LeoChatTabs
           active={tabOfView(state.view)}
           onSelect={(view) => hostState().setView(view)}
-          badges={{ inbox: unread.total, people: unread.requests }}
+          badges={{ inbox: unread.chat, people: unread.requests }}
         />
         {sidebarToggle}
       </div>

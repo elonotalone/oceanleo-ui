@@ -86,7 +86,7 @@ export function LeoChatPanel({ active, request, onBackChange, onEvicted }: LeoCh
           <LeoChatTabs
             active={tabOfView(state.view)}
             onSelect={(tab) => hostState().setView(tab)}
-            badges={{ inbox: unread.total, people: unread.requests }}
+            badges={{ inbox: unread.chat, people: unread.requests }}
           />
         </div>
       )}

@@ -8,7 +8,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { NoticeBellIcon } from "./notice-icons";
 import { formatNoticeTime } from "./notice-present";
 import { browserNoticeActions, noticeActionable, noticeTargetOf, runNoticeTarget } from "./open-notice";
-import { useNoticeState } from "./use-notices";
+import { activeNoticeSection, useNoticeState } from "./use-notices";
 import { SERVER_NOTICE_KIND } from "./server-notice";
 import { ServerNoticeCounts, ServerNoticeMeta } from "./ServerNoticeMeta";
 
@@ -37,7 +37,7 @@ function targetLabel(target: ReturnType<typeof noticeTargetOf>, tt: ReturnType<t
 
 export function NoticeDetailView({ noticeId, onBack }: NoticeDetailViewProps): ReactElement {
   const tt = useUI();
-  const state = useNoticeState(true);
+  const state = useNoticeState(true, activeNoticeSection());
   const item: NotificationItem | undefined = noticeId ? state.items.find((candidate) => candidate.id === noticeId) : undefined;
 
   return (
@@ -50,7 +50,7 @@ export function NoticeDetailView({ noticeId, onBack }: NoticeDetailViewProps): R
 function MissingNotice({ tt }: { tt: ReturnType<typeof useUI> }): ReactElement {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10 text-center text-sm text-black/50 dark:text-white/50">
-      {tt("通知暂时打不开")}
+      {tt("通知正在自动恢复")}
     </div>
   );
 }

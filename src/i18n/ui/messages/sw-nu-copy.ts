@@ -1,0 +1,26 @@
+import type { Locale } from "../../config";
+
+const KEYS = ["通知：{n} 条未读", "OceanLeo 智能体", "官方", "系统", "通知分类", "发布官方通知", "正文", "链接（可选）", "正在发布…", "发布通知", "通知未发布，草稿已保留", "通知已发布", "通知正在自动恢复"] as const;
+const ROWS: Record<Locale, readonly string[]> = {
+  zh: KEYS,
+  "zh-TW": ["通知：{n} 則未讀", "OceanLeo 智慧體", "官方", "系統", "通知分類", "發布官方通知", "內文", "連結（選填）", "正在發布…", "發布通知", "通知未發布，草稿已保留", "通知已發布", "通知正在自動恢復"],
+  en: ["Notifications: {n} unread", "OceanLeo agent", "Official", "System", "Notification sections", "Publish official notification", "Body", "Link (optional)", "Publishing…", "Publish notification", "Notification not published. Your draft is saved.", "Notification published", "Notifications are reconnecting automatically"],
+  de: ["Benachrichtigungen: {n} ungelesen", "OceanLeo-Agent", "Offiziell", "System", "Benachrichtigungsbereiche", "Offizielle Benachrichtigung veröffentlichen", "Text", "Link (optional)", "Wird veröffentlicht…", "Benachrichtigung veröffentlichen", "Nicht veröffentlicht. Ihr Entwurf bleibt erhalten.", "Benachrichtigung veröffentlicht", "Benachrichtigungen werden automatisch neu verbunden"],
+  es: ["Notificaciones: {n} sin leer", "Agente de OceanLeo", "Oficial", "Sistema", "Secciones de notificaciones", "Publicar notificación oficial", "Contenido", "Enlace (opcional)", "Publicando…", "Publicar notificación", "No se ha publicado. Tu borrador se conserva.", "Notificación publicada", "Las notificaciones se reconectan automáticamente"],
+  "es-419": ["Notificaciones: {n} sin leer", "Agente de OceanLeo", "Oficial", "Sistema", "Secciones de notificaciones", "Publicar notificación oficial", "Contenido", "Enlace (opcional)", "Publicando…", "Publicar notificación", "No se publicó. Tu borrador se conserva.", "Notificación publicada", "Las notificaciones se reconectan automáticamente"],
+  fr: ["Notifications : {n} non lues", "Agent OceanLeo", "Officiel", "Système", "Rubriques de notifications", "Publier une notification officielle", "Contenu", "Lien (facultatif)", "Publication…", "Publier la notification", "Notification non publiée. Votre brouillon est conservé.", "Notification publiée", "Les notifications se reconnectent automatiquement"],
+  it: ["Notifiche: {n} non lette", "Agente OceanLeo", "Ufficiale", "Sistema", "Sezioni delle notifiche", "Pubblica notifica ufficiale", "Contenuto", "Link (facoltativo)", "Pubblicazione…", "Pubblica notifica", "Notifica non pubblicata. La bozza è conservata.", "Notifica pubblicata", "Le notifiche si riconnettono automaticamente"],
+  "pt-BR": ["Notificações: {n} não lidas", "Agente OceanLeo", "Oficial", "Sistema", "Seções de notificações", "Publicar notificação oficial", "Conteúdo", "Link (opcional)", "Publicando…", "Publicar notificação", "Notificação não publicada. Seu rascunho foi mantido.", "Notificação publicada", "As notificações estão se reconectando automaticamente"],
+  "pt-PT": ["Notificações: {n} não lidas", "Agente OceanLeo", "Oficial", "Sistema", "Secções de notificações", "Publicar notificação oficial", "Conteúdo", "Ligação (opcional)", "A publicar…", "Publicar notificação", "Notificação não publicada. O seu rascunho foi mantido.", "Notificação publicada", "As notificações estão a restabelecer a ligação automaticamente"],
+  vi: ["Thông báo: {n} chưa đọc", "Tác nhân OceanLeo", "Chính thức", "Hệ thống", "Mục thông báo", "Đăng thông báo chính thức", "Nội dung", "Liên kết (không bắt buộc)", "Đang đăng…", "Đăng thông báo", "Chưa đăng thông báo. Bản nháp được giữ lại.", "Đã đăng thông báo", "Thông báo đang tự động kết nối lại"],
+  tr: ["Bildirimler: {n} okunmamış", "OceanLeo aracısı", "Resmî", "Sistem", "Bildirim bölümleri", "Resmî bildirim yayınla", "İçerik", "Bağlantı (isteğe bağlı)", "Yayınlanıyor…", "Bildirimi yayınla", "Bildirim yayınlanmadı. Taslağınız korundu.", "Bildirim yayınlandı", "Bildirimler otomatik olarak yeniden bağlanıyor"],
+  ja: ["通知：未読 {n} 件", "OceanLeo エージェント", "公式", "システム", "通知の分類", "公式通知を公開", "本文", "リンク（任意）", "公開中…", "通知を公開", "通知は公開されていません。下書きは保持されています。", "通知を公開しました", "通知を自動的に再接続しています"],
+  ko: ["알림: 읽지 않음 {n}개", "OceanLeo 에이전트", "공식", "시스템", "알림 분류", "공식 알림 게시", "본문", "링크(선택 사항)", "게시 중…", "알림 게시", "알림이 게시되지 않았습니다. 초안은 유지됩니다.", "알림이 게시되었습니다", "알림을 자동으로 다시 연결하고 있습니다"],
+  ar: ["الإشعارات: {n} غير مقروءة", "وكيل OceanLeo", "رسمي", "النظام", "أقسام الإشعارات", "نشر إشعار رسمي", "المحتوى", "الرابط (اختياري)", "جارٍ النشر…", "نشر الإشعار", "لم يُنشر الإشعار. تم الاحتفاظ بالمسودة.", "تم نشر الإشعار", "تتم إعادة الاتصال بالإشعارات تلقائيًا"],
+  th: ["การแจ้งเตือน: ยังไม่อ่าน {n} รายการ", "เอเจนต์ OceanLeo", "ทางการ", "ระบบ", "หมวดการแจ้งเตือน", "เผยแพร่การแจ้งเตือนทางการ", "เนื้อหา", "ลิงก์ (ไม่บังคับ)", "กำลังเผยแพร่…", "เผยแพร่การแจ้งเตือน", "ยังไม่ได้เผยแพร่การแจ้งเตือน เก็บฉบับร่างไว้แล้ว", "เผยแพร่การแจ้งเตือนแล้ว", "กำลังเชื่อมต่อการแจ้งเตือนใหม่โดยอัตโนมัติ"],
+  hi: ["सूचनाएँ: {n} अपठित", "OceanLeo एजेंट", "आधिकारिक", "सिस्टम", "सूचना अनुभाग", "आधिकारिक सूचना प्रकाशित करें", "संदेश", "लिंक (वैकल्पिक)", "प्रकाशित हो रहा है…", "सूचना प्रकाशित करें", "सूचना प्रकाशित नहीं हुई। आपका मसौदा सुरक्षित है।", "सूचना प्रकाशित हो गई", "सूचनाएँ अपने आप फिर से जुड़ रही हैं"],
+};
+
+export function swNuCopy(locale: Locale): Record<string, string> {
+  return Object.fromEntries(KEYS.map((key, index) => [key, ROWS[locale][index]]));
+}

@@ -25,7 +25,7 @@ import {
 } from "../src/shell/messages/host-state.ts";
 import { imEnabledFor } from "../src/shell/messages/messages-family.ts";
 import { classifyNoticeLink, isModerationKind, noticeIsActionable } from "../src/shell/messages/notices/notice-links.ts";
-import { cleanCount, combineUnread, leoChatUnread, unreadBadgeText } from "../src/shell/messages/notices/notice-unread.ts";
+import { cleanCount, leoChatUnread, unreadBadgeText } from "../src/shell/messages/notices/notice-unread.ts";
 import { formatNoticeRowTime, formatNoticeTime } from "../src/shell/messages/notices/notice-present.ts";
 import {
   NOTICE_MAX_LIMIT,
@@ -426,27 +426,13 @@ test("箭头：有地方可去才画；LeoBay 落点在本站没有 LeoBay（境
 // 3 未读合计（任务书第 4 条）
 // ---------------------------------------------------------------------------
 
-test("未读合计 = 会话未读 + 通知未读；联系人标签只是联系请求；脏值当 0", () => {
-  assert.equal(combineUnread(3, 4), 7);
-  assert.equal(combineUnread(0, 5), 5);
-  assert.equal(combineUnread(5, 0), 5);
-  assert.equal(combineUnread(null, undefined), 0);
-  assert.equal(combineUnread(-2, 3), 3);
-  assert.equal(combineUnread(Number.NaN, 3), 3);
-  assert.equal(combineUnread(Infinity, 3), 3);
-  assert.equal(combineUnread("5", 1), 1, "字符串不是数字");
-  assert.equal(combineUnread(2.9, 1.2), 3, "小数向下取整");
-  assert.equal(cleanCount(-1), 0);
-
-  assert.deepEqual(leoChatUnread({ total: 3, requests: 2 }, 4), { chat: 3, notices: 4, requests: 2, total: 7 });
-  assert.deepEqual(leoChatUnread(null, 4), { chat: 0, notices: 4, requests: 0, total: 4 });
-  assert.deepEqual(leoChatUnread({ total: 3 }, undefined), { chat: 3, notices: 0, requests: 0, total: 3 });
-
-  assert.equal(unreadBadgeText(0), "");
-  assert.equal(unreadBadgeText(1), "1");
-  assert.equal(unreadBadgeText(99), "99");
-  assert.equal(unreadBadgeText(100), "99+");
-  assert.equal(unreadBadgeText(combineUnread(60, 50)), "99+");
+test("消息、通知、联系请求分别计数；脏值当 0", () => {
+  assert.deepEqual(leoChatUnread({ total: 3, requests: 2 }, 4), { chat: 3, notices: 4, requests: 2 });
+  assert.deepEqual(leoChatUnread(null, 4), { chat: 0, notices: 4, requests: 0 });
+  assert.deepEqual(leoChatUnread({ total: 3 }, undefined), { chat: 3, notices: 0, requests: 0 });
+  for (const value of [-1, NaN, Infinity, "5", null]) assert.equal(cleanCount(value), 0);
+  assert.equal(cleanCount(2.9), 2);
+  for (const [n, want] of [[0, ""], [1, "1"], [99, "99"], [100, "99+"]]) assert.equal(unreadBadgeText(n), want);
 });
 
 test("时间口径：今天 时:分；昨天；今年 月/日；更早 年/月/日；列表里多带时刻", () => {
@@ -1030,6 +1016,8 @@ test("执行层的默认依赖：会话 / 内容处置 / 栏目都经真实的�
 // ---------------------------------------------------------------------------
 
 const noticesHookStub = dataModule(`
+  export function activeNoticeSection(){}
+  export function selectNoticeSection(){}
   export function useNoticeState(){ return globalThis.__w08.notices; }
   export function noticeStore(){
     const w = globalThis.__w08;
@@ -1071,7 +1059,7 @@ test("收件箱最上方固定的「通知」行：未读数 + 最新一条标�
 
   w.notices = noticeState({ loaded: false, error: true });
   await view.rerender(row());
-  assert.equal(view.$("[data-notices-latest]").textContent, "通知暂时打不开");
+  assert.equal(view.$("[data-notices-latest]").textContent, "通知正在自动恢复");
 
   const recent = new Date(Date.now() - 60_000).toISOString();
   w.notices = noticeState({
@@ -1107,6 +1095,7 @@ test("收件箱最上方固定的「通知」行：未读数 + 最新一条标�
 });
 
 const noticesViewStubs = {
+  "./use-notice-resource": dataModule("export function noticesChanged(){} export const NOTICES_CHANGED='test:notices-changed'; export function useNoticeResource(){ return null; }"),
   "../cases/use-owner-cases": dataModule(`
     export function useOwnerCases(){ return globalThis.__w08Cases ?? { phase: "ready", cases: [] }; }
   `),
@@ -1205,11 +1194,8 @@ test("通知视图：加载中 / 出错重试 / 没有通知 / 旧数据 + 刷�
 
   w.notices = noticeState({ loaded: false, error: true });
   await view.rerender(element());
-  assert.ok(view.$("[data-notices-error]"));
-  assert.match(view.host.textContent, /通知暂时打不开/);
-  const before = w.calls.refresh;
-  await view.click("[data-notices-error] button");
-  assert.equal(w.calls.refresh, before + 1, "重试 = 再取一次");
+  assert.ok(view.$("[data-notices-loading]"));
+  assert.equal(view.$("[data-notices-error]"), null, "自动恢复期间保留加载状态");
 
   w.notices = noticeState({ loaded: true });
   await view.rerender(element());
@@ -1467,7 +1453,7 @@ const { LeoChatPanel } = await import(
   })
 );
 
-test("右侧栏：通知 / 内容处置打开时顶上的标签收起，右侧栏的「返回」先退它们（cases → 通知 → 聊天）；聊天标签的数字含通知", async () => {
+test("右侧栏：通知 / 内容处置打开时顶上的标签收起，右侧栏的「返回」先退它们（cases → 通知 → 聊天）；消息标签只显示消息未读", async () => {
   const w = resetW08();
   w.unread = { chat: 2, notices: 3, requests: 4, total: 5 };
   const host = resetHost();
@@ -1481,7 +1467,7 @@ test("右侧栏：通知 / 内容处置打开时顶上的标签收起，右侧�
   assert.ok(view.$('[role="tablist"]'), "列表：有标签");
   const tabs = view.$$('[role="tab"]');
   assert.equal(tabs.length, 2);
-  assert.equal(tabs[0].textContent.replace(/\s/g, ""), "聊天5", "聊天标签 = 会话未读 + 通知未读");
+  assert.equal(tabs[0].textContent.replace(/\s/g, ""), "消息2", "消息标签只显示会话未读");
   assert.equal(tabs[1].textContent.replace(/\s/g, ""), "联系人4", "联系人标签只是联系请求");
   assert.equal(lastBack(), null, "列表是最上一层：没有上一步");
 
@@ -1528,7 +1514,7 @@ const { LeoChatPage } = await import(
   })
 );
 
-test("整页：境内外同一页；聊天标签的数字含通知；通知 / 内容处置时标签仍停在「聊天」", async () => {
+test("整页：境内外同一页；消息标签只显示消息未读；通知 / 内容处置时标签仍停在「聊天」", async () => {
   const w = resetW08();
   w.unread = { chat: 1, notices: 6, requests: 0, total: 7 };
   const host = resetHost();
@@ -1538,7 +1524,7 @@ test("整页：境内外同一页；聊天标签的数字含通知；通知 / �
   assert.equal(host.getSnapshot().surface, "page");
   const chat = () => view.$('[role="tab"][data-view="inbox"]');
   const people = () => view.$('[role="tab"][data-view="people"]');
-  assert.equal(chat().textContent.replace(/\s/g, ""), "聊天7");
+  assert.equal(chat().textContent.replace(/\s/g, ""), "消息1");
   assert.equal(people().querySelector("[data-im-tab-badge]"), null);
   assert.equal(chat().getAttribute("aria-selected"), "true");
 
@@ -1567,6 +1553,7 @@ test("整页：境内外同一页；聊天标签的数字含通知；通知 / �
 // ---------------------------------------------------------------------------
 
 const apiStub = dataModule(`
+  export async function notificationBadges(){return {ok:false};}
   export async function listNotifications(limit){
     const api = globalThis.__w08.api;
     api.calls.push(["list", limit]);
@@ -1597,7 +1584,7 @@ const buttonMod = await import(
 );
 const { LeoChatButton } = buttonMod;
 
-test("入口角标 = 会话未读 + 通知未读（真实的通知仓）；切回标签页立即取一次；卸载后不再取", async () => {
+test("底部入口角标只显示通知未读（真实的通知仓）；切回标签页立即取一次；卸载后不再取", async () => {
   const w = resetW08();
   resetHost();
   globalThis.__w08ImOn = true;
@@ -1609,8 +1596,8 @@ test("入口角标 = 会话未读 + 通知未读（真实的通知仓）；切�
   await flush();
   assert.deepEqual(w.api.calls[0], ["list", 30], "登录就取一次最近 30 条");
   const badge = () => view.$("[data-leochat-badge]");
-  assert.equal(badge().textContent, "5", "2 条会话未读 + 3 条通知未读");
-  assert.equal(view.$("[data-leochat-open]").getAttribute("aria-label"), "LeoChat：5 条新消息");
+  assert.equal(badge().textContent, "3", "只显示通知未读");
+  assert.equal(view.$("[data-leochat-open]").getAttribute("aria-label"), "通知：3 条未读");
 
   // 新通知到了（服务端多了 1 条）；会话未读也变了：用户切回标签页 → 立即取一次，角标跟着变
   w.api.unread = 4;
@@ -1622,7 +1609,7 @@ test("入口角标 = 会话未读 + 通知未读（真实的通知仓）；切�
   });
   await flush();
   assert.equal(w.api.calls.length, callsBefore + 1);
-  assert.equal(badge().textContent, "5", "1 + 4");
+  assert.equal(badge().textContent, "4", "通知未读不加会话未读");
 
   // 通知全读完、会话也没有未读：角标消失
   w.api.unread = 0;
@@ -1748,7 +1735,7 @@ const { MessagesHost } = await import(
   })
 );
 
-test("小窗宿主：登录就轮询通知；标签页标题 = 会话未读 + 通知未读（任一变了都跟着变）；站内跳转交给通知", async () => {
+test("小窗宿主：登录就轮询通知；标签页标题只显示消息未读；站内跳转交给通知", async () => {
   const w = resetW08();
   const host = resetHost();
   w.router = { push() {} };
@@ -1761,14 +1748,14 @@ test("小窗宿主：登录就轮询通知；标签页标题 = 会话未读 + �
   await flush();
   assert.deepEqual(w.pollingArgs.at(-1), true, "登录就轮询通知（和 IM 连接同一个开关）");
   assert.equal(w.navigators.some(([which, fn]) => which === "notice" && typeof fn === "function"), true, "通知里的站内链接走外壳的 router.push");
-  assert.equal(w.titleCounts.at(-1), 5, "标题数字 = 2 + 3");
+  assert.equal(w.titleCounts.at(-1), 2, "标题只显示消息未读");
 
   // 会话未读变了
   w.im = { total: 6, requests: 1 };
   await act(() => {
     for (const fn of w.imListeners) fn();
   });
-  assert.equal(w.titleCounts.at(-1), 9);
+  assert.equal(w.titleCounts.at(-1), 6);
   // 通知未读变了
   w.noticeUnread = 0;
   await act(() => {
@@ -1794,7 +1781,7 @@ test("小窗宿主：登录就轮询通知；标签页标题 = 会话未读 + �
   assert.equal(w.titleDetached, true, "卸载时标题前缀去掉");
 });
 
-test("小窗宿主：通知视图在详情位、左边仍是聊天列表且通知行亮着；cases 带案件 id；标签数字含通知，标签停在「聊天」", async () => {
+test("小窗宿主：通知视图在详情位、左边仍是聊天列表且通知行亮着；cases 带案件 id；标签数字只显示消息，标签停在「聊天」", async () => {
   const w = resetW08();
   const host = resetHost();
   w.router = { push() {} };
@@ -1809,7 +1796,7 @@ test("小窗宿主：通知视图在详情位、左边仍是聊天列表且通�
   assert.ok(inList());
   assert.equal(detail(), null);
   assert.equal(view.$('[data-testid="messages-overlay"]').getAttribute("data-show-detail"), "false");
-  assert.equal(globalThis.__w08Last.LeoChatTabs.badges.inbox, 5, "聊天标签 = 会话 + 通知");
+  assert.equal(globalThis.__w08Last.LeoChatTabs.badges.inbox, 2, "消息标签只显示消息");
   assert.equal(globalThis.__w08Last.LeoChatTabs.badges.people, 1, "联系人标签只是联系请求");
   assert.equal(globalThis.__w08Last.LeoChatTabs.active, "inbox");
 
@@ -1989,7 +1976,7 @@ test("不按域名分叉：通知相关的渲染、状态仓、挂载文件里�
   assert.doesNotMatch(openNoticeText, /currentDomainFamily|familyForHost|portalHref/);
   // 入口角标与 IM 同一个开关
   const button = src("shell/leochat/LeoChatButton.tsx");
-  assert.match(button, /const count = imOn \? unread\.total : 0;/);
+  assert.match(button, /const count = imOn \? unread\.notices : 0;/);
   // imEnabledFor 对三个家族只看登录（家族只决定各自网关）
   assert.match(src("shell/messages/messages-family.ts"), /return signedIn;/);
 });

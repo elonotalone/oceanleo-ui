@@ -5,13 +5,16 @@ import { QUIET, MessageSettingsFrame } from "../MessageSettingsFrame";
 // LeoChat 里的「通知」：平台发给本人的消息（交易订单、任务交付、账单、团队邀请、内容处置……），境内外同一套。
 // 点一条：标为已读，并去它的链接——LeoBay / 会话 / 内容处置在站内打开，其余站内页站内跳，别的站新窗口（open-notice.ts）。
 // 顶上「全部标记已读」。占着 LeoChat 的详情位（小窗 / 窄屏里就是整块内容区），左上角的返回回到聊天。
-import { useEffect, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { useOwnerCases } from "../cases/use-owner-cases";
 import { NoticeBellIcon, NoticeChevronIcon } from "./notice-icons";
 import { formatNoticeTime } from "./notice-present";
 import { noticeActionable, openNoticeDetail } from "./open-notice";
-import { noticeStore, useNoticeState } from "./use-notices";
+import { activeNoticeSection, selectNoticeSection, noticeStore, useNoticeState } from "./use-notices";
+import { listNotificationSections } from "../../../api/notifications";
+import { OfficialNoticeForm } from "./OfficialNoticeForm";
+import { useNoticeResource } from "./use-notice-resource";
 import { SERVER_NOTICE_KIND } from "./server-notice";
 import { ServerNoticeCounts, ServerNoticeMeta } from "./ServerNoticeMeta";
 
@@ -40,8 +43,20 @@ function CaseRecovery({ onOpen }: { onOpen: () => void }): ReactElement | null {
 
 export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement {
   const tt = useUI();
-  const state = useNoticeState(true);
-  const store = noticeStore();
+  const sectionResult = useNoticeResource(true, listNotificationSections);
+  const sections = sectionResult?.ok ? sectionResult.data?.sections : undefined;
+  const builtinTitles: Record<string, string> = { leobay: "LeoBay", agent: "OceanLeo 智能体", official: "官方", system: "系统" };
+  const ordered = sections ? [...sections].sort((a, b) => {
+    const order = ["leobay", "agent", "official", "system"];
+    return (order.includes(a.key) ? order.indexOf(a.key) : 4) - (order.includes(b.key) ? order.indexOf(b.key) : 4);
+  }) : [];
+  const [selected, setSelected] = useState(activeNoticeSection);
+  const section = sections?.find(item => item.key === selected)?.key ?? ordered[0]?.key;
+  const state = useNoticeState(true, section);
+  const store = noticeStore(section);
+  const current = sections?.find(item => item.key === section);
+  useEffect(() => { selectNoticeSection(section); }, [section]);
+
 
   // 点进来先取一次最新的（轮询是 60 秒一次，点开时不该让人看 59 秒前的）。
   useEffect(() => {
@@ -52,20 +67,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
   const yesterday = tt("昨天");
 
   let body: ReactElement;
-  if (!state.loaded && state.error) {
-    body = (
-      <div className="px-4 py-10 text-center text-sm text-black/55 dark:text-white/55" data-notices-error="">
-        <div>{tt("通知暂时打不开")}</div>
-        <button
-          type="button"
-          onClick={() => void store.refresh()}
-          className={`${QUIET} mt-2`}
-        >
-          {tt("重试")}
-        </button>
-      </div>
-    );
-  } else if (!state.loaded) {
+  if (!state.loaded) {
     body = (
       <div className="px-4 py-10 text-center text-sm text-black/45 dark:text-white/45" data-notices-loading="">
         {tt("正在加载…")}
@@ -87,16 +89,10 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
     body = (
       <>
         {state.error ? (
-          // 列表是旧的，最近一次刷新没成功：留着旧的，另给一条细提示和重试。
           <div
             className="flex items-center justify-center gap-2 px-3 py-1.5 text-[12px] text-black/45 dark:text-white/45"
-            role="status"
-            data-notices-stale=""
-          >
-            <span>{tt("通知暂时打不开")}</span>
-            <button type="button" onClick={() => void store.refresh()} className="underline underline-offset-2">
-              {tt("重试")}
-            </button>
+            role="status" data-notices-stale="">
+            {tt("通知正在自动恢复")}
           </div>
         ) : null}
         <ul role="list" aria-label={tt("通知")} data-notices-list="">
@@ -111,7 +107,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                   data-notice-id={item.id}
                   data-notice-kind={item.kind}
                   data-notice-unread={unread ? "true" : "false"}
-                  onClick={() => openNoticeDetail(item)}
+                  onClick={() => openNoticeDetail(item, store)}
                   className="flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                 >
                   <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-300">
@@ -176,7 +172,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
   return (
     <MessageSettingsFrame title={tt("通知")} onBack={onBack} backButtonProps={{ "data-notices-back": "" } as React.ButtonHTMLAttributes<HTMLButtonElement>} headerActions={<>
         {onCases ? <CaseRecovery onOpen={onCases} /> : null}
-        {state.unread > 0 ? (
+        {(current?.unread ?? state.unread) > 0 ? (
           <button
             type="button"
             data-notices-read-all=""
@@ -187,6 +183,17 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
           </button>
         ) : null}
       </>} data-notices-view="" data-testid="notices-view">
+      {ordered.length > 0 ? (
+        <div role="tablist" aria-label={tt("通知分类")} className="flex shrink-0 gap-2 overflow-x-auto border-b border-black/[0.06] px-3 py-2 dark:border-white/10">
+          {ordered.map(item => <button key={item.key} type="button" role="tab" aria-selected={section === item.key}
+            data-notice-section={item.key} className="shrink-0 rounded-lg px-3 py-2 text-sm"
+            onClick={() => { selectNoticeSection(item.key); setSelected(item.key); }}>
+            {item.builtin ? tt(builtinTitles[item.key] ?? item.title) : item.title}
+            {item.unread > 0 ? <span data-notice-section-unread className="ml-1 text-xs">{item.unread > 99 ? "99+" : item.unread}</span> : null}
+          </button>)}
+        </div>
+      ) : null}
+      {section === "official" ? <OfficialNoticeForm onSent={() => void store.refresh()} /> : null}
       {body}
     </MessageSettingsFrame>
   );

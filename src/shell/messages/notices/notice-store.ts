@@ -96,6 +96,7 @@ export function createNoticeStore(deps: NoticeStoreDeps): NoticeStore {
   /** 每次本地改动（标已读）换号：改动期间发出的取数结果可能是旧的，丢掉重取。 */
   let epoch = 0;
   let inflight: Promise<void> | null = null;
+  let failures = 0;
 
   function set(patch: Partial<NoticeState>): void {
     const next = { ...state, ...patch };
@@ -107,6 +108,7 @@ export function createNoticeStore(deps: NoticeStoreDeps): NoticeStore {
 
   /** `loading` 只给「还没有数据」和用户主动要的（加载更多）亮：后台轮询不闪。 */
   function fetchNow(showLoading = false): Promise<void> {
+    if (deps.isHidden()) return Promise.resolve();
     if (inflight) return inflight;
     const startedGeneration = generation;
     const startedEpoch = epoch;
@@ -128,7 +130,9 @@ export function createNoticeStore(deps: NoticeStoreDeps): NoticeStore {
         return;
       }
       if (!result.ok || !result.data || !Array.isArray(result.data.items)) {
+        failures += 1;
         set({ loading: false, error: true });
+        if (users > 0) schedule();
         return;
       }
       if (startedEpoch !== epoch) {
@@ -137,6 +141,8 @@ export function createNoticeStore(deps: NoticeStoreDeps): NoticeStore {
         void fetchNow();
         return;
       }
+      failures = 0;
+      if (users > 0) schedule();
       const items = result.data.items.filter(isItem);
       set({
         items,
@@ -160,7 +166,7 @@ export function createNoticeStore(deps: NoticeStoreDeps): NoticeStore {
 
   function schedule(): void {
     if (timer != null) deps.clearTimer(timer);
-    timer = deps.setTimer(tick, pollMs);
+    timer = deps.setTimer(tick, failures ? Math.min(pollMs, 1000 * 2 ** Math.min(failures - 1, 6)) : pollMs);
   }
 
   function stopTimers(): void {
@@ -245,6 +251,7 @@ export function createNoticeStore(deps: NoticeStoreDeps): NoticeStore {
       epoch += 1;
       inflight = null;
       limit = NOTICE_PAGE;
+      failures = 0;
       if (users === 0) stopTimers();
       if (isEmptyState(state)) return;
       state = emptyNoticeState();

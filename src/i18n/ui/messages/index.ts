@@ -63,6 +63,7 @@ import { EDITOR_OVERHAUL_MESSAGES } from "./editor-overhaul-copy";
 import { deviceExperienceCopy } from "./device-experience-copy";
 import { swBrCopy } from "./sw-br-copy";
 import { swTsCopy } from "./sw-ts-copy";
+import { swNuCopy } from "./sw-nu-copy";
 import { taskLiveCopy } from "./task-live-copy";
 import { swTwCopy } from "./sw-tw-copy";
 import { swSTCopy } from "./sw-st-copy";
@@ -542,6 +543,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...swPfCopy(language),
       ...swHuCopy(language),
       ...swCsCopy(language),
+      ...swNuCopy(language),
       ...taskStateCopy(language),
       ...websitePreviewProgressCopy(language),
       ...gatewayRoutingCopy(language),

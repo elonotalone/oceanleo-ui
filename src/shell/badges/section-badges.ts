@@ -4,12 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { accessToken } from "../../lib/auth/client";
 import { gatewayBase } from "../../lib/auth/config";
 
-export type BadgeSection = "tasks" | "chat" | "bay" | "schedules" | "devices";
+export type BadgeSection = "tasks" | "chat" | "notices" | "bay" | "schedules" | "devices";
 export type SectionBadgeCounts = Record<BadgeSection, number>;
 export type BadgeSnapshot = { sections: SectionBadgeCounts; total: number; account: { dot: boolean; reasons: string[] } };
-const SECTIONS: BadgeSection[] = ["tasks", "chat", "bay", "schedules", "devices"];
+const SECTIONS: BadgeSection[] = ["tasks", "chat", "notices", "bay", "schedules", "devices"];
 export const EMPTY_BADGES: BadgeSnapshot = {
-  sections: { tasks: 0, chat: 0, bay: 0, schedules: 0, devices: 0 }, total: 0,
+  sections: { tasks: 0, chat: 0, notices: 0, bay: 0, schedules: 0, devices: 0 }, total: 0,
   account: { dot: false, reasons: [] },
 };
 
@@ -25,7 +25,7 @@ export function readBadgeSnapshot(value: unknown): BadgeSnapshot {
     const n = data?.sections?.[key];
     if (typeof n === "number" && Number.isSafeInteger(n) && n > 0) sections[key] = n;
   }
-  return { sections, total: Object.values(sections).reduce((a, b) => a + b, 0),
+  return { sections, total: SECTIONS.filter(key => key !== "notices").reduce((sum, key) => sum + sections[key], 0),
     account: { dot: data?.account?.dot === true,
       reasons: Array.isArray(data?.account?.reasons) ? data.account.reasons.filter((r): r is string => typeof r === "string") : [] } };
 }

@@ -24,7 +24,7 @@ export function InboxNoticesRow({ active, onOpen }: InboxNoticesRowProps): React
   let preview = "";
   if (latest) preview = tt(latest.title);
   else if (loaded) preview = tt("还没有通知");
-  else if (error) preview = tt("通知暂时打不开");
+  else if (error) preview = tt("通知正在自动恢复");
 
   return (
     <div className="shrink-0 border-b border-black/[0.06] py-0.5 dark:border-white/10" data-inbox-notices-wrap="">

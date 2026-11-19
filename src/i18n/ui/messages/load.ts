@@ -24,6 +24,7 @@ import { localBrowserCopy } from "./local-browser-copy";
 import { deviceExperienceCopy } from "./device-experience-copy";
 import { swBrCopy } from "./sw-br-copy";
 import { swTsCopy } from "./sw-ts-copy";
+import { swNuCopy } from "./sw-nu-copy";
 import { taskLiveCopy } from "./task-live-copy";
 import { swTwCopy } from "./sw-tw-copy";
 import { swSTCopy } from "./sw-st-copy";
@@ -156,6 +157,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...swPfCopy(locale),
     ...swHuCopy(locale),
     ...swCsCopy(locale),
+    ...swNuCopy(locale),
     ...taskStateCopy(locale),
     ...websitePreviewProgressCopy(locale),
     ...gatewayRoutingCopy(locale),
