@@ -729,23 +729,6 @@ test("粘底：在底部才跟随，往上翻就交出控制权", () => {
   );
 });
 
-test("粘底的三条语义在组件里都有落点：跟随 / 浮标带未读 / 发言恢复跟随", () => {
-  // 语义一：只有 following 才自动滚。
-  assert.match(source, /if \(followingRef\.current\) \{\s*scrollToLatest/);
-  // 语义二：不跟随时累计未读，并渲染「回到最新」浮标。
-  assert.match(source, /if \(added > 0\) setUnread\(\(current\) => current \+ added\)/);
-  assert.match(source, /tt\("回到最新 · \{count\} 条新消息", \{ count: unread \}\)/);
-  // 语义三：点浮标或自己发言都回到跟随态。
-  assert.match(source, /const resumeFollowing = useCallback\(/);
-  assert.match(source, /const beginUserTurn = useCallback\(/);
-  // 而且原来那个无条件拽底必须已经没了。
-  assert.doesNotMatch(
-    source,
-    /useEffect\(\(\) => \{\s*scrollRef\.current\?\.scrollTo/,
-    "无条件拽到底的老写法还在",
-  );
-});
-
 // ===========================================================================
 // 6. 接线的消费点（本份活真出过的事故：纯函数都对，没人调用）
 // ===========================================================================

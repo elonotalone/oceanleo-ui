@@ -62,3 +62,21 @@ test("an OceanLeo send carries this window's id (agent UI actions come back to t
     assert.match(globalThis.__followUpBodies.at(-1).client_window, /^w_[0-9a-f]{16}$/);
   } finally { await leo.unmount(); }
 });
+
+test("ACP action failures live in the transcript and do not make the composer footer taller", async () => {
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions });
+  try {
+    await connect();
+    await deliver(rows.prompt(1, "Run this"));
+    globalThis.__acpRoute = (path) => path.endsWith("/stop")
+      ? { status: 503, body: { detail: "gateway unavailable" } } : null;
+    await act(async () => view.composer("acp").__props.onStop());
+    await settle();
+    const error = view.host.querySelector("[data-acp-error]");
+    assert.ok(error);
+    assert.match(error.textContent, /gateway unavailable/);
+    assert.ok(error.closest("[data-agent-stream-scroller]"));
+    assert.equal(error.closest("[data-agent-chat-footer]"), null);
+    assert.equal(view.host.querySelector("[data-agent-chat-footer] [role=alert]"), null);
+  } finally { await view.unmount(); }
+});

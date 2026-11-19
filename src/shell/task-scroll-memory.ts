@@ -1,85 +1,77 @@
-// ============================================================================
-// Per-conversation scroll position for the life of the page (2026-10-31 W5, point 10)
-// ----------------------------------------------------------------------------
-// Switching tasks without a reload comes back where the user was; a reload (this
-// module starts empty) or a first open lands at the latest message on the first
-// painted frame — an instant jump, never a smooth top-to-bottom scroll.
-// Keys: `task:<taskId>` (the OceanLeo conversation) and `native:<sessionId>`.
-// Memory only; nothing is persisted.
-// ============================================================================
-
-export interface RememberedScroll {
-  top: number;
-  /** The user was following the latest message: come back to the (new) bottom. */
+/** A reading position is a visible message and its viewport offset, never a scroll ratio/pixel position. */
+export type ConversationAnchor = {
+  messageId: string;
+  offset: number;
   atBottom: boolean;
-}
-
-const memory = new Map<string, RememberedScroll>();
-/** Plenty for a session of switching; the oldest entries go first. */
+  /** ACP's transport cursor, taken from the rendered message rather than guessed from its position. */
+  rowId?: number;
+  /** Used only to count messages received since the reader left. */
+  latestId?: string;
+};
+const STORAGE_KEY = "oceanleo:conversation-anchors:v2";
 const MAX_ENTRIES = 200;
 
-export function rememberConversationScroll(key: string, top: number, atBottom: boolean): void {
-  if (!key) return;
-  memory.delete(key);
-  memory.set(key, { top: Math.max(0, top), atBottom });
-  if (memory.size > MAX_ENTRIES) {
-    const oldest = memory.keys().next().value;
-    if (oldest !== undefined) memory.delete(oldest);
-  }
+function store(): Record<string, ConversationAnchor> {
+  if (typeof window === "undefined") return {};
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, ConversationAnchor> : {};
+  } catch { return {}; }
 }
 
-export function recallConversationScroll(key: string): RememberedScroll | null {
-  return key ? memory.get(key) ?? null : null;
+export function rememberConversationAnchor(key: string, anchor: ConversationAnchor): void {
+  if (!key || !anchor.messageId || !Number.isFinite(anchor.offset) || typeof window === "undefined") return;
+  try {
+    const all = store();
+    const previous = all[key];
+    if (previous && previous.messageId === anchor.messageId && previous.offset === anchor.offset
+      && previous.atBottom === anchor.atBottom && previous.rowId === anchor.rowId && previous.latestId === anchor.latestId) return;
+    delete all[key];
+    all[key] = anchor;
+    const entries = Object.entries(all).slice(-MAX_ENTRIES);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch { /* Storage may be unavailable; scrolling still works. */ }
 }
 
-/** Test seam. */
+export function recallConversationAnchor(key: string): ConversationAnchor | null {
+  const value = key ? store()[key] : undefined;
+  return value && typeof value.messageId === "string" && value.messageId.length > 0
+    && typeof value.offset === "number" && Number.isFinite(value.offset) && typeof value.atBottom === "boolean"
+    ? value : null;
+}
+
 export function forgetConversationScrolls(): void {
-  memory.clear();
+  if (typeof window === "undefined") return;
+  try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* optional */ }
 }
 
-/**
- * Where a conversation opens: the remembered spot when the user had scrolled up,
- * otherwise the bottom. Returns whether the stream should keep following.
- */
-export function initialConversationScroll(
-  saved: RememberedScroll | null,
-  scrollHeight: number,
-): { top: number; follow: boolean } {
-  if (saved && !saved.atBottom) return { top: saved.top, follow: false };
-  return { top: scrollHeight, follow: true };
+export const STREAM_ITEM_SELECTOR = "[data-stream-message-id]";
+export function streamMessageElement(el: HTMLElement, messageId: string): HTMLElement | undefined {
+  return Array.from(el.querySelectorAll<HTMLElement>(STREAM_ITEM_SELECTOR))
+    .find((item) => item.dataset.streamMessageId === messageId);
 }
-
-/**
- * Place the stream's first frame (instant: `scrollTop`, never `scrollTo` smooth).
- * Content that grows right after (images, code blocks laying out) keeps it at the
- * bottom for a moment while the user is still following.
- */
-export function placeConversationScroll(
-  el: HTMLElement,
-  key: string,
-  following: () => boolean,
-): { follow: boolean; release: () => void } {
-  const placed = initialConversationScroll(recallConversationScroll(key), el.scrollHeight);
-  el.scrollTop = placed.top;
-  if (!placed.follow || typeof ResizeObserver === "undefined") {
-    return { follow: placed.follow, release: () => {} };
-  }
-  const content = el.firstElementChild;
-  const observer = new ResizeObserver(() => {
-    if (following()) el.scrollTop = el.scrollHeight;
-  });
-  observer.observe(content ?? el);
-  const timer = setTimeout(() => observer.disconnect(), 1500);
+export function captureConversationAnchor(el: HTMLElement, atBottom: boolean, latestId?: string): ConversationAnchor | null {
+  const root = el.getBoundingClientRect();
+  const top = root.top;
+  const bottom = Number.isFinite(root.bottom) ? root.bottom : top + el.clientHeight;
+  const items = Array.from(el.querySelectorAll<HTMLElement>(STREAM_ITEM_SELECTOR));
+  const item = items.find((candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    return rect.bottom > top && rect.top < bottom;
+  }) ?? (atBottom ? items.at(-1) : undefined);
+  if (!item?.dataset.streamMessageId) return null;
+  const rowId = Number(item.dataset.streamRowId);
   return {
-    follow: true,
-    release: () => {
-      clearTimeout(timer);
-      observer.disconnect();
-    },
+    messageId: item.dataset.streamMessageId,
+    offset: item.getBoundingClientRect().top - top,
+    atBottom,
+    ...(Number.isSafeInteger(rowId) && rowId > 0 ? { rowId } : {}),
+    ...(latestId ? { latestId } : {}),
   };
 }
-
-/** A pane inside a `hidden` ancestor has no layout yet: place it once shown. */
-export function scrollPaneShown(el: HTMLElement): boolean {
-  return !el.closest("[hidden]");
+export function restoreConversationAnchor(el: HTMLElement, anchor: ConversationAnchor | null): boolean {
+  const item = anchor && !anchor.atBottom ? streamMessageElement(el, anchor.messageId) : undefined;
+  if (!item) { el.scrollTop = el.scrollHeight; return true; }
+  el.scrollTop += item.getBoundingClientRect().top - el.getBoundingClientRect().top - anchor!.offset;
+  return false;
 }

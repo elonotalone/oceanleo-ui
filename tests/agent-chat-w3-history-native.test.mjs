@@ -256,7 +256,12 @@ test("a newest-message seed is followed by an unpaged full read", async () => {
     initialTask: { ...full, messages: newest, has_more: true },
   }, { task: full });
   try {
-    assert.match(view.host.textContent, /最早的一条/);
+    assert.doesNotMatch(view.host.textContent, /最早的一条/, "older rows are paged out until requested");
+    const scroller = view.host.querySelector("[data-agent-stream-scroller]");
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 400 });
+    await act(async () => { scroller.scrollTop = 0; scroller.dispatchEvent(new Event("scroll")); });
+    await settle();
+    assert.match(view.host.textContent, /最早的一条/, "scrolling up reveals the already-read older page");
     assert.equal(globalThis.__getTaskCalls.length, 1);
     assert.deepEqual(globalThis.__getTaskOptions[0], {}, "the follow-up is a full, unpaged read");
   } finally { await view.unmount(); }

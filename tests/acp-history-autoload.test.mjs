@@ -14,9 +14,9 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
 const wait = () => { let resolve; const promise = new Promise((yes) => { resolve = yes; }); return { promise, resolve }; };
 
 async function historyMount(route, { anchor } = {}) {
-  const anchorKey = "oceanleo:task-conversation-anchors:v1";
+  const anchorKey = "oceanleo:conversation-anchors:v2";
   const oldAnchor = localStorage.getItem(anchorKey);
-  localStorage.setItem(anchorKey, JSON.stringify(anchor ? { t1: anchor } : {}));
+  localStorage.setItem(anchorKey, JSON.stringify(anchor ? { "task:t1": anchor } : {}));
   const oldFetch = globalThis.fetch; const errors = []; const oldError = console.error;
   const originalRect = HTMLElement.prototype.getBoundingClientRect;
   const oldClient = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
@@ -29,7 +29,7 @@ async function historyMount(route, { anchor } = {}) {
     const scroller = this.closest('[data-agent-stream-scroller]');
     if (this.hasAttribute('data-agent-stream-scroller')) return { top: 0, bottom: 400, height: 400 };
     if (this.hasAttribute('data-older-history-sentinel')) return { top: -scroller.scrollTop, bottom: -scroller.scrollTop };
-    if (this.parentElement?.hasAttribute('data-acp-transcript')) {
+    if (this.hasAttribute('data-history-key')) {
       const index = [...this.parentElement.children].indexOf(this);
       return { top: 32 + index * 500 - scroller.scrollTop, bottom: 532 + index * 500 - scroller.scrollTop };
     }
@@ -64,7 +64,7 @@ test('real ACP pane prefetches one batch without a button; only top shows spinne
     await view.scroll(500); await view.scroll(400); assert.equal(view.requests.length, 2, 'no parallel batch');
     await view.scroll(0); assert.ok(view.host.querySelector('.v-spinner'));
     await view.scroll(550); assert.equal(view.host.querySelector('.v-spinner'), null);
-    const item = [...view.host.querySelector('[data-acp-transcript]').children].find((child) => child.textContent.includes('Reading this question'));
+    const item = [...view.host.querySelectorAll('[data-acp-transcript] [data-history-key]')].find((child) => child.textContent.includes('Reading this question'));
     const before = item.getBoundingClientRect().top;
     await connect();
     await act(async () => pending.resolve(json(page(olderRows(), false, null))));
@@ -113,12 +113,12 @@ test('reopening a saved reading position fills forward, preserves the oldest cur
     if (query.has('before')) return pending.promise;
     if (query.has('after')) return json({ ...page([{ ...rows.prompt(103, 'Forward-filled latest'), id: 110 }, { ...rows.done(103), id: 111 }], false, 110), tail_id: 111 });
     return json({ ...page(initialRows()), has_more_after: true, next_after: 103, newest_id: 103 });
-  }, { anchor: { rowId: 102, offsetPx: 550, atBottom: false } });
+  }, { anchor: { messageId: "turn-102", rowId: 102, offset: -18, atBottom: false } });
   try {
     assert.equal(view.requests[0].get('anchor'), '102');
     assert.equal(view.requests[1].get('after'), '103');
     assert.equal(view.requests[2].get('before'), '100', 'older cursor belongs to original anchored page, not forward-filled tail');
-    assert.equal(view.scroller.scrollTop, 550, 'saved reading offset restores after the window attaches');
+    assert.equal(view.host.querySelector('[data-stream-message-id="turn-102"]').getBoundingClientRect().top, -18, 'saved message offset restores after the window attaches');
     assert.match(view.host.textContent, /Forward-filled latest/);
     await act(async () => pending.resolve(json(page(olderRows(), false, null)))); await settle();
     assert.match(view.host.textContent, /Earlier question/);
@@ -131,7 +131,7 @@ test('anchored history opens its live subscription before forward fill finishes 
   const view = await historyMount((query) => {
     if (query.has('after')) return pending.promise;
     return json({ ...page(initialRows(), false, null), has_more_after: true, next_after: 103, newest_id: 103 });
-  }, { anchor: { rowId: 102, offsetPx: 550, atBottom: false } });
+  }, { anchor: { messageId: "turn-102", rowId: 102, offset: -18, atBottom: false } });
   try {
     assert.match(view.host.textContent, /Reading this question/);
     assert.ok(globalThis.__agentChatHarness.socket(), 'live socket does not wait for the forward-fill read');

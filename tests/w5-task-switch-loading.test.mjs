@@ -85,6 +85,17 @@ Object.defineProperty(window.HTMLElement.prototype, "scrollTop", {
   get() { return scrollTops.get(this) ?? 0; },
   set(value) { scrollTops.set(this, Math.max(0, Math.min(800, Number(value) || 0))); },
 });
+const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
+window.HTMLElement.prototype.getBoundingClientRect = function () {
+  if (this.hasAttribute("data-agent-stream-scroller")) return { top: 0, bottom: 200, height: 200 };
+  if (this.hasAttribute("data-stream-message-id")) {
+    const scroller = this.closest("[data-agent-stream-scroller]");
+    const index = [...scroller.querySelectorAll("[data-stream-message-id]")].indexOf(this);
+    const top = index * 500 - scroller.scrollTop;
+    return { top, bottom: top + 500, height: 500 };
+  }
+  return originalRect.call(this);
+};
 window.HTMLElement.prototype.scrollTo = function scrollTo(options) {
   globalThis.__scrollCalls.push({ top: options?.top, behavior: options?.behavior });
   if (options && typeof options.top === "number") this.scrollTop = options.top;
@@ -228,7 +239,7 @@ const gateUrl = await compileModule("src/shell/task-loading-gate.tsx", {
 }, { missingPackageStub: lazyStub });
 const { TaskLoadingGate, useTaskLoadingReport, taskLoadingCovered } = await import(gateUrl);
 const memoryUrl = await compileModule("src/shell/task-scroll-memory.ts");
-const { rememberConversationScroll, recallConversationScroll, initialConversationScroll, forgetConversationScrolls } = await import(memoryUrl);
+const { rememberConversationAnchor, recallConversationAnchor, forgetConversationScrolls } = await import(memoryUrl);
 
 const { AgentChat } = await import(
   await compileModule("src/shell/AgentChat.tsx", {
@@ -326,15 +337,14 @@ test("gate: one cover from host read through the child's own hydration; no fallb
   }
 });
 
-test("scroll memory: scrolled-up spot comes back; at bottom (or nothing saved) opens at the latest", () => {
+test("scroll memory persists a message id and viewport offset, with bottom intent", () => {
   forgetConversationScrolls();
-  assert.deepEqual(initialConversationScroll(null, 900), { top: 900, follow: true });
-  rememberConversationScroll("task:a", 120, false);
-  assert.deepEqual(recallConversationScroll("task:a"), { top: 120, atBottom: false });
-  assert.deepEqual(initialConversationScroll(recallConversationScroll("task:a"), 900), { top: 120, follow: false });
-  rememberConversationScroll("task:a", 780, true);
-  assert.deepEqual(initialConversationScroll(recallConversationScroll("task:a"), 900), { top: 900, follow: true });
-  assert.equal(recallConversationScroll(""), null);
+  assert.equal(recallConversationAnchor("task:a"), null);
+  rememberConversationAnchor("task:a", { messageId: "42", offset: -12, atBottom: false });
+  assert.deepEqual(recallConversationAnchor("task:a"), { messageId: "42", offset: -12, atBottom: false });
+  rememberConversationAnchor("task:a", { messageId: "42", offset: 0, atBottom: true });
+  assert.equal(recallConversationAnchor("task:a").atBottom, true);
+  assert.equal(recallConversationAnchor(""), null);
 });
 
 test("real AgentChat under a gate: covered until its first task read lands, then never again", async () => {

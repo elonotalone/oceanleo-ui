@@ -38,22 +38,15 @@ import {
 
 export { PREFETCH_FRESH_MS } from "./open-cache-core";
 
-export type TaskConversationAnchor = {
-  rowId: number;
-  offsetPx?: number;
-  atBottom?: boolean;
-};
-const ANCHOR_KEY = "oceanleo:task-conversation-anchors:v1";
-function anchorStore(): Record<string, TaskConversationAnchor> {
-  if (typeof window === "undefined") return {};
-  try { const value = JSON.parse(window.localStorage.getItem(ANCHOR_KEY) || "{}"); return value && typeof value === "object" ? value : {}; }
-  catch { return {}; }
-}
+// Both transports use the same persistent message anchor. The ACP row id is only a history cursor.
+import { recallConversationAnchor, rememberConversationAnchor, type ConversationAnchor } from "./task-scroll-memory";
+export type TaskConversationAnchor = ConversationAnchor;
 export function rememberTaskConversationAnchor(taskId: string, anchor: TaskConversationAnchor): void {
-  if (!taskId || !Number.isFinite(anchor.rowId) || typeof window === "undefined") return;
-  try { const all = anchorStore(); all[taskId] = anchor; window.localStorage.setItem(ANCHOR_KEY, JSON.stringify(all)); } catch { /* storage is optional */ }
+  if (taskId) rememberConversationAnchor(`task:${taskId}`, anchor);
 }
-export function readTaskConversationAnchor(taskId: string): TaskConversationAnchor | undefined { return taskId ? anchorStore()[taskId] : undefined; }
+export function readTaskConversationAnchor(taskId: string): TaskConversationAnchor | undefined {
+  return taskId ? recallConversationAnchor(`task:${taskId}`) ?? undefined : undefined;
+}
 
 /** Newest messages asked for on a task's first read (and kept on disk). */
 export const TASK_FIRST_PAGE_MESSAGES = 60;

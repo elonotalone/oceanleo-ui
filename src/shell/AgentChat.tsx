@@ -1,7 +1,11 @@
 "use client";
 
 import { isComputerWorkspaceTask, taskExecutionTarget } from "../lib/execution-target";
-import { OlderHistoryTop, useOlderHistory } from "./history/older-history";
+import { TranscriptPane, TranscriptStream, StreamLatestButton, StreamWaitingLine, useMeasuredFooter, CLOUD_TRANSCRIPT_CAPABILITIES } from "./transcript/TranscriptStream";
+import { cloudTranscriptItems } from "./transcript/adapters";
+import { useAcpTranscriptAdapter } from "./transcript/useAcpTranscriptAdapter";
+import { useStreamScroll } from "./transcript/useStreamScroll";
+import { useCloudHistory } from "./transcript/useCloudHistory";
 import { StepsFoldPreferenceProvider } from "./steps-fold-preference";
 
 // ============================================================================
@@ -186,7 +190,7 @@ import { latestTurn, userTurnCount } from "./agent-thread/turn";
 import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAgentThreadPolling";
 // W5 (2026-10-31): one loading look per task switch, per-conversation scroll memory.
 import { useTaskLoadingReport } from "./task-loading-gate";
-import { placeConversationScroll, rememberConversationScroll, scrollPaneShown } from "./task-scroll-memory";
+import { recallConversationAnchor } from "./task-scroll-memory";
 import { isStaleTaskSeed } from "./history-detail-cache";
 import { HISTORY_CHANGED_EVENT, notifyHistoryActivity, notifyHistoryChanged } from "../lib/history-events";
 
@@ -196,8 +200,6 @@ import {
   markPartialTaskSeed,
   peekTaskDetail,
   rememberTaskDetail,
-  readTaskConversationAnchor,
-  rememberTaskConversationAnchor,
   takeTaskPrefetch,
 } from "./task-open-cache";
 
@@ -259,10 +261,6 @@ export function isNearBottom(metrics: ScrollMetrics): boolean {
   const distanceFromBottom =
     metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight;
   return distanceFromBottom <= STICK_TO_BOTTOM_PX;
-}
-
-function scrollMetricsOf(el: HTMLElement): ScrollMetrics {
-  return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
 }
 
 function documentHidden(): boolean {
@@ -1489,50 +1487,16 @@ function AgentChatInner({
     setAcpStopping(false);
     acpMessageIdRef.current = null;
   }, [taskId]);
-  // The stream follows new rows while the user is at the bottom; scrolled up, it stays put.
   const acpScrollRef = useRef<HTMLDivElement>(null);
-  const acpFollowRef = useRef(true);
-  const acpFirstKey = frames.rows[0]?.id ?? null;
-  const acpPreviousFirstRef = useRef<{ taskId: string | null | undefined; key: number | null }>({ taskId, key: acpFirstKey });
-  const acpHistory = useOlderHistory({
-    scrollRef: acpScrollRef,
-    hasMore: frames.hasMore,
-    loadOlder: frames.loadEarlier,
-    firstKey: acpFirstKey,
-    itemSelector: "[data-history-key], [data-acp-transcript] > *",
-    disabled: !acpShown || !frames.rows.length,
+  const acpStreamItems = useAcpTranscriptAdapter(acpView, taskId || undefined);
+  const acpMessageIds = useMemo(() => acpStreamItems.map((item) => item.messageId), [acpStreamItems]);
+  const acpScroll = useStreamScroll({
+    taskKey: taskId ? `task:${taskId}` : "", scrollRef: acpScrollRef,
+    messageIds: acpMessageIds, revision: frames.rows,
+    active: acpShown && !surfaceActive, ready: frames.rows.length > 0,
+    hasMore: frames.hasMore, loadEarlier: frames.loadEarlier,
+    hasMoreAfter: frames.hasMoreAfter, loadLatest: frames.jumpToLatest,
   });
-  const onAcpScroll = useCallback(() => {
-    const el = acpScrollRef.current;
-    if (el) {
-      acpFollowRef.current = isNearBottom(scrollMetricsOf(el));
-      if (taskId && frames.rows.length) {
-        const row = frames.rows[Math.min(frames.rows.length - 1, Math.max(0, Math.floor((el.scrollTop / Math.max(1, el.scrollHeight)) * frames.rows.length)))];
-        if (row) rememberTaskConversationAnchor(taskId, { rowId: row.id, offsetPx: el.scrollTop, atBottom: acpFollowRef.current });
-      }
-    }
-  }, [frames.rows, taskId]);
-  const acpPendingKey = acpPendingIds.join("|");
-  useLayoutEffect(() => {
-    const el = acpScrollRef.current;
-    const previous = acpPreviousFirstRef.current;
-    if (previous.taskId !== taskId) acpFollowRef.current = true;
-    const prepended = previous.taskId === taskId && previous.key != null && acpFirstKey != null && acpFirstKey < previous.key;
-    acpPreviousFirstRef.current = { taskId, key: acpFirstKey };
-    if (el && acpFollowRef.current && !prepended) el.scrollTop = el.scrollHeight;
-  }, [frames.rows, acpPendingKey, acpFirstKey, taskId]);
-  const acpRestoredTaskRef = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    if (!taskId) { acpRestoredTaskRef.current = null; return; }
-    const el = acpScrollRef.current;
-    if (!el || !frames.rows.length || acpRestoredTaskRef.current === taskId) return;
-    acpRestoredTaskRef.current = taskId;
-    const anchor = readTaskConversationAnchor(taskId);
-    if (anchor && !anchor.atBottom && anchor.offsetPx != null) {
-      acpFollowRef.current = false;
-      el.scrollTop = anchor.offsetPx;
-    }
-  }, [taskId, acpShown, frames.rows]);
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
     const known = knownComputerTaskSession(sessionId);
@@ -1745,61 +1709,19 @@ function AgentChatInner({
     };
   }, [agentStreamEndpoint, taskId, status, accessState.access?.state, accessRights.canView]);
 
-  // ---------------------------------------------------------------------
-  // 粘底滚动
-  // ---------------------------------------------------------------------
-  // 原实现是 `messages` 一变就 scrollTo(bottom)，**无条件**。用户往上翻看历史时
-  // 会被硬拽回底部；流式渲染下 `messages` 每几百毫秒变一次，于是变成每秒好几次
-  // ——想回头看一眼上文都做不到。
-  //
-  // 改成标准粘底：在底部附近才跟随；用户主动往上滚就交出控制权，只用一个浮标
-  // 告诉他「下面还有 N 条」，回不回去他自己决定。
-  const [following, setFollowing] = useState(true);
-  const [unread, setUnread] = useState(0);
-  // 跟随状态要在滚动回调里同步读写，state 的异步更新赶不上连续滚动事件。
-  const followingRef = useRef(true);
-  const seenMessageCountRef = useRef(0);
-
-  const scrollToLatest = useCallback((behavior: ScrollBehavior) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior });
-  }, []);
-
-  /** 回到跟随态：点浮标、以及自己发言时都走这里。 */
-  const resumeFollowing = useCallback(() => {
-    followingRef.current = true;
-    setFollowing(true);
-    setUnread(0);
-    scrollToLatest(scrollBehavior());
-  }, [scrollToLatest]);
-
-  // W5 (2026-10-31): where this task's conversation opens. Its first frame is placed
-  // once (instant, never smooth): back at the remembered spot when the user had
-  // scrolled up there earlier in this page, otherwise at the latest message
-  // (reload / first open). Placed while the loading cover is still on, so the
-  // first visible frame is already in place.
-  const placedTaskRef = useRef("");
-  /** The rendered rows the first frame was placed for (that render needs no follow scroll). */
-  const justPlacedRef = useRef<AgentMessage[] | null>(null);
-  const placedHoldRef = useRef<(() => void) | null>(null);
-  const scrollKeyRef = useRef("");
-  scrollKeyRef.current = taskId ? `task:${taskId}` : "";
   const cloudPaneShown = !acpShown && !surfaceActive;
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !taskId || placedTaskRef.current === taskId) return;
-    if (messages.length === 0 || !cloudPaneShown || !scrollPaneShown(el)) return;
-    placedTaskRef.current = taskId;
-    seenMessageCountRef.current = messages.length;
-    const placed = placeConversationScroll(el, `task:${taskId}`, () => followingRef.current);
-    followingRef.current = placed.follow;
-    setFollowing(placed.follow);
-    justPlacedRef.current = messages;
-    placedHoldRef.current?.();
-    placedHoldRef.current = placed.release;
-  }, [cloudPaneShown, taskId, messages]);
-  useEffect(() => () => placedHoldRef.current?.(), []);
+  const cloudHistory = useCloudHistory(taskId ? `task:${taskId}` : "", !taskId || messagesTaskId === taskId ? messages : []);
+  const cloudMessageIds = useMemo(() => cloudHistory.visible.map((message) => String(message.id)), [cloudHistory.visible]);
+  const savedCloudAnchor = taskId ? recallConversationAnchor(`task:${taskId}`) : null;
+  const cloudScroll = useStreamScroll({
+    taskKey: taskId ? `task:${taskId}` : "", scrollRef,
+    messageIds: cloudMessageIds, revision: messages,
+    active: cloudPaneShown,
+    // A partial cache may not contain the saved message. Wait for the full read before deciding it is missing.
+    ready: (!taskId || messagesTaskId === taskId) && !(savedCloudAnchor && !savedCloudAnchor.atBottom && partialTaskRef.current === taskId),
+    hasMore: cloudHistory.hasMore, loadEarlier: cloudHistory.loadEarlier,
+  });
+  const resumeFollowing = cloudScroll.resumeFollowing;
 
   // W5: one loading look per task switch. This conversation is ready to be shown
   // once the task's first read is in and the page decided which conversation is
@@ -1812,39 +1734,6 @@ function AgentChatInner({
       (messagesTaskId === taskId && (conversationResolved || sessionsFailed)),
   );
 
-  const handleStreamScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const atBottom = isNearBottom(scrollMetricsOf(el));
-    if (placedTaskRef.current && scrollKeyRef.current === `task:${placedTaskRef.current}`) {
-      rememberConversationScroll(scrollKeyRef.current, el.scrollTop, atBottom);
-    }
-    if (followingRef.current !== atBottom) {
-      followingRef.current = atBottom;
-      setFollowing(atBottom);
-      if (atBottom) setUnread(0);
-    }
-  }, []);
-
-  useEffect(() => {
-    // 未读记的是**新消息条数**，不是渲染次数：流式期间最后一条会一直长，
-    // 那是同一条在变，不该让计数一路往上跳。
-    const added = Math.max(0, messages.length - seenMessageCountRef.current);
-    seenMessageCountRef.current = messages.length;
-    // The first frame was just placed (instant): no smooth scroll from the top.
-    if (justPlacedRef.current === messages) {
-      justPlacedRef.current = null;
-      return;
-    }
-    // Nothing placed for this task yet (its copy is still on its way): nothing to follow.
-    if (taskId && placedTaskRef.current !== taskId) return;
-    if (followingRef.current) {
-      scrollToLatest(scrollBehavior());
-      return;
-    }
-    if (added > 0) setUnread((current) => current + added);
-  }, [scrollToLatest, messages]);
-
   // 换对话：跟随、未读、停止判定、服务端快照全部归零，
   // 免得把上一段对话的滚动位置和「已停止」标记带到新对话上。
   useEffect(() => {
@@ -1853,10 +1742,6 @@ function AgentChatInner({
     setStoppedTaskId("");
     setStreamText("");
     setStreamNotice("");
-    seenMessageCountRef.current = 0;
-    followingRef.current = true;
-    setFollowing(true);
-    setUnread(0);
   }, [taskId]);
 
   /** 用户又开口了：清掉「已停止」，并回到跟随态。 */
@@ -2302,7 +2187,7 @@ function AgentChatInner({
       });
       acpSentRef.current = { taskId: id, choices: { ...sent, ...choice } };
       acpMessageIdRef.current = null;
-      acpFollowRef.current = true;
+      void acpScroll.resumeFollowing();
       // A first message creates the session row; refresh the list for it.
       if (!acpSession) {
         setPickedChat(null);
@@ -3322,32 +3207,13 @@ function AgentChatInner({
     [tt],
   );
 
-  // 用户往上翻看历史时的浮标：不把他拽回底部，只说明下面还有多少条没看。
-  // 动效走既有的 `.v-fade-up`（token 化，且 reduced-motion 下自动 animation:none），
-  // 不新写一条曲线。
-  const backToLatest =
-    !following && messages.length > 0 ? (
-      <button
-        type="button"
-        onClick={resumeFollowing}
-        className="v-fade-up absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-stone-200 bg-white/95 px-3 py-1.5 text-[12px] font-medium text-stone-600 shadow-lg backdrop-blur hover:bg-white"
-      >
-        <svg
-          className="h-3.5 w-3.5 shrink-0"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="M12 5v14M6 13l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        {unread > 0
-          ? tt("回到最新 · {count} 条新消息", { count: unread })
-          : tt("回到最新")}
-      </button>
-    ) : null;
+  const backToLatest = cloudScroll.showLatest && messages.length > 0
+    ? <StreamLatestButton unread={cloudScroll.unread} onClick={() => void cloudScroll.resumeFollowing()} /> : null;
 
   // 复制 / 重做 / 分享：一轮只在最后一段话底下出现一次（操作员 2026-10-31），跑着的这一轮不出现。
+  const visibleCloudIds = new Set(cloudHistory.visible.map((message) => message.id));
+  const cloudItems = cloudTranscriptItems(renderItems.filter((item) => item.type === "message"
+    ? visibleCloudIds.has(item.message.id) : item.messages.some((message) => visibleCloudIds.has(message.id))));
   const turnActions = agentTurnActionTargets(renderItems, running || presentation.working);
   // W4 2026-10-31: the small time above user bubbles (first one, then after a 5-minute gap).
   const timeSeparators = agentMessageTimeSeparators(messages);
@@ -3379,46 +3245,15 @@ function AgentChatInner({
     oceanleoDisabledReason,
   };
 
-  // The ONE stream. The OceanLeo conversation and a native computer conversation
-  // render through the same JSX (same bubbles, progress card, composer frame);
-  // only the source of messages, running state and handlers differs.
-  const renderStream = (pane: StreamPane) => (
-    <div className="flex h-full flex-col" data-agent-stream={pane.pane}>
-      {pane.top}
-      {/* 相对定位容器：浮标贴着对话区底部，而不是贴着输入框或整页。 */}
-      <div className="relative min-h-0 flex-1">
-      <div
-        ref={pane.scrollRef}
-        onScroll={pane.onScroll}
-        className="h-full overflow-y-auto overflow-x-hidden px-4 py-4"
-        style={{ overflowAnchor: "none" }}
-        data-agent-stream-scroller=""
-      >
-        {/* 对话内容与下方输入框同宽、居中（宽度上限 = agent-conversation-layout 的
-            AGENT_CONVERSATION_MAX_WIDTH_CLASS，比 Manus 比例略宽，W4 2026-10-31）。
-            Never a horizontal scrollbar: long paths / URLs / commands wrap here. */}
-        <div className={`mx-auto w-full min-w-0 ${AGENT_CONVERSATION_MAX_WIDTH_CLASS} space-y-3 break-words [overflow-wrap:anywhere]`} data-agent-stream-column="">
-          {pane.empty}
-          {taskId && !accessRights.canView && <TaskAccessStatus loading={accessState.loading} error={accessState.error} onRefresh={accessState.refresh} />}
-          {accessState.unstable && <TaskAccessStatus unstable onRefresh={accessState.refresh} />}
-          {(!taskId || accessRights.canView) && pane.items}
-          {(!taskId || accessRights.canView) && pane.tail}
-        </div>
-      </div>
-        {pane.overlay}
-      </div>
-      <div data-agent-chat-footer className="shrink-0 border-t border-stone-100 px-3 py-3">
-        {/* 输入框收窄居中（操作员 2026-07-01）：不再铺满整栏，限宽 + 居中，
-            与主站首页 max-w-3xl 输入框的占比观感一致，左右不再过宽。
-            Selection actions stay in the header; the composer keeps its place. */}
-        {/* Width follows the transcript column. */}
-        <div className={`mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS} space-y-2`}>
-          {pane.footer}
-        </div>
-      </div>
-      {pane.after}
-    </div>
-  );
+  const renderStream = (pane: StreamPane) => <TranscriptPane {...pane}
+    canView={!taskId || accessRights.canView}
+    accessStatus={<>
+      {taskId && !accessRights.canView && <TaskAccessStatus loading={accessState.loading} error={accessState.error} onRefresh={accessState.refresh} />}
+      {accessState.unstable && <TaskAccessStatus unstable onRefresh={accessState.refresh} />}
+    </>}
+    hasMore={pane.pane === "cloud" ? cloudHistory.hasMore : frames.hasMore}
+    history={pane.pane === "cloud" ? cloudScroll.history : acpScroll.history}
+  />;
 
   const sharePreview = share.preview ? (
     <ShareCardPreview
@@ -3430,7 +3265,7 @@ function AgentChatInner({
   const stream = renderStream({
     pane: "cloud",
     scrollRef,
-    onScroll: handleStreamScroll,
+    onScroll: cloudScroll.onScroll,
     top: (
       <>
         {isLocalExecution && <LocalAgentTaskStatus key={taskId} run={localRun} artifacts={localArtifacts.taskId === taskId ? localArtifacts.items : []} busy={localControlBusy} readOnly={Boolean(readOnly)} onControl={controlLocal} />}
@@ -3444,7 +3279,7 @@ function AgentChatInner({
     ) : null,
     items: (
       <McpAppConversationProvider value={{ taskId: taskId || "", isOwner: canManageTask && !isLocalExecution && !computerTask, onMessage: sendFromConnector }}>
-          {renderItems.map((item) =>
+          <TranscriptStream items={cloudItems} capabilities={CLOUD_TRANSCRIPT_CAPABILITIES} renderItem={(item, capabilities) =>
             item.type === "progress" ? (
               <AgentProgress
                 key={item.key}
@@ -3453,7 +3288,7 @@ function AgentChatInner({
                 accent={accent}
               />
             ) : (
-              <div key={item.key} className="contents">
+              <>
                 <AgentTranscriptBubble
                   message={messageForBubble(item)}
                   showAuthors={showAuthors}
@@ -3475,7 +3310,7 @@ function AgentChatInner({
                   }
                   onOpenAttachment={openTaskAttachment}
                   onBranch={
-                    !running &&
+                    capabilities.branch && !running &&
                     !readOnly &&
                     item.message.role === "user" &&
                     item.message.id > 0
@@ -3500,20 +3335,17 @@ function AgentChatInner({
                   selected={share.selectedIds.has(item.message.id)}
                   onSelectToggle={() => share.toggle(item.message.id)}
                   onRegenerate={
-                    !readOnly && item.message.role === "assistant"
+                    capabilities.regenerate && !readOnly && item.message.role === "assistant"
                       ? () => regenerateFrom(item.message.id)
                       : undefined
                   }
                   turnCopyText={turnActions.get(item.key) ?? null}
                   highlightQuery={highlightQuery || undefined}
                 />
-              </div>
-            ),
-          )}
+              </>
+            )} />
           {presentation.thinking && (
-            <div className="flex items-center gap-2 text-[14px] text-stone-400">
-              <span className="v-spinner" /> {thinkingText}
-            </div>
+            <StreamWaitingLine label={thinkingText} />
           )}
       </McpAppConversationProvider>
     ),
@@ -3597,22 +3429,15 @@ function AgentChatInner({
   const acpStream = acpShown ? renderStream({
     pane: "acp",
     scrollRef: acpScrollRef,
-    onScroll: onAcpScroll,
+    onScroll: acpScroll.onScroll,
     top: null,
     empty: null,
     items: (
       <>
-      <OlderHistoryTop key={taskId || "draft"} hasMore={frames.hasMore} spinnerVisible={acpHistory.spinnerVisible} sentinelRef={acpHistory.sentinelRef} />
-      {frames.hasMoreAfter && (
-        <div className="flex justify-center py-1" data-acp-history-latest="">
-          <button type="button" disabled={frames.jumpingLatest} onClick={() => void frames.jumpToLatest()} className="rounded-lg px-2 py-1 text-[12px] text-stone-500 hover:bg-stone-100">
-            {frames.jumpingLatest ? tt("正在加载最新消息…") : tt("回到最新")}
-          </button>
-        </div>
-      )}
       {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} onRetry={() => void sendAcpMessage(pendingShown)} onOpenAttachment={openTaskAttachment} />}
       <AcpTranscript
         rows={frames.rows}
+        items={acpStreamItems}
         taskId={taskId || undefined}
         showAuthors={showAuthors}
         ownerAuthor={ownerAuthor}
@@ -3640,6 +3465,10 @@ function AgentChatInner({
     ),
     tail: (
       <>
+        {acpErrorLine && (
+          <p className="whitespace-pre-wrap break-words px-1 text-[13px] text-rose-500 [overflow-wrap:anywhere]" role="alert" data-acp-error="">{acpErrorLine}</p>
+        )}
+
         {uploadError && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error data-agent-chat-upload-error>{tt(uploadError)}</p>}
         {conversationNotice}
         {taskId && accessRights.canView && !canManageTask && <TaskContentPanel taskId={taskId}
@@ -3649,7 +3478,9 @@ function AgentChatInner({
         ))}
       </>
     ),
-    overlay: null,
+    overlay: acpScroll.showLatest ? <StreamLatestButton unread={acpScroll.unread} onClick={() => {
+      void acpScroll.resumeFollowing().catch((error) => setAcpError({ taskId: taskId || "", text: String(error) }));
+    }} /> : null,
     footer: taskId && replaceComposer ? (
       <TaskAccessComposer taskId={taskId} {...accessState} onRefresh={accessState.refresh} />
     ) : (
@@ -3684,9 +3515,6 @@ function AgentChatInner({
           modelPickerSlot={canManageTask ? acpPicker.picker : null}
           {...conversationProps}
         />
-        {acpErrorLine && (
-          <p className="whitespace-pre-wrap break-words px-1 text-[13px] text-rose-500 [overflow-wrap:anywhere]" role="alert" data-acp-error="">{acpErrorLine}</p>
-        )}
       </>
     ),
     after: sharePreview,
@@ -3694,20 +3522,21 @@ function AgentChatInner({
 
   // CLI / terminal: the host-styled surface fills the pane, the same dock sits below it.
   // The active surface is mounted in the same render it is chosen (same key afterwards: no remount).
+  const surfaceFooter = useMeasuredFooter();
   const surfaceIds = activeSession && activeSession.kind !== "acp" && !openedSurfaces.includes(activeSession.id)
     ? [...openedSurfaces, activeSession.id] : openedSurfaces;
   const surfaceSessions = surfaceIds
     .map((id) => sessions.find((session) => session.id === id))
     .filter((session): session is ComputerTaskSession => Boolean(session) && canManageTask);
   const leftPane = (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
       {acpShown
         ? <div className={surfaceActive ? "hidden" : "relative min-h-0 flex-1"} hidden={surfaceActive} data-acp-stream-pane="">{acpStream}</div>
         : <div className={surfaceActive ? "hidden" : "relative min-h-0 flex-1"} hidden={surfaceActive}>{stream}</div>}
       {surfaceSessions.map((session) => {
         const active = surfaceActive && activeSession?.id === session.id;
         return (
-          <div key={session.id} className={active ? "relative min-h-0 flex-1" : "hidden"} hidden={!active} data-computer-surface={session.id}>
+          <div key={session.id} className={active ? "relative min-h-0 flex-1" : "hidden"} hidden={!active} data-computer-surface={session.id} style={{ paddingBottom: active ? surfaceFooter.height : 0 }}>
             <NativeTerminalSurface
               computer={computerFor(session.computer_id)}
               session={session}
@@ -3718,8 +3547,8 @@ function AgentChatInner({
         );
       })}
       {surfaceActive && canManageTask && (
-        <div className="shrink-0 border-t border-stone-100">
-          <div className={`mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS}`}>
+        <div ref={surfaceFooter.ref} data-agent-chat-footer className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-3 pt-6" style={{ background: "linear-gradient(to bottom, transparent, var(--surface, #faf8f5) 24px)" }}>
+          <div className={`pointer-events-auto mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS}`}>
             {conversationNotice && <div className="space-y-1 px-4 pt-2">{conversationNotice}</div>}
             <ConversationBar
               conversation={conversation!}

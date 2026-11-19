@@ -47,7 +47,8 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
     if (!taskId) return;
     let closed = false;
     let before: number | null = null;
-    let anchor: number | undefined = readTaskConversationAnchor(taskId)?.rowId;
+    const saved = readTaskConversationAnchor(taskId);
+    let anchor: number | undefined = saved && !saved.atBottom && Number.isSafeInteger(saved.rowId) ? saved.rowId : undefined;
     let earlierRequest: Promise<void> | null = null;
     let windowVersion = 0;
     const controller = new AbortController();
@@ -116,6 +117,10 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
     getHistoryWindow(taskId, { anchor, turns: 8, signal: controller.signal }).then((page) => {
       if (closed) return;
       if (!page || !Array.isArray(page.rows) || typeof page.tail_id !== "number") { fallback(); return; }
+      if (anchor != null && !page.rows.some((row) => row.id === anchor)) {
+        void jumpToLatest().catch(fallback);
+        return;
+      }
       attachWindow(page, page.rows);
       if (anchor != null && page.has_more_after === true) {
         const version = windowVersion;

@@ -7,14 +7,19 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentProgress } from "../shell/AgentProgress";
 import { AgentTranscriptBubble } from "../shell/AgentTranscriptBubble";
 import type { AgentAttachment, MessageAuthor } from "../lib/agent";
-import { taskAttachmentRoute } from "../lib/task-content-path";
+import { TranscriptStream, StreamWaitingLine, ACP_TRANSCRIPT_CAPABILITIES, type TranscriptItem } from "../shell/transcript/TranscriptStream";
+import { useAcpTranscriptAdapter } from "../shell/transcript/useAcpTranscriptAdapter";
+import { ChatTimeSeparator } from "../shell/ChatTimeSeparator";
+import { agentMessageTimeSeparators } from "../shell/chat-time-separators";
+import { agentTurnActionTargets } from "../lib/agent-progress";
 import { useUI } from "../i18n/ui/useUI";
-import { cursorAnswerResult, isCursorQuestion, libraryRefFromUri, resendable, viewBlocks, type AcpBlock, type AcpLabels } from "./messages";
+import { cursorAnswerResult, isCursorQuestion, libraryRefFromUri, resendable, type AcpBlock } from "./messages";
 import { reduceRows } from "./reduce";
 import type { AcpBackgroundTask, AcpFrameRow, AcpPermission, AcpTurn, JsonRpcId } from "./types";
 
 export type AcpTranscriptProps = {
   rows: AcpFrameRow[];
+  items?: readonly TranscriptItem<AcpBlock>[];
   /** Scopes referenced files to this visible prompt, rather than the viewer's Library. */
   taskId?: string;
   showAuthors?: boolean;
@@ -77,15 +82,22 @@ function elapsedLabel(startedAt: string, now: number): string {
 
 function ModelWaitingNotice({ view, rows, tt }: { view: ReturnType<typeof reduceRows>; rows: AcpFrameRow[]; tt: ReturnType<typeof useUI> }) {
   const open = view.turns.find((turn) => turn.open);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!open) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [open?.rowId]);
   if (!open) return null;
-  if (view.retrying) return <div data-acp-model-retry="" className="mb-2 text-[12px] text-amber-700">{tt("模型连接中断，正在重试")}</div>;
+  if (view.retrying) return <div data-acp-model-retry=""><StreamWaitingLine retrying label={tt("模型连接中断，正在重试")} /></div>;
   const last = rows.filter((row) => row.direction === "agent").reduce((latest, row) => Math.max(latest, Date.parse(row.received_at) || 0), 0);
   const promptAt = Date.parse(rows.find((row) => row.id === open.rowId)?.received_at || "") || 0;
-  const silent = Date.now() - Math.max(last, promptAt);
-  if (silent < 60_000) return null;
-  const seconds = Math.floor(silent / 1000);
+  const silent = now - Math.max(last, promptAt);
+  const spoken = open.items.some((item) => item.type === "message" && item.role === "agent" && !item.scope && item.text.trim());
+  if (spoken && silent < 60_000) return null;
+  const seconds = Math.max(0, Math.floor(silent / 1000));
   const elapsed = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-  return <div data-acp-model-waiting="" className="mb-2 text-[12px] text-stone-500">{tt("等待模型回应 · {elapsed}", { elapsed })}</div>;
+  return <div data-acp-model-waiting=""><StreamWaitingLine label={tt("等待模型回应 · {elapsed}", { elapsed })} /></div>;
 }
 
 /** Live AIR tasks sit above the composer; terminal states render on their tool row. */
@@ -248,38 +260,16 @@ function blockRowId(block: AcpBlock): number {
       : Math.min(...block.messages.map((message) => message.id));
 }
 
-export function AcpTranscript({ rows, taskId, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender, onExpandRow, showAuthors, ownerAuthor }: AcpTranscriptProps) {
+export function AcpTranscript({ items: providedItems, rows, taskId, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender, onExpandRow, showAuthors, ownerAuthor }: AcpTranscriptProps) {
   const tt = useUI();
   const view = useMemo(() => providedView ?? reduceRows(rows, program), [providedView, rows, program]);
-  const labels: AcpLabels = useMemo(
-    () => ({
-      gap: (count) => tt("此处省略 {count} 条", { count }),
-      oversize: (bytes) => tt("此处一行输出过大（{bytes} 字节），未显示", { bytes }),
-      exit: (code, signal) => tt("程序已退出（{detail}）", { detail: signal ? `signal ${signal}` : `code ${code ?? "?"}` }),
-      stopReason: (reason) => tt("本轮结束：{reason}", { reason }),
-      cancelled: tt("已停止生成"),
-      settingRefused: (message) => tt("设置没有生效：{message}", { message }),
-      modelRetry: tt("模型连接中断，正在重试"),
-      permissionPrompt: tt("请确认后继续。"),
-      backgroundTask: (name, state) => {
-        const stateText = state === "completed" || state === "complete" ? tt("已完成")
-          : state === "failed" ? tt("已失败")
-            : state === "stopped" || state === "cancelled" || state === "canceled" ? tt("已停止")
-              : tt(state);
-        return `${tt("后台任务")} · ${name} · ${stateText}`;
-      },
-    }),
-    [tt],
-  );
-  const blocks = useMemo(() => viewBlocks(view, labels).map(block => {
-    if (!taskId || block.type !== "bubble" || !block.message.meta?.attachments?.length) return block;
-    const attachments = block.message.meta.attachments.map(attachment => {
-      const url = taskAttachmentRoute({ taskId, kind: "frames", rowId: block.message.id,
-        artifactId: attachment.artifact_id || "", revisionId: attachment.revision_id });
-      return url ? { ...attachment, url } : attachment;
-    });
-    return { ...block, message: { ...block.message, meta: { ...block.message.meta, attachments } } };
-  }), [view, labels, taskId]);
+  const items = useAcpTranscriptAdapter(view, taskId, providedItems);
+  const blocks = useMemo(() => items.map((item) => item.value), [items]);
+  const times = useMemo(() => agentMessageTimeSeparators(blocks.map((block) => block.type === "bubble"
+    ? { ...block.message, created_at: rows.find((row) => row.id === block.message.id)?.received_at }
+    : { role: "system" })), [blocks, rows]);
+  const turnCopies = useMemo(() => agentTurnActionTargets(blocks.flatMap((block, index) => block.type === "bubble"
+    ? [{ type: "message" as const, key: block.key, index, message: block.message }] : []), view.open), [blocks, view.open]);
   const shortened = useMemo(() => {
     const assigned = new Map<string, AcpFrameRow[]>();
     for (const row of rows) {
@@ -293,11 +283,13 @@ export function AcpTranscript({ rows, taskId, program, view: providedView, onAns
   if (!rows.length) return null;
   return (
     <div data-acp-transcript="" data-agent-stream="" data-acp-program={program} className="space-y-3">
-      {blocks.map((block) => {
+      <TranscriptStream items={items} capabilities={ACP_TRANSCRIPT_CAPABILITIES} renderItem={(block) => {
         const pick = block.type === "bubble" && block.message.kind === "text" && select?.pickable.has(block.message.id);
-        return <div key={block.key} data-history-item="" data-history-key={block.key}>
+        return <>
+          {times.has(blocks.indexOf(block)) && <ChatTimeSeparator at={times.get(blocks.indexOf(block))!} />}
           <TranscriptBlock
             block={block}
+            turnCopyText={turnCopies.get(block.key) ?? null}
             showAuthors={showAuthors}
             ownerAuthor={ownerAuthor}
             highlightQuery={highlightQuery}
@@ -310,8 +302,8 @@ export function AcpTranscript({ rows, taskId, program, view: providedView, onAns
             onBlockRender={onBlockRender}
           />
           {shortened.get(block.key)?.map((row) => <TruncatedRow key={row.id} row={row} onExpand={onExpandRow} />)}
-        </div>;
-      })}
+        </>;
+      }} />
       {shortened.get("")?.map((row) => <TruncatedRow key={row.id} row={row} onExpand={onExpandRow} />)}
       <ModelWaitingNotice view={view} rows={rows} tt={tt} />
     </div>
@@ -321,6 +313,7 @@ export function AcpTranscript({ rows, taskId, program, view: providedView, onAns
 type TranscriptBlockProps = Pick<AcpTranscriptProps,
   "onAnswer" | "onStopAndSend" | "onOpenAttachment" | "highlightQuery" | "onBlockRender" | "showAuthors" | "ownerAuthor"> & {
   block: AcpBlock;
+  turnCopyText: string | null;
   selectMode: boolean;
   selected: boolean;
   onToggle?: (id: number) => void;
@@ -345,7 +338,7 @@ function sameBlockData(a: unknown, b: unknown): boolean {
 }
 
 const TranscriptBlock = memo(function TranscriptBlock({
-  block, onAnswer, onStopAndSend, onOpenAttachment, highlightQuery,
+  block, turnCopyText, onAnswer, onStopAndSend, onOpenAttachment, highlightQuery,
   selectMode, selected, onToggle, onBlockRender, showAuthors, ownerAuthor,
 }: TranscriptBlockProps) {
   const request = block.type === "bubble" ? block.request : undefined;
@@ -363,6 +356,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
   return <>
     <AgentTranscriptBubble
       message={block.message}
+      turnCopyText={turnCopyText}
       showAuthors={showAuthors}
       ownerAuthor={ownerAuthor}
       streaming={block.streaming}
@@ -378,6 +372,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
     {block.queued && <QueuedLine turn={block.queued} onStopAndSend={onStopAndSend} />}
   </>;
 }, (previous, next) =>
+  previous.turnCopyText === next.turnCopyText &&
   previous.showAuthors === next.showAuthors &&
   sameBlockData(previous.ownerAuthor, next.ownerAuthor) &&
   previous.highlightQuery === next.highlightQuery &&
