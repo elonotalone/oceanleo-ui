@@ -41,7 +41,12 @@ async function click(node) {
   await act(async () => { node.dispatchEvent(new window.MouseEvent("click", { bubbles: true })); });
   await flush();
 }
-const button = (label) => [...document.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === label);
+const button = (label) => {
+  if (["连接", "重新连接", "退出桌面"].includes(label) && !document.querySelector("[data-remote-toolbar]")) {
+    act(() => document.querySelector("[data-remote-toolbar-handle]")?.click());
+  }
+  return [...document.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === label);
+};
 const panelNode = () => document.querySelector("[data-oceanleo-remote-desktop]");
 const phase = () => panelNode()?.getAttribute("data-remote-phase") ?? null;
 const stageStatus = () => document.querySelector("[data-remote-stage] [role='status']")?.textContent ?? "";
@@ -55,7 +60,7 @@ function rdClient({ state = "pending_consent", fail = null } = {}) {
       log.create.push(deviceId);
       return fail ? { ok: false, error: fail, status: 409 } : { ok: true, data: { session_id: `s-${log.create.length}`, state, expires_at: "" } };
     },
-    async getFrame() { await wait(5); return { ok: true, data: { state, frame: null } }; },
+    async openStream() { return { ok: true, data: { send() { return true; }, close() {}, attachDataChannel() {} } }; },
     async sendInput(deviceId, sessionId, seq) { return { ok: true, data: { accepted: true, seq } }; },
     async closeSession(deviceId, sessionId) { log.closes.push(sessionId); return { ok: true, data: { closed: true } }; },
   };

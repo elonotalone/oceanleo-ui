@@ -68,60 +68,51 @@ async function fixture() {
   };
 }
 
-test("geometry loss and rotation discard stale point mapping; only a matching fresh frame restores input", async () => {
+test("decoded geometry drives pointer mapping; a media interruption waits for a fresh valid frame", async () => {
   const view = await fixture();
   const presses = () => view.actions.filter(action => action.kind === "pointer_down");
   try {
     await view.frame(1280, 720);
-    await view.pointer("pointerdown");
-    assert.equal(ready(), "false", "video alone has no publisher geometry");
-    assert.equal(presses().length, 0);
-    await view.media(status());
-    await view.frame(1280, 720);
-    assert.equal(ready(), "true", "scaled current frame matches the display");
+    assert.equal(ready(), "true", "a decoded frame provides geometry without a metadata poll");
     await view.pointer("pointerdown");
     assert.equal(presses().length, 1);
-    await view.pointer("pointermove", 170, 170); // pending coalesced move must be discarded
-    await view.media({ state: "starting" });
-    const settled = view.actions.length;
+    await view.pointer("pointermove", 170, 170);
+    await act(async () => video().onState("reconnecting"));
     assert.equal(ready(), "false");
-    assert.equal(view.actions.at(-1).kind, "release_all", "geometry loss releases held input");
-    await view.state(); // a state/ACK report cannot establish a frame's geometry
-    await view.frame(1280, 720);
+    assert.equal(view.actions.at(-1).kind, "release_all", "media interruption releases held input");
+    const count = view.actions.length;
     await view.pointer("pointerdown");
+    await view.media(status());
+    await act(async () => video().onState("playing"));
+    assert.equal(ready(), "false", "playing/status alone cannot restore input");
+    await view.frame(0, 720);
+    await view.frame(Number.NaN, 720);
     await act(async () => new Promise(resolve => setTimeout(resolve, 30)));
-    assert.equal(view.actions.length, settled, "no stale input or queued move is replayed");
-    await view.media(status("screen-a", 1080, 1920));
-    await view.frame(1280, 720);
-    assert.equal(ready(), "false", "the old landscape frame does not match portrait geometry");
-    await view.pointer("pointerdown");
-    assert.equal(presses().length, 1);
-    await view.frame(608, 1080); // one pixel of encoder rounding is allowed
+    assert.equal(view.actions.length, count);
+    assert.equal(ready(), "false");
+    await view.frame(608, 1080);
     assert.equal(ready(), "true");
     await view.pointer("pointerdown", 115, 240);
     assert.equal(presses().length, 2);
-    assert.ok(Math.abs(presses()[1].x - 0.25) < 0.002 && Math.abs(presses()[1].y - 0.75) < 0.002, "the new portrait frame supplies the point mapping");
-    await view.media(status("screen-a", 1080, 1920));
-    assert.equal(ready(), "true", "an unchanged metadata poll leaves current input usable");
-    assert.equal(view.closes, 0, "geometry refresh preserves the remote session");
+    assert.ok(Math.abs(presses()[1].x - 0.25) < 0.002 && Math.abs(presses()[1].y - 0.75) < 0.002,
+      "the decoded portrait frame supplies the new point mapping");
+    assert.equal(view.closes, 0);
   } finally { await view.unmount(); }
 });
 
-test("a different display with identical dimensions still needs a new frame, including negotiation status updates", async () => {
+test("publisher status is advisory and cannot replace the decoded frame's geometry", async () => {
   const view = await fixture();
   try {
     await view.media(status());
     await view.frame(1280, 720);
-    await act(async () => video().onStatus(status("screen-b")));
-    assert.equal(ready(), "false", "display identity changed even though the encoded dimensions did not");
-    const count = view.actions.length;
-    await view.pointer("pointerdown");
-    assert.equal(view.actions.length, count);
-    await view.frame(1280, 720);
-    await view.pointer("pointerdown");
-    assert.equal(view.actions.at(-1).kind, "pointer_down");
+    await act(async () => video().onStatus(status("screen-b", 1080, 1920)));
+    assert.equal(ready(), "true", "a delayed metadata update cannot discard current decoded geometry");
+    await view.pointer("pointerdown", 240, 160);
+    const action = view.actions.at(-1);
+    assert.equal(action.kind, "pointer_down");
+    assert.ok(Math.abs(action.x - 0.75) < 0.002 && Math.abs(action.y - 0.5) < 0.002);
     await act(async () => video().onStatus(null));
-    assert.equal(ready(), "false", "a renewal without current geometry cannot preserve the old mapping");
+    assert.equal(ready(), "true");
     assert.equal(view.closes, 0);
   } finally { await view.unmount(); }
 });
