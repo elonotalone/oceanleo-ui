@@ -1,5 +1,7 @@
 "use client";
 
+import { useAutoRecovery } from "../lib/auto-recovery";
+
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
@@ -621,7 +623,7 @@ export function ArtifactActionButtons({
     typeof onFullscreen === "function" &&
     fullscreenEvidence.visible &&
     fullscreenContentPresent !== false;
-  const retryVisible = identityFailed && typeof identity?.onRetry === "function";
+  useAutoRecovery(identityFailed && typeof identity?.onRetry === "function", () => identity?.onRetry?.(), item.key);
   const shareUrl =
     (typeof window !== "undefined" && window.location.href) || linkUrl || "";
   const shareVisible =
@@ -734,10 +736,6 @@ export function ArtifactActionButtons({
     } finally {
       endBusy("fullscreen");
     }
-  };
-  const runIdentityRetry = () => {
-    report("正在重新取这份素材的当前版本…");
-    identity?.onRetry?.();
   };
   // Library material order: 分享 → 下载 → 收藏 → 编辑.
   // Insert/Replace follow when an editor host registers them.
@@ -964,19 +962,6 @@ export function ArtifactActionButtons({
             ) : (
               <ActionIcon name="fullscreen" />
             )}
-          </button>
-        )}
-        {retryVisible && (
-          <button
-            type="button"
-            onClick={runIdentityRetry}
-            aria-label={tt(`重新取「${item.title}」的当前版本`)}
-            title={tt("重试")}
-            data-artifact-identity-retry="true"
-            className={chipClass}
-            style={chipStyle(true)}
-          >
-            {tt("重试")}
           </button>
         )}
         {mutationActions.map(renderAction)}

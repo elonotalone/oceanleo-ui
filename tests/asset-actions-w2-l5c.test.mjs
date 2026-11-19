@@ -5,10 +5,11 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { ASSET_ACTIONS_MESSAGES } from "../src/i18n/ui/messages/asset-actions-copy.ts";
+import { swBrCopy } from "../src/i18n/ui/messages/sw-br-copy.ts";
 import { LOCALES } from "../src/i18n/config.ts";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-const dictionary = ASSET_ACTIONS_MESSAGES.en;
+const dictionary = { ...ASSET_ACTIONS_MESSAGES.en, ...swBrCopy("en") };
 const client = dataModule(`
   export function artifactDownloadEvidence(item){return {visible:true, available:!!item.artifact, reason:"当前 revision 缺少 rendition。", purpose:item.kind === "website" ? "source" : "full", mode:item.kind === "website" ? "source" : "export"};}
   export async function getArtifactDownload(item){return globalThis.__assetActions.download(item);}
@@ -202,7 +203,8 @@ test("retry after a created Library copy fails to resolve uses that returned ide
   } });
   try {
     await click(mounted.container, "add");
-    await click(mounted.container, "retry");
+    assert.equal(mounted.container.querySelector('[data-asset-action="retry"]'), null);
+    await act(async () => window.dispatchEvent(new window.Event("focus")));
     assert.equal(copies, 1);
     assert.deepEqual(refs, [{ kind: "artifact", artifactId: "new-copy", revisionId: "new-r1" }, { kind: "artifact", artifactId: "new-copy", revisionId: "new-r1" }]);
   } finally { await mounted.close(); }
@@ -255,7 +257,8 @@ test("a pending purchase refresh exposes no owned action until the resolver conf
   const mounted = await mount(BayAssetActions, { entry, actionContext: ctx, services: { resolve: () => wait.promise } });
   try {
     assert.match(mounted.container.textContent, /Awaiting payment confirmation/);
-    await click(mounted.container, "refresh");
+    assert.equal(mounted.container.querySelector('[data-asset-action="refresh"]'), null);
+    await act(async () => window.dispatchEvent(new window.Event("focus")));
     assert.equal(Boolean(mounted.container.querySelector('[data-asset-action="download"]')), false);
     await act(async () => wait.resolve(owned()));
     assert.equal(Boolean(mounted.container.querySelector('[data-asset-action="download"]')), true);
@@ -270,9 +273,10 @@ test("failed claim retries resolution before repeating the mutation, and never r
   } });
   try {
     await click(mounted.container, "get");
-    assert.match(mounted.container.textContent, /Could not add to My Library/);
+    assert.match(mounted.container.textContent, /Updating asset status/);
     assert.doesNotMatch(mounted.container.innerHTML, /receipt|typed|临时/);
-    await click(mounted.container, "retry");
+    assert.equal(mounted.container.querySelector('[data-asset-action="retry"]'), null);
+    await act(async () => window.dispatchEvent(new window.Event("focus")));
     assert.equal(claims, 1);
     assert.equal(resolves, 2);
     assert.equal(Boolean(mounted.container.querySelector('[data-asset-action="download"]')), true);
@@ -284,7 +288,7 @@ test("claim 200 without owned Library identity does not unlock edit", async () =
   try {
     await click(mounted.container, "get");
     assert.equal(Boolean(mounted.container.querySelector('[data-asset-action="edit"]')), false);
-    assert.match(mounted.container.textContent, /Could not add/);
+    assert.match(mounted.container.textContent, /Updating asset status/);
   } finally { await mounted.close(); }
 });
 
@@ -298,7 +302,8 @@ test("a mismatched platform Library identity is rejected and retry rechecks the 
     await click(mounted.container, "get");
     assert.equal(refs.length, 0);
     assert.equal(updates.length, 0);
-    await click(mounted.container, "retry");
+    assert.equal(mounted.container.querySelector('[data-asset-action="retry"]'), null);
+    await act(async () => window.dispatchEvent(new window.Event("focus")));
     assert.deepEqual(refs, [{ kind: "platform", id: "platform-1" }]);
   } finally { await mounted.close(); }
 });
@@ -385,7 +390,7 @@ test("source download is hidden when forbidden, and a wrong-version grant never 
     assert.equal(requests, 0);
     await mounted.render(owned());
     await click(mounted.container, "download");
-    await until(() => Boolean(mounted.container.querySelector('[role="alert"]')));
+    await until(() => /Updating asset status/.test(mounted.container.textContent));
     assert.equal(requests, 1);
     assert.equal(links.length, 0);
     assert.doesNotMatch(mounted.container.innerHTML, /identity_mismatch|private.invalid/);

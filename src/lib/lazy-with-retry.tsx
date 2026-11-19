@@ -1,57 +1,13 @@
 "use client";
 
-// ============================================================================
-// 懒加载路由的重试层 —— 退避 + 抖动 + cache-busting + 可重试的失败态
-// ----------------------------------------------------------------------------
-// 这一份对应操作员亲眼看到的那片红：
-//
-//     …DeckRoute_tsx_….js:1
-//     Failed to load resource: net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH
-//
-// 在此之前，`AdvancedContentWorkbench` 的 11 条编辑器路由全是
-// `dynamic(…, { ssr: false, loading: WorkbenchRouteLoading })`，chunk 一挂
-// **没有任何处理**：用户看到的是一个永远转下去的 spinner。
-//
-// ----------------------------------------------------------------------------
-// 为什么失败态能重试（这一层最不显然的地方）
-//
-// `next/dynamic` 底下是 `React.lazy`，而 `React.lazy` 把 loader 的 promise
-// **记忆化**了：一旦 reject，那个 lazy 对象就永久停在 Rejected，重新挂载也不会
-// 再跑一次 loader。所以「重试按钮」不可能建立在「让 loader 抛出去」之上。
-//
-// 这里的做法是让 loader 的 promise **一直活着**：退避重试耗尽之后不 reject，
-// 而是把失败态发布到一个模块级 store，然后 `await` 一个「用户点了重试」的信号；
-// 信号来了就继续循环。外面的 gate 组件订阅这个 store，失败时渲染失败态而不是
-// `<Dynamic>`。于是：
-//   · chunk 分割不变     —— `import()` 字面量还在调用点，webpack 照常切 chunk；
-//   · `next/dynamic` 不变 —— 真的只是包了一层，ssr:false / loading 都照旧；
-//   · 重试真的能重试     —— promise 没死，循环还在。
-//
-// 这一层是两个拼件，`dynamic()` 的调用夹在中间、留在调用方：
-//
-//     const Dynamic = dynamic(chunkRetryLoader(id, () => import("…")), { ssr:false, loading });
-//     export const Route = withChunkRetry(id, Dynamic, WorkbenchRouteChunkError);
-//
-// 这么切是刻意的：`src/lib` 不许 import `src/shell`，而失败态的长相属于 shell；
-// 同时 `import()` 字面量与 `{ ssr:false, loading }` 都留在看得见 11 条路由的地方。
-//
-// ----------------------------------------------------------------------------
-// cache-busting 到底 bust 了什么（承诺的边界，别高估）
-//
-// SSL/网络失败常常伴随**坏缓存**：不换缓存键，重试会一次次命中同一个坏响应。
-// 这里做两件事，各有各的用处：
-//   ① 带 `?__leoChunkRetry=<token>` 去探一次 —— 换了缓存键，中间层那条坏记录
-//      绕过去了，于是我们**问得到真相**：404/410 就是换版了（重试再多次也没用，
-//      正确动作是刷新页面），网络错误才是可重试的。
-//   ② 对**裸 URL** 再发一次 `cache: "reload"` —— webpack 待会儿真正会去请求的是
-//      裸 URL，只有这一次能把浏览器缓存里那条坏记录换掉。加了查询参数的那次落在
-//      另一个缓存键上，救不了它。
-//
-// **做不到的**：如果坏的是共享 CDN 边缘节点上那个裸 URL 的对象，②拿回来的可能
-// 还是它。要根治得在部署期换 URL，那不在本波范围内。这条边界写进交付说明。
-// ============================================================================
+// Dynamic imports keep their promise pending through download failures. Recover while visible
+// and online, probe/cache-refresh failed URLs, report telemetry, and reload a stale deployment once.
+// Import literals and next/dynamic calls stay at the call site so code splitting stays intact.
 
-import { createElement, useCallback, useSyncExternalStore, type ComponentType } from "react";
+import { createElement, useCallback, useSyncExternalStore, lazy, type ComponentType } from "react";
+
+import { waitForRecovery } from "./auto-recovery";
+export { startAutoRecovery, useAutoRecovery } from "./auto-recovery";
 
 import {
   reportChunkFailure,
@@ -75,7 +31,7 @@ export const CHUNK_CACHE_BUST_PARAM = "__leoChunkRetry";
 // ----------------------------------------------------------------------------
 
 const CHUNK_ERROR_SIGNATURES =
-  /Loading chunk \S+ failed|Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError/i;
+  /Loading (?:CSS )?chunk \S+ failed|Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError/i;
 
 export function isChunkLoadError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -136,19 +92,22 @@ async function defaultProbe(url: string, token: string): Promise<ChunkProbe> {
   if (typeof fetch !== "function") {
     return { status: null, ok: false, cacheBusted: false };
   }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
   try {
     const response = await fetch(withCacheBust(url, token), {
+      signal: controller.signal,
       cache: "reload",
       credentials: "same-origin",
     });
     if (response.ok) {
       // 见文件头②：只有这一次打的是 webpack 待会儿真正请求的那把缓存键。
-      await fetch(url, { cache: "reload", credentials: "same-origin" }).catch(() => {});
+      await fetch(url, { cache: "reload", credentials: "same-origin", signal: controller.signal }).catch(() => {});
     }
     return { status: response.status, ok: response.ok, cacheBusted: true };
   } catch {
     return { status: null, ok: false, cacheBusted: true };
-  }
+  } finally { clearTimeout(timer); }
 }
 
 // ----------------------------------------------------------------------------
@@ -172,7 +131,7 @@ export interface ChunkRetryRuntime {
 let cacheBustSeq = 0;
 
 const DEFAULT_RUNTIME: ChunkRetryRuntime = {
-  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  sleep: waitForRecovery,
   random: Math.random,
   probe: defaultProbe,
   delays: CHUNK_RETRY_DELAYS_MS,
@@ -200,7 +159,7 @@ export type ChunkLoadOutcome<T> =
  *
  * 一次首发 + `delays.length` 次重试。遇到 404/410 立刻停：
  * 部署换版之后旧 chunk 名就不存在了，再退避也变不出这个文件，
- * 正确动作是让用户刷新页面。
+ * stale-version is handled by the caller with one guarded automatic reload.
  */
 export async function loadChunkWithRetry<T>(
   routeId: string,
@@ -265,7 +224,6 @@ const INITIAL_STATE: ChunkRouteState = Object.freeze({ phase: "loading", attempt
 
 const routeStates = new Map<string, ChunkRouteState>();
 const routeListeners = new Map<string, Set<() => void>>();
-const pendingManualRetry = new Map<string, () => void>();
 
 export function chunkRouteState(routeId: string): ChunkRouteState {
   return routeStates.get(routeId) ?? INITIAL_STATE;
@@ -290,20 +248,10 @@ function subscribeRoute(routeId: string, listener: () => void): () => void {
   };
 }
 
-/** 用户点了「重试」。没有等待中的循环就什么都不做。 */
-export function requestChunkRetry(routeId: string): void {
-  const resume = pendingManualRetry.get(routeId);
-  if (!resume) return;
-  pendingManualRetry.delete(routeId);
-  setRouteState(routeId, INITIAL_STATE);
-  resume();
-}
-
 /** 测试与 `W10` 的闸用。 */
 export function resetChunkRoutes(): void {
   routeStates.clear();
   routeListeners.clear();
-  pendingManualRetry.clear();
 }
 
 export function useChunkRouteState(routeId: string): ChunkRouteState {
@@ -333,7 +281,7 @@ function reloadPage(): void {
 }
 
 /**
- * loader：退避重试 → 失败就发布状态并等人点重试 → 点了就再来一轮。
+ * loader: automatic visible/online recovery; never rejects a module download.
  * 永远不 reject，所以 `React.lazy` 不会被钉死在 Rejected。
  *
  * 交给 `dynamic()` 的就是它。**`dynamic()` 的调用留在调用方**
@@ -349,27 +297,26 @@ export function chunkRetryLoader<T>(
   return async () => {
     for (;;) {
       setRouteState(routeId, INITIAL_STATE);
-      const outcome = await loadChunkWithRetry(routeId, load, overrides);
+      const outcome = await loadChunkWithRetry(routeId, async () => {
+        try { return { value: await load() }; }
+        catch (error) {
+          if (!isChunkLoadError(error)) return { error };
+          throw error;
+        }
+      }, overrides);
       if (outcome.ok) {
         setRouteState(routeId, { phase: "loading", attempts: outcome.attempts });
-        return outcome.value;
+        if ("error" in outcome.value) throw outcome.value.error;
+        return outcome.value.value as T;
       }
-      setRouteState(routeId, {
-        phase: outcome.kind === "stale-version" ? "stale-version" : "network-error",
-        attempts: outcome.attempts,
-      });
-      await new Promise<void>((resolve) => pendingManualRetry.set(routeId, resolve));
+      setRouteState(routeId, { phase: "loading", attempts: outcome.attempts });
+      if (outcome.kind === "stale-version") reloadChunkOnce();
+      await (overrides.sleep ?? waitForRecovery)(30_000);
     }
   };
 }
 
 export const CHUNK_RELOAD_STORAGE_KEY = "leo:chunk-load-reload";
-
-/**
- * 整页刷新前的短重试间隔。HMR 换 hash 之后旧 URL 再等也不会变出来，
- * 真正救命的是那一次 reload；这两档只覆盖「新 chunk 还在落盘」的窗口。
- */
-export const CHUNK_IMPORT_RETRY_DELAYS_MS: readonly number[] = [200, 800];
 
 export interface ChunkReloadRuntime {
   sleep(ms: number): Promise<void>;
@@ -386,78 +333,55 @@ function defaultSessionStorage(): Pick<Storage, "getItem" | "setItem" | "removeI
   }
 }
 
-/**
- * 包在 `dynamic(() => import(…))` 外面：`ChunkLoadError` / `Loading chunk … failed`
- * 先有上限地重试，耗尽后 **整页刷新恰好一次**。
- *
- * `sessionStorage` 记下这次刷新。新文档仍然拉不下来就原样抛出，避免死循环。
- * 非 chunk 错误不重试。加载成功会清掉刷新标记。
- */
+/** Persist the marker across all imports: an unrelated successful chunk must not re-arm reload. */
+export function reloadChunkOnce(overrides: Partial<ChunkReloadRuntime> = {}): boolean {
+  const storage = overrides.storage !== undefined ? overrides.storage : defaultSessionStorage();
+  try {
+    // Without storage a document reload cannot be guarded across documents.
+    if (!storage || storage.getItem(CHUNK_RELOAD_STORAGE_KEY) === "1") return false;
+    storage.setItem(CHUNK_RELOAD_STORAGE_KEY, "1");
+    (overrides.reload ?? reloadPage)();
+    return true;
+  } catch { return false; }
+}
+
 export async function importWithChunkReload<T>(
   load: () => Promise<T>,
   overrides: Partial<ChunkReloadRuntime> = {},
 ): Promise<T> {
-  const sleep =
-    overrides.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-  const storage = overrides.storage !== undefined ? overrides.storage : defaultSessionStorage();
-  const reload =
-    overrides.reload ??
-    (() => {
-      if (typeof window !== "undefined") window.location.reload();
-    });
-
-  let lastError: unknown;
-  const attempts = CHUNK_IMPORT_RETRY_DELAYS_MS.length + 1;
-  for (let index = 0; index < attempts; index += 1) {
-    try {
-      const value = await load();
-      storage?.removeItem(CHUNK_RELOAD_STORAGE_KEY);
-      return value;
-    } catch (error) {
-      lastError = error;
-      if (!isChunkLoadError(error)) throw error;
-      if (index < CHUNK_IMPORT_RETRY_DELAYS_MS.length) {
-        await sleep(CHUNK_IMPORT_RETRY_DELAYS_MS[index]);
+  for (;;) {
+    // Only module-download failures are recoverable imports. Programming errors still reach a boundary.
+    const outcome = await loadChunkWithRetry("shell-import", async () => {
+      try { return { value: await load() }; }
+      catch (error) {
+        if (!isChunkLoadError(error)) return { error };
+        throw error;
       }
+    }, { ...(overrides.sleep ? { sleep: overrides.sleep } : {}) });
+    if (outcome.ok) {
+      if ("error" in outcome.value) throw outcome.value.error;
+      return outcome.value.value as T;
     }
+    if (outcome.kind === "stale-version") reloadChunkOnce(overrides);
+    await (overrides.sleep ?? waitForRecovery)(30_000);
   }
-
-  if (storage?.getItem(CHUNK_RELOAD_STORAGE_KEY) === "1") {
-    storage.removeItem(CHUNK_RELOAD_STORAGE_KEY);
-    throw lastError;
-  }
-  storage?.setItem(CHUNK_RELOAD_STORAGE_KEY, "1");
-  reload();
-  // Stay pending so `React.lazy` does not lock onto a rejected promise
-  // while the document is unloading.
-  return new Promise<T>(() => {});
 }
 
-/**
- * 给一个已经 `dynamic()` 出来的路由组件套上失败态的闸。
- *
- * `Dynamic` 还在加载（或已成功）时原样渲染它；退避重试耗尽之后渲染 `Failure`，
- * 并把「重试」接回还在 `await` 的那个 loader 循环。
- *
- * 这一层刻意**不自己调 `dynamic()`**：调用留在
- * `AdvancedContentWorkbench.tsx`，那里的 `import("./advanced-routes/XxxRoute")`
- * 字面量是 webpack 切 chunk 的唯一依据，搬到这儿会让 11 条路由退回单块打包
- * （`01-verified-facts.md` §1.7 记的那一轮代码分割会白做）。
- */
+/** React.lazy never sees a rejected download promise, so existing Suspense content can remain mounted. */
+export function lazyWithRetry<T extends ComponentType<any>>(load: () => Promise<{ default: T }>) {
+  return lazy(() => importWithChunkReload(load));
+}
+
+/** Preserve the same editor component while its automatic import loop is pending. */
 export function withChunkRetry<P extends object>(
   routeId: string,
   Dynamic: ComponentType<P>,
-  Failure: ComponentType<ChunkErrorProps>,
+  _Failure: ComponentType<ChunkErrorProps>,
 ): ComponentType<P> {
   function ChunkRetryGate(props: P) {
-    const state = useChunkRouteState(routeId);
-    if (state.phase === "loading") return createElement(Dynamic, props);
-    return createElement(Failure, {
-      kind: state.phase === "stale-version" ? "stale-version" : "network",
-      attempts: state.attempts,
-      onRetry: () => requestChunkRetry(routeId),
-      onReload: reloadPage,
-    });
+    // Keep the same dynamic component mounted while its pending loader recovers.
+    useChunkRouteState(routeId);
+    return createElement(Dynamic, props);
   }
   ChunkRetryGate.displayName = `ChunkRetryGate(${routeId})`;
   return ChunkRetryGate;

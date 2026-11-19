@@ -1,8 +1,9 @@
 "use client";
 
+import { lazyWithRetry } from "../lib/lazy-with-retry";
+
 import {
   Suspense,
-  lazy,
   useEffect,
   useRef,
   type CSSProperties,
@@ -28,7 +29,7 @@ import type {
 export type * from "./workspace-cover-contract";
 
 // PDFium is a wasm engine: only loaded when a PDF cover is actually shown.
-const LazyWorkspacePdfCover = lazy(() => import("./WorkspacePdfCover"));
+const LazyWorkspacePdfCover = lazyWithRetry(() => import("./WorkspacePdfCover"));
 
 /**
  * 按名字自证的合成占位图。放水这一条 = 真占位图直接漏上货架。

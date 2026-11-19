@@ -60,6 +60,7 @@ import { WORK_CHAT_MESSAGES } from "./work-chat-copy";
 import { BAY_MESSAGES } from "./bay-copy";
 import { EDITOR_OVERHAUL_MESSAGES } from "./editor-overhaul-copy";
 import { deviceExperienceCopy } from "./device-experience-copy";
+import { swBrCopy } from "./sw-br-copy";
 import { taskLiveCopy } from "./task-live-copy";
 import { taskStateCopy } from "./task-state-copy";
 import { websitePreviewProgressCopy } from "./website-preview-progress-copy";
@@ -528,6 +529,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...localBrowserCopy(language),
       ...deviceExperienceCopy(language),
       ...taskLiveCopy(language),
+      ...swBrCopy(language),
       ...taskStateCopy(language),
       ...websitePreviewProgressCopy(language),
       ...gatewayRoutingCopy(language),

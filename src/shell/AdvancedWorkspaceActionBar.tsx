@@ -1,5 +1,7 @@
 "use client";
 
+import { useAutoRecovery } from "../lib/auto-recovery";
+
 import { WORKING_COPY_CONFLICT } from "./editor-working-copy";
 
 // ============================================================================
@@ -109,6 +111,7 @@ export function AdvancedWorkspaceActionBar({
 }) {
   const tt = useUI();
   const conflict = autoSaveError === WORKING_COPY_CONFLICT;
+  useAutoRecovery(observedAutoSaveState === "error" && !conflict, onRetrySave, item?.key);
   const autoSaveState: AdvancedAutoSaveState | "unconfirmed" = observedAutoSaveState;
   const rightPaneSlot = useRightPaneSlot();
   const rightMaximized = useSyncExternalStore(
@@ -147,7 +150,7 @@ export function AdvancedWorkspaceActionBar({
     ...(adapter.directDownload ? [adapter.directDownload] : []),
     ...actions.filter((action) => action.group === "download"),
   ];
-  // 保存菜单只列真实 save 组。没有 save 组时云朵只报状态；失败可点重试。不再合成「立即保存」。
+  // Save menu contains real save actions; transient failures recover automatically.
   const saveActions = actions.filter(
     (action) => actionGroup(action) === "save",
   );
@@ -166,14 +169,14 @@ export function AdvancedWorkspaceActionBar({
         ? "正在保存到本机"
         : "保存中…"
       : autoSaveState === "error"
-        ? "保存失败"
+        ? (conflict ? "文件已被他人修改" : "保存未完成，将自动重试")
         : saveDestination === "local-device"
           ? "已保存到本机（未同步到云端）"
           : "已保存",
   );
   const saveErrorTitle =
     autoSaveState === "error"
-      ? tt(autoSaveError || "保存失败，点击重试")
+      ? tt(conflict ? "文件已被他人修改" : "保存未完成，将自动重试")
       : undefined;
   const saveMenuAvailable = saveActions.length > 0 || autoSaveState === "error";
 
@@ -302,14 +305,14 @@ export function AdvancedWorkspaceActionBar({
               attributes={{ "data-workspace-save-menu": true }}
               className="z-[2147483550] grid w-60 gap-1 overflow-y-auto rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 text-[var(--awb-text)] shadow-2xl"
             >
-              {autoSaveState === "error" ? (
+              {autoSaveState === "error" && conflict ? (
                 <Button
                   variant="ghost"
                   block
                   align="start"
                   role="menuitem"
                   tabIndex={-1}
-                  data-workspace-save-action-id="retry"
+                  data-workspace-save-action-id="choose-latest"
                   title={saveErrorTitle}
                   onClick={() => {
                     setSaveOpen(false);
@@ -325,7 +328,7 @@ export function AdvancedWorkspaceActionBar({
                     className="h-4 w-4 shrink-0"
                   />
                   <span className="min-w-0 flex-1 truncate">
-                    {tt(conflict ? "重新加载" : "保存失败，点击重试")}
+                    {tt("放弃本地改动，使用最新版本")}
                   </span>
                 </Button>
               ) : null}

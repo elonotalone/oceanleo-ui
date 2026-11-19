@@ -391,16 +391,7 @@ export function DeckRoute({
             // 手势栈没断，开窗才不会被拦。别在这里包一层先 await 的壳。
             onTrigger: presentation ? exitPresentation : startPresentation,
           },
-          // 只在源文件没取到时给「重新获取」；保存失败走顶栏的重试，重新获取会丢掉没存上的改动。
-          ...(editor.sourceFailed || officeSource.error
-            ? [
-                {
-                  id: "deck-refresh-office-source",
-                  label: "重新获取文件后重试",
-                  onTrigger: officeSource.retry,
-                },
-              ]
-            : []),
+
           ...exportDownloads.slice(1),
         ],
         upload: {

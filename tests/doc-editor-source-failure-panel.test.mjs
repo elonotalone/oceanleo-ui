@@ -28,14 +28,11 @@ function failurePanelBlock(stage) {
   )?.[0] || "";
 }
 
-test("共用失败面板：说清原因的那段文案与真会重跑的入口在同一块地方", () => {
+test("共用失败面板：保留加载外观并自动调用原来的取源入口，不暴露原始错误", () => {
   const panel = source("../src/shell/doc-editors/EditorSourceFailurePanel.tsx");
-  assert.match(panel, /role="alert"/);
-  assert.match(panel, /\{message\}/, "原因整段由调用方传进来，面板不许自己改写");
-  assert.match(panel, /onClick=\{onReload\}/);
-  assert.match(panel, /tt\("重新载入"\)/);
-  // surface 档是给「路由把舞台整个换掉」那一格用的：那时它就是整个舞台，
-  // 不能再按盖在别人身上的浮层定位，否则会缩成看不见的一条。
+  assert.match(panel, /role="status"/);
+  assert.match(panel, /useAutoRecovery\(true, onReload/);
+  assert.doesNotMatch(panel, /<button|onClick=|\{message\}/);
   assert.match(panel, /variant === "overlay"/);
   assert.match(panel, /h-full w-full/);
 });

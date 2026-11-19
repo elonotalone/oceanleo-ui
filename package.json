@@ -51,6 +51,7 @@
     "./pages": "./src/pages/index.ts",
     "./ui": "./src/ui/index.tsx",
     "./lib": "./src/lib/index.ts",
+    "./lib/recovery": "./src/lib/lazy-with-retry.tsx",
     "./bay/public": "./src/lib/bay/public.ts",
     "./bay/public-views": "./src/shell/bay/supply/public-views.ts",
     "./lib/auth": "./src/lib/auth/index.ts",

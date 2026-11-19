@@ -1,5 +1,7 @@
 "use client";
 
+import { useAutoRecovery } from "../../lib/auto-recovery";
+
 import { useEffect, useRef, useState } from "react";
 import { bayPost } from "../../lib/bay/http";
 import { editorCapabilityFor } from "../workbench-routes";
@@ -144,7 +146,6 @@ export function useAssetActions(options: UseAssetActionsOptions) {
   const [snapshot, setSnapshot] = useState({ key: inputKey, inputEntry: options.entry, inputContext: options.actionContext, entry: options.entry, actionContext: options.actionContext });
   const [pending, setPending] = useState<AssetActionId | null>(null);
   const [failure, setFailure] = useState("");
-  const [retryAction, setRetryAction] = useState<AssetActionId | null>(null);
   const [checkoutStarted, setCheckoutStarted] = useState(false);
   const latest = useRef(options);
   latest.current = options;
@@ -166,7 +167,6 @@ export function useAssetActions(options: UseAssetActionsOptions) {
     setSnapshot({ key: inputKey, inputEntry: options.entry, inputContext: options.actionContext, entry: options.entry, actionContext: options.actionContext });
     setPending(null);
     setFailure("");
-    setRetryAction(null);
     setCheckoutStarted(false);
     return () => { epoch.current += 1; };
   }, [inputKey, options.entry, options.actionContext]);
@@ -182,7 +182,6 @@ export function useAssetActions(options: UseAssetActionsOptions) {
     active.current = operation;
     setPending(id);
     setFailure("");
-    setRetryAction(null);
     const valid = () => keyRef.current === key && epoch.current === generation;
     const services = { ...defaultServices, ...latest.current.services };
     const resolve = async (ref: AssetRef) => {
@@ -239,7 +238,6 @@ export function useAssetActions(options: UseAssetActionsOptions) {
       if (valid()) {
         setFailure(id === "get" || id === "add" ? "未能加入我的库，请重试。" : id === "buy" ? "未能打开购买页面，请重试。" : "操作未完成，请重试。");
         // The mutation may already have succeeded. Retry resolution first to avoid a duplicate order/claim.
-        setRetryAction(id === "get" || id === "add" ? "refresh" : id);
       }
     } finally {
       if (active.current === operation) active.current = null;
@@ -250,28 +248,16 @@ export function useAssetActions(options: UseAssetActionsOptions) {
   // Checkout can navigate away; a surviving sidebar rechecks when the user returns.
   const runRef = useRef(run);
   runRef.current = run;
-  useEffect(() => {
-    if (!checkoutStarted && detail.actionContext.commerce?.purchaseState !== "pending") return;
-    const refresh = () => {
-      if (document.visibilityState !== "hidden") void runRef.current("refresh");
-    };
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, [checkoutStarted, detail.actionContext.commerce?.purchaseState]);
-
+  const recovering = Boolean(failure) || checkoutStarted || assetToolbarItems(detail.actionContext, detail.entry.libraryItem).some(item => item.id === "refresh");
+  useAutoRecovery(recovering && pending === null, () => runRef.current("refresh"), inputKey);
   let items = assetToolbarItems(detail.actionContext, detail.entry.libraryItem);
-  if (checkoutStarted && items.some((item) => item.id === "buy")) items = [{ id: "refresh", label: "刷新购买状态", disabled: false }];
-  // A failed claim may need to resolve even while the original state still says Get.
-  if (failure && retryAction === "refresh" && !items.some((item) => item.id === "refresh")) items = [...items, { id: "refresh", label: "刷新素材状态", disabled: false }];
+  if (checkoutStarted) items = items.filter(item => item.id !== "buy");
+  // Recovery controls are automatic; only product actions remain in the toolbar.
+  items = items.filter(item => item.id !== "refresh");
   return {
     entry: detail.entry,
     actionContext: detail.actionContext,
     items: items.map((item) => ({ ...item, disabled: pending !== null || (item.id === "edit" && !options.onEdit) || (item.id === "use" && !options.onUseInTask) })),
-    pending, failure, run,
-    retry: retryAction ? () => run(retryAction) : undefined,
+    pending, failure, recovering, run,
   };
 }

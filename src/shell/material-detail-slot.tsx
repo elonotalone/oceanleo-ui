@@ -1,5 +1,7 @@
 "use client";
 
+import { useAutoRecovery } from "../lib/auto-recovery";
+
 /**
  * 官方模板素材的**详情插槽**。
  *
@@ -249,6 +251,7 @@ export function MaterialDetailUnavailable({
   onRetry: () => void;
 }) {
   const tt = useUI();
+  useAutoRecovery(!needsSignIn, onRetry, item.key);
   // `previewUrl` / `thumbUrl` 都可能就是 pptx / docx 本体（货架上是常态），
   // 直接喂 `<img>` 只会得到一个碎图标。只认保证是图片的那一个。
   const cover = libraryItemPosterUrl(item);
@@ -265,17 +268,9 @@ export function MaterialDetailUnavailable({
       )}
       <p className="text-[12px] text-stone-400">{tt("以上只是这份素材的封面图")}</p>
       <p className="max-w-md text-center text-[14px] font-medium leading-relaxed text-stone-700">
-        {tt(message)}
+        {tt(needsSignIn ? message : "正在打开这份素材…")}
       </p>
-      {!needsSignIn && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="rounded-lg bg-stone-800 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-stone-700"
-        >
-          {tt("重新加载")}
-        </button>
-      )}
+
     </div>
   );
 }

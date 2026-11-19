@@ -1,6 +1,8 @@
 "use client";
 
-import { artifactDisplayRendition } from "./artifact-contract";
+import { useAutoRecovery } from "../lib/auto-recovery";
+
+import { artifactDisplayRendition, type ArtifactRenditionPurpose } from "./artifact-contract";
 
 import { useEffect, useRef, useState } from "react";
 import { accessToken } from "../lib/auth/client";
@@ -116,9 +118,13 @@ export function WorkspaceThumbnail({
    * 空项，它就不碰网络；也不走「浏览器现生成缩略图」。
    */
   const textDocumentCard = Boolean(item) && itemUsesTextDocumentCard(item, kind);
-  const renditionPurposes = item && !textDocumentCard
+  const [fullPreview, setFullPreview] = useState(false);
+  const coverPurposes = item && !textDocumentCard
     ? workspaceCoverRenditionPurposes(item)
     : THUMBNAIL_PURPOSES;
+  const renditionPurposes: readonly ArtifactRenditionPurpose[] = fullPreview && coverPurposes.includes("preview")
+    ? ["preview", ...coverPurposes.filter(purpose => purpose !== "preview")]
+    : coverPurposes;
   const noDisplayableCover =
     !textDocumentCard &&
     Boolean(item && isDurableLibraryItem(item)) &&
@@ -133,11 +139,8 @@ export function WorkspaceThumbnail({
   const [generationError, setGenerationError] = useState(false);
   const [visible, setVisible] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
   const [retryCycle, setRetryCycle] = useState(0);
-  const wasVisible = useRef(false);
   const hostRef = useRef<HTMLDivElement>(null);
-  const lastFailedUrlRef = useRef("");
   const solidRejectedKeysRef = useRef(new Set<string>());
   useEffect(() => {
     const node = hostRef.current;
@@ -199,6 +202,7 @@ export function WorkspaceThumbnail({
   const [generatedUrl, setGeneratedUrl] = useState(
     referenceKey ? generatedThumbnailCache.get(referenceKey) || "" : "",
   );
+  useEffect(() => setFullPreview(false), [item?.key, item?.revisionId, url]);
   useEffect(() => {
     setFailed(false);
     setReady(false);
@@ -213,9 +217,6 @@ export function WorkspaceThumbnail({
     referenceKey,
     url,
   ]);
-  useEffect(() => {
-    lastFailedUrlRef.current = "";
-  }, [artifactRendition.url, artifactRendition.version, url]);
   useEffect(() => {
     if (
       textDocumentCard ||
@@ -271,35 +272,24 @@ export function WorkspaceThumbnail({
     (Boolean(item) &&
       itemUsesDocumentShelfCover(item, kind) &&
       (noDisplayableCover || generationError || solidRejected));
-  // Every viewport entry gets a fresh bounded retry budget. The failed image
-  // remains mounted, so a late load can still recover without a second request.
-  useEffect(() => {
-    if (visible && !wasVisible.current) {
-      setRetryCount(0);
-      if (failed || timedOut) {
-        setRetryCycle(value => value + 1);
-        setFailed(false); setTimedOut(false);
-        artifactRendition.retry();
-      }
-    }
-    wasVisible.current = visible;
-  }, [visible]);
-  useEffect(() => {
-    if (!visible || ready || solidRejected || !(failed || timedOut) || retryCount >= 3) return;
-    const timer = setTimeout(() => {
-      setRetryCount(value => value + 1);
-      setRetryCycle(value => value + 1);
-      setFailed(false); setTimedOut(false);
-    }, 1000 * 2 ** retryCount);
-    return () => clearTimeout(timer);
-  }, [failed, timedOut, visible, ready, solidRejected, retryCount]);
-  const smallUrl = item?.thumbUrl || url;
+  useAutoRecovery(visible && !ready && !solidRejected && !documentShelfCover &&
+    (failed || timedOut || generationError || Boolean(artifactRendition.error)), () => {
+    setFullPreview(true);
+    setRetryCycle(value => value + 1);
+    setFailed(false);
+    setTimedOut(false);
+    if (referenceKey) generatedThumbnailFailed.delete(referenceKey);
+    setGenerationError(false);
+    artifactRendition.retry();
+  }, `${item?.key}:${url}`);
+  const smallUrl = item?.thumbUrl || url || "";
+  const fallbackUrl = coverPreviewFallback(smallUrl, item?.previewUrl);
   const displayUrl =
     noDisplayableCover || solidRejected
       ? ""
       : typedArtifact
         ? artifactRendition.url
-        : generatedUrl || (requiresGeneratedThumbnail ? "" : smallUrl);
+        : generatedUrl || (requiresGeneratedThumbnail ? "" : fullPreview ? fallbackUrl : smallUrl);
   const plan = workspaceCoverPlan({
     item,
     kind,
@@ -307,7 +297,7 @@ export function WorkspaceThumbnail({
     rendition: typedArtifact ? artifactRendition.rendition : null,
     assumeImage: Boolean(
       generatedUrl ||
-        (!typedArtifact && displayUrl && displayUrl === smallUrl),
+        (!typedArtifact && displayUrl && (displayUrl === smallUrl || displayUrl === fallbackUrl)),
     ),
   });
   const resourceKey = [
@@ -324,10 +314,10 @@ export function WorkspaceThumbnail({
   // A network request or embedded PDF viewer may never fire load/error.
   // Bound the visible loading state and keep the material itself openable.
   useEffect(() => {
-    if (!visible || ready || documentShelfCover || plan.renderer === "unavailable") return;
+    if (!visible || ready || failed || timedOut || documentShelfCover || plan.renderer === "unavailable") return;
     const timer = setTimeout(() => setTimedOut(true), 15_000);
     return () => clearTimeout(timer);
-  }, [visible, ready, documentShelfCover, resourceKey]);
+  }, [visible, ready, failed, timedOut, documentShelfCover, resourceKey]);
   const awaitingGeneratedThumbnail = Boolean(
     referenceKey &&
       visible &&
@@ -342,7 +332,7 @@ export function WorkspaceThumbnail({
     (rendition) =>
       rendition && coverEvidenceOf(rendition) === "proven-placeholder",
   );
-  const failureMessage =
+  const rawFailureMessage =
     documentShelfCover || ready
       ? ""
       : artifactRendition.loading || awaitingGeneratedThumbnail
@@ -356,6 +346,8 @@ export function WorkspaceThumbnail({
             (generationError
               ? "未能生成可显示的真实封面。"
               : plan.failureReason);
+  // Transient network and signing failures keep the normal loading surface.
+  const failureMessage = noDisplayableCover || solidRejected ? rawFailureMessage : "";
   // 三态呈现（合同 §3.2）。只有**证实**是占位图才允许说「占位图」：wire 判据证实的、
   // 解码后像素证实是纯色的、以及候选 rendition 里确有占位图且没有任何一份能显示的。
   // 加载失败、缺 revision 这类「没证据」的情况仍旧只是封面不可用，不许改口。
@@ -373,7 +365,6 @@ export function WorkspaceThumbnail({
     coverEvidence === "unknown-metadata" &&
     Boolean(plan.evidenceReason);
   const loading =
-    !timedOut &&
     !failureMessage &&
     !noDisplayableCover &&
     !documentShelfCover &&
@@ -475,10 +466,7 @@ export function WorkspaceThumbnail({
               setFailed(true);
               return;
             }
-            if (retryCount >= 3 && lastFailedUrlRef.current !== resourceKey) {
-              lastFailedUrlRef.current = resourceKey;
-              artifactRendition.resourceFailed();
-            }
+            artifactRendition.resourceFailed();
             setReady(false);
             setFailed(true);
           }}
@@ -505,11 +493,6 @@ export function WorkspaceThumbnail({
           }}
         />
       )}
-      {(loading || failed || timedOut || failureMessage) && !ready && !provenPlaceholder && !documentShelfCover && (!failureMessage || Boolean(plan.url || artifactRendition.rendition)) && (
-        <button type="button" onClick={() => { setRetryCount(0); setRetryCycle(value => value + 1); setFailed(false); setTimedOut(false); artifactRendition.retry(); }}
-          className="absolute bottom-1 right-1 z-10 rounded bg-[var(--card,#fff)] px-2 py-1 text-xs" aria-label={tt("重试")}>{tt("重试")}</button>
-      )}
-      {timedOut && !ready && !failureMessage && <p data-cover-timeout="" className="absolute bottom-8 left-1 right-1 rounded bg-[var(--card,#fff)] px-2 py-1 text-xs text-[var(--fg-2)]">{tt("预览加载超时，打开查看素材")}</p>}
       {loading && (
         <div className="absolute inset-0 grid place-items-center bg-[var(--surface,#f5f5f4)]/80">
           <span
@@ -543,4 +526,11 @@ export function WorkspaceThumbnail({
       )}
     </div>
   );
+}
+
+/** Public image thumbnails have a full preview sibling; signed/other URLs stay intact. */
+export function coverPreviewFallback(thumbnail: string, preview?: string): string {
+  if (preview && preview !== thumbnail) return preview;
+  if (/[?&](?:signature|expires|x-oss-|x-amz-)/i.test(thumbnail)) return thumbnail;
+  return thumbnail.replace(/\.thumb\.webp(?=[?#]|$)/, ".webp");
 }

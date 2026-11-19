@@ -1,9 +1,11 @@
 "use client";
 
+import { lazyWithRetry, importWithChunkReload } from "../lib/lazy-with-retry";
+import { startAutoRecovery, useAutoRecovery } from "../lib/auto-recovery";
+
 import {
   Suspense,
   createElement,
-  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -84,7 +86,7 @@ import {
 } from "./material-detail-slot";
 import { AttachmentFileViewer, DownloadOnlyFileCard, isAttachmentFilePreview } from "./attachment-file-viewer";
 // PDFium is a wasm engine: only load it when a PDF is actually previewed.
-const LibraryPdfReader = lazy(() => import("./LibraryPdfReader"));
+const LibraryPdfReader = lazyWithRetry(() => import("./LibraryPdfReader"));
 
 function extension(url?: string): string {
   const match = /\.([a-z0-9]+)(?:$|[?#])/i.exec(url || "");
@@ -145,6 +147,8 @@ function usePreparedOfficeLibraryItem(item: LibraryItem): {
   const [prepared, setPrepared] = useState<LibraryItem>(item);
   const [loading, setLoading] = useState(needsUpgrade);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useAutoRecovery(Boolean(error), () => setAttempt(value => value + 1), `${item.artifactId}:${item.revisionId}`);
   useEffect(() => {
     setPrepared(item);
     if (!needsUpgrade) {
@@ -174,6 +178,7 @@ function usePreparedOfficeLibraryItem(item: LibraryItem): {
     item.url,
     needsUpgrade,
     sourceUrl,
+    attempt,
   ]);
   return { item: prepared, loading, error };
 }
@@ -218,46 +223,7 @@ function ErrorView({
   onRetry?: () => void;
 }) {
   const tt = useUI();
-  return (
-    <div role="alert">
-      <Center>
-        <svg
-          className="h-10 w-10 text-stone-300"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        >
-          <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" />
-          <path d="M14 3v5h5M9 13h6M9 17h4" strokeLinecap="round" />
-        </svg>
-        <p className="max-w-md text-center text-[13px] leading-relaxed text-stone-500">
-          {message}
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {onRetry && (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="rounded-lg bg-stone-800 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-stone-700"
-            >
-              {tt("刷新安全地址并重试")}
-            </button>
-          )}
-          {url && (
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-lg border border-stone-200 px-3 py-1.5 text-[13px] text-stone-600 hover:bg-stone-50"
-            >
-              {tt("打开原文件")}
-            </a>
-          )}
-        </div>
-      </Center>
-    </div>
-  );
+  return onRetry ? <LoadingView label={tt("正在打开这份素材…")} /> : <Center><p role="status">{tt(message)}</p></Center>;
 }
 
 function StructuredCanvas({ item }: { item: LibraryItem }) {
@@ -910,6 +876,7 @@ function PptViewer({
     onResourceError?.();
     setAttempt((value) => value + 1);
   };
+  useAutoRecovery(state === "error", retry, item.key);
 
   return (
     <DeckPreviewLayout
@@ -1024,6 +991,8 @@ function DocumentViewer({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(isDocx || (isText && !item.content));
   const [attempt, setAttempt] = useState(0);
+
+  useAutoRecovery(Boolean(error) && !loading, () => { onResourceError?.(); setAttempt(value => value + 1); }, item.key);
 
   const sourceRef = useRef({ item, onResourceError });
   sourceRef.current = { item, onResourceError };
@@ -1272,7 +1241,7 @@ export function ThreeDViewer({
       return;
     }
     let alive = true;
-    void import("@google/model-viewer")
+    void importWithChunkReload(() => import("@google/model-viewer"))
       .then(() => {
         if (alive) setReady(Boolean(window.customElements?.get("model-viewer")));
       })
@@ -1616,8 +1585,9 @@ export function LibraryItemViewerBody({ item, accent }: { item: LibraryItem; acc
   const tt = useUI();
   const [current, setCurrent] = useState(item);
   const [attempt, setAttempt] = useState(0);
-  const refreshes = useRef(0);
-  useEffect(() => { setCurrent(item); refreshes.current = 0; }, [item]);
+  const [resourceError, setResourceError] = useState(false);
+  useEffect(() => { setCurrent(item); setResourceError(false); }, [item]);
+  useAutoRecovery(resourceError, () => { setAttempt(value => value + 1); setResourceError(false); }, item.key);
   useEffect(() => {
     if (!attempt || !current.artifactId || !current.revisionId || current.preview?.state !== "ready") return;
     const controller = new AbortController();
@@ -1629,18 +1599,11 @@ export function LibraryItemViewerBody({ item, accent }: { item: LibraryItem; acc
   useEffect(() => {
     if (current.preview?.state !== "pending" || !current.artifactId || !current.revisionId) return;
     const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    let polls = 0;
-    const poll = async () => {
-      try {
-        const result = await getArtifactItem(current.artifactId!, current.revisionId!, controller.signal);
-        if (controller.signal.aborted) return;
-        if (result.ok && result.data?.preview && result.data.preview.state !== "pending") { setCurrent(result.data); return; }
-      } catch { /* Keep the stored file available during a temporary refresh failure. */ }
-      if (!controller.signal.aborted) timer = setTimeout(poll, Math.min(15000, 2000 * 2 ** Math.min(++polls, 3)));
-    };
-    timer = setTimeout(poll, 2000);
-    return () => { controller.abort(); clearTimeout(timer); };
+    const stop = startAutoRecovery(async () => {
+      const result = await getArtifactItem(current.artifactId!, current.revisionId!, controller.signal);
+      if (!controller.signal.aborted && result.ok && result.data?.preview && result.data.preview.state !== "pending") setCurrent(result.data);
+    });
+    return () => { stop(); controller.abort(); };
   }, [current.artifactId, current.revisionId, current.preview?.state, attempt]);
   const preview = current.preview;
   if (!preview || preview.state === "ready" && preview.kind === "native") return <NativeLibraryItemViewerBody item={current} accent={accent} />;
@@ -1653,15 +1616,15 @@ export function LibraryItemViewerBody({ item, accent }: { item: LibraryItem; acc
   if (!url) return <DownloadOnlyFileCard item={current} />;
   const previewItem: LibraryItem = { ...current, url, previewUrl: url, meta: { ...current.meta,
     viewer_media_type: preview.kind === "model" ? "model/gltf-binary" : `${preview.kind}/` } };
-  const retry = () => { if (refreshes.current++ < 2) setAttempt(value => value + 1); };
+  const retry = () => setResourceError(true);
   switch (preview.kind) {
     case "pdf": return <Suspense fallback={<LoadingView label={tt("正在读取文件…")} />}>
       <LibraryPdfReader key={`${current.key}:${url}:${attempt}`} title={current.title}
         loadBlob={signal => fetchItemSourceBlob(current, url, signal, retry)} onRetry={retry} />
     </Suspense>;
-    case "image": return <Center><ProgressiveArtifactImage key={url} thumbUrl={current.thumbUrl || ""} fullUrl={url} alt={current.title} onError={retry} geometry={libraryMediaGeometry(current, url)} /></Center>;
-    case "video": case "audio": return <Center><LibraryMediaPreview key={`${current.key}:${url}`} kind={preview.kind} src={url} onError={retry} className="max-h-[70vh] max-w-full" /></Center>;
-    case "model": return <ThreeDViewer item={previewItem} onResourceError={retry} />;
+    case "image": return <Center><ProgressiveArtifactImage key={`${url}:${attempt}`} thumbUrl={current.thumbUrl || ""} fullUrl={url} alt={current.title} onError={retry} geometry={libraryMediaGeometry(current, url)} /></Center>;
+    case "video": case "audio": return <Center><LibraryMediaPreview key={`${current.key}:${url}:${attempt}`} kind={preview.kind} src={url} onError={retry} className="max-h-[70vh] max-w-full" /></Center>;
+    case "model": return <ThreeDViewer key={`${current.key}:${attempt}`} item={previewItem} onResourceError={retry} />;
     case "tree": case "text": return <AttachmentFileViewer key={`${current.key}:${url}`} item={current} url={url} mode={preview.kind} />;
     default: return <DownloadOnlyFileCard item={current} />;
   }
@@ -1705,7 +1668,6 @@ function NativeLibraryItemViewerBody({
       <ArtifactRenditionFailure
         message="正在签发文档源访问地址…"
         loading
-        onRetry={() => undefined}
       />
     );
   }
@@ -1713,7 +1675,6 @@ function NativeLibraryItemViewerBody({
     return (
       <ArtifactRenditionFailure
         message={preparedOffice.error}
-        onRetry={() => undefined}
       />
     );
   }

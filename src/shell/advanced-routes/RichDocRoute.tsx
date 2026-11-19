@@ -386,15 +386,7 @@ export function RichDocRoute({
         directDownload: exportDownloads[0],
         // 第一条格式是主交付物，已经由 directDownload 呈现；其余每个格式一条菜单项。
         actions: [
-          ...(officeSource.error && !editor.dirty
-            ? [
-                {
-                  id: "richdoc-refresh-office-source",
-                  label: "重新获取文件后重试",
-                  onTrigger: officeSource.retry,
-                },
-              ]
-            : []),
+
           ...exportDownloads.slice(1),
           {
             id: "richdoc-wechat-layout",

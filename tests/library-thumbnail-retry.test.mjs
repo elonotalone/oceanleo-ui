@@ -13,14 +13,14 @@ globalThis.IntersectionObserver = class {
   observe() {} disconnect() {}
   emit(value) { this.callback([{ isIntersecting: value }]); }
 };
-const { WorkspaceThumbnail } = await import(await compileModule('src/shell/workspace-library-thumbnail.tsx', {
+const { WorkspaceThumbnail, coverPreviewFallback } = await import(await compileModule('src/shell/workspace-library-thumbnail.tsx', {
   '../i18n/ui/useUI': dataModule('export const useUI=()=>s=>s;'),
   '../lib/auth/client': dataModule('export const accessToken=async()=>null;'),
-  '../lib/auth/config': dataModule('export const gatewayBase=()=>"https://gateway.test";'),
+  '../lib/auth/config': dataModule('export const GATEWAY_BASE="https://gateway.test"; export const gatewayBase=()=>GATEWAY_BASE;'),
   '../lib/database': dataModule('export const ensureDatabaseThumbnail=async()=>({ok:false});'),
   './advanced-features': dataModule('export const advancedLibraryReferenceFor=()=>null;'),
-  './ArtifactRendition': dataModule('export const useArtifactRendition=()=>globalThis.__retryRendition;'),
-  './library-data': dataModule('export const isDurableLibraryItem=()=>false; export const cacheableRenditionTwin=()=>null;'),
+  './ArtifactRendition': dataModule('export const useArtifactRendition=(item,purposes)=>{globalThis.__coverPurposes=purposes;const state=globalThis.__retryRendition;if(item?.artifact){const selected=item.artifact.renditions[purposes[0]];state.rendition=selected;state.url=selected?.url||"";}return state;}'),
+  './library-data': dataModule('export const isDurableLibraryItem=item=>Boolean(item?.artifact); export const cacheableRenditionTwin=()=>null;'),
   './document-shelf-cover': dataModule('export const itemUsesDocumentShelfCover=()=>false; export const DocumentShelfCover=()=>null;'),
   './document-cover-excerpt': dataModule('export const itemUsesTextDocumentCard=()=>false;'),
   './workspace-library-model': dataModule('export const WORKSPACE_KIND_LABELS={website:"网站"};'),
@@ -41,7 +41,11 @@ async function bench(missing = false, collection = {}) {
   const host=document.createElement('div');
   document.body.appendChild(host);
   let root, opened=0, starred=0;
-  const item={key:'cover',id:'cover',source:'creation',kind:'website',title:'Site',siteId:'',favorite:false,meta:{},thumbUrl:missing ? undefined : 'https://files.test/small.webp'};
+  const item={key:'cover',id:'cover',source:'creation',kind:'website',title:'Site',siteId:'',favorite:false,meta:{},previewUrl:'https://files.test/full.webp',thumbUrl:missing ? undefined : 'https://files.test/small.thumb.webp'};
+  if(collection.typed) {
+    item.kind='image';item.artifactId='root';item.revisionId='r1';
+    item.artifact={revisionId:'r1',renditions:Object.fromEntries(['thumbnail','preview'].map(purpose=>[purpose,{purpose,revisionId:'r1',url:purpose==='thumbnail'?item.thumbUrl:item.previewUrl,mediaType:'image/webp',width:200,height:100,format:'webp'}]))};
+  }
   const thumbnail = React.createElement(WorkspaceThumbnail,{url:missing ? undefined : 'https://files.test/full.png',item,alt:'Site',kind:'website',accent:'#333333',imageClassName:'cover'});
   const content = collection.Item ? React.createElement(collection.Item, {
     cover:thumbnail, title:'Site', openHref:collection.href,
@@ -60,95 +64,79 @@ async function bench(missing = false, collection = {}) {
     async close(){await act(async()=>root.unmount());host.remove();globalThis.setTimeout=originalSet;globalThis.clearTimeout=originalClear;}
   };
 }
-test('cover timeout preserves image and a late 200 load recovers',async()=>{
-  const b=await bench();try{
-    const image=b.host.querySelector('img');assert.equal(image.getAttribute('src'),'https://files.test/small.webp');
-    await b.tick(15000);assert.equal(b.host.querySelector('img'),image);assert.doesNotMatch(b.host.textContent,/封面不可用/);
-    await act(async()=>image.dispatchEvent(new window.Event('load',{bubbles:true})));
-    assert.equal(b.host.querySelector('[data-cover-state]').dataset.coverState,'ready');
-  }finally{await b.close();}
-});
-test('cover retries three times with backoff then resets when it re-enters viewport',async()=>{
-  const b=await bench();try{
-    for(const delay of [1000,2000,4000]){
-      await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
-      assert.ok(b.host.querySelector('img'));await b.tick(delay);
-    }
-    await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
-    assert.equal(b.failures,1);
-    await act(async()=>observer.emit(false));await act(async()=>observer.emit(true));
-    assert.equal(b.retries,1);
-    await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
-    await b.tick(1000);assert.ok(b.host.querySelector('img'));
-  }finally{await b.close();}
+test('cover fallback chooses full preview once and preserves signed URLs', () => {
+  assert.equal(coverPreviewFallback('https://files.test/small.thumb.webp'), 'https://files.test/small.webp');
+  assert.equal(coverPreviewFallback('https://files.test/small.thumb.webp', 'https://files.test/full.webp'), 'https://files.test/full.webp');
+  assert.equal(coverPreviewFallback('https://files.test/image.webp?signature=abc'), 'https://files.test/image.webp?signature=abc');
+  assert.equal(coverPreviewFallback('https://files.test/image.thumb.webp?signature=abc'), 'https://files.test/image.thumb.webp?signature=abc');
 });
 
-test('an actually missing cover keeps its explanation instead of timing out to a blank card',async()=>{
-  const b=await bench(true);try{
-    assert.ok(b.host.querySelector('[role="alert"]'));
+test('loading, failed and timeout covers never render a retry control', async () => {
+  const b=await bench(); try {
+    assert.equal(b.host.querySelector('button'), null);
+    const first=b.host.querySelector('img');
+    await act(async()=>first.dispatchEvent(new window.Event('error',{bubbles:true})));
+    assert.equal(b.host.querySelector('button'), null);
+    await b.tick(1000);
+    assert.equal(b.host.querySelector('img').getAttribute('src'), 'https://files.test/full.webp');
+    await b.tick(15000);
+    assert.equal(b.host.querySelector('button'), null);
+    assert.equal(b.host.querySelector('[data-cover-timeout]'), null);
+    await b.tick(2000);
+    await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('load',{bubbles:true})));
+    assert.equal(b.host.querySelector('[data-cover-state]').dataset.coverState,'ready');
+  } finally { await b.close(); }
+});
+
+test('a timed-out thumbnail falls back and a late successful load removes the loading look', async () => {
+  const b=await bench(); try {
+    await b.tick(15000);
+    assert.equal(b.host.querySelector('button'), null);
+    await b.tick(1000);
+    assert.equal(b.host.querySelector('img').getAttribute('src'), 'https://files.test/full.webp');
+    await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('load',{bubbles:true})));
+    assert.equal(b.host.querySelector('[data-cover-state]').dataset.coverState, 'ready');
+    assert.equal(b.host.querySelector('[role="status"]'),null);
+  } finally { await b.close(); }
+});
+
+test('known absent cover keeps its explicit explanation without a manual retry',async()=>{
+  const b=await bench(true); try {
+    assert.equal(b.host.querySelector('button'),null);
     assert.equal(b.hasTimer(15000),false);
-    assert.equal(b.host.querySelector('button[aria-label="重试"]'),null,'no retry when there is no cover resource');
-  }finally{await b.close();}
+  } finally { await b.close(); }
 });
 
 for (const Item of [CollectionItemCard, CollectionItemRow]) {
   for (const href of [undefined, '/library/site']) {
-    test(`${Item.name}: terminal cover failure retains a working independent retry with ${href ? 'link' : 'button'} primary action`, async(t)=>{
-      const errors=[];
-      t.mock.method(console,'error',(...args)=>errors.push(args));
-      const b=await bench(false,{Item,href,errors,terminal:true});
-      try{
-        for(const delay of [1000,2000,4000]){
+    test(`${Item.name}: recovering cover hydrates and leaves primary and Favorite actions usable (${href ?? 'button'})`,async(t)=>{
+      const errors=[]; t.mock.method(console,'error',(...args)=>errors.push(args));
+      const b=await bench(false,{Item,href,errors}); try {
+        for(const delay of [1000,2000,4000,8000,15000,30000,30000]) {
           await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
+          assert.equal(b.host.querySelector('button[aria-label="重试"]'),null);
           await b.tick(delay);
         }
-        await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
-        assert.equal(b.failures,1);
-        assert.equal(b.host.querySelector('[data-cover-state]').dataset.coverState,'error');
-        assert.match(b.host.querySelector('[role="alert"]').textContent,/封面不可用.*连不上素材服务，请检查网络后重试。/);
-        const image=b.host.querySelector('img');
-        const retry=b.host.querySelector('button[aria-label="重试"]');
-        assert.ok(retry,'terminal failure still offers the promised retry');
-        assert.equal(retry.parentElement.closest('button, a'),null);
-        await act(async()=>retry.click());
-        assert.equal(b.retries,1);assert.equal(b.opened,0);
-        assert.equal(b.host.querySelector('[role="alert"]'),null,'retry clears terminal error');
-        assert.notEqual(b.host.querySelector('img'),image,'retry remounts the actual cover resource');
-        await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
-        await b.tick(1000);
-        await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('load',{bubbles:true})));
-        assert.equal(b.host.querySelector('[data-cover-state]').dataset.coverState,'ready');
-        assert.equal(b.host.querySelector('button[aria-label="重试"]'),null);
-        assert.equal(b.host.querySelector('button button, button a, a button, a a'),null);
-      }finally{await b.close();}
-      assert.deepEqual(errors,[],'no console.error or recoverable hydration error');
-    });
-
-    test(`${Item.name}: failed real cover hydrates with independent retry and ${href ? 'link' : 'button'} primary action`, async(t)=>{
-      const errors=[];
-      t.mock.method(console,'error',(...args)=>errors.push(args));
-      const b=await bench(false,{Item,href,errors});
-      try{
-        await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
-        const retry=b.host.querySelector('button[aria-label="重试"]');
-        assert.ok(retry,'failed real cover exposes retry');
-        assert.equal(retry.closest('button, a'),retry);
-        assert.equal(retry.parentElement.closest('button, a'),null,'retry is outside the primary action');
         const primary=b.host.querySelector('.leo-collection-open');
-        assert.equal(primary.tagName,href ? 'A' : 'BUTTON');
-        if(href) assert.equal(primary.getAttribute('href'),href);
-        assert.equal(document.getElementById(primary.getAttribute('aria-labelledby')).textContent,'Site');
-        primary.focus();assert.equal(document.activeElement,primary);
-        retry.focus();assert.equal(document.activeElement,retry);
-        await act(async()=>retry.click());
-        assert.equal(b.retries,1);assert.equal(b.opened,0);
         await act(async()=>[...b.host.querySelectorAll('button')].find(button=>button.textContent==='Favorite').click());
-        assert.equal(b.starred,1);assert.equal(b.opened,0);
-        await act(async()=>primary.click());
-        assert.equal(b.opened,1);
+        assert.equal(b.starred,1); assert.equal(b.opened,0);
+        await act(async()=>primary.click()); assert.equal(b.opened,1);
         assert.equal(b.host.querySelector('button button, button a, a button, a a'),null);
-      }finally{await b.close();}
-      assert.deepEqual(errors,[],'no console.error or recoverable hydration error');
+      } finally { await b.close(); }
+      assert.deepEqual(errors,[]);
     });
   }
 }
+
+test('durable covers switch the rendition purpose from thumbnail to preview once',async()=>{
+  const b=await bench(false,{typed:true});try{
+    assert.equal(globalThis.__coverPurposes[0],'thumbnail');
+    assert.equal(b.host.querySelector('img').getAttribute('src'),'https://files.test/small.thumb.webp');
+    await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('error',{bubbles:true})));
+    await b.tick(1000);
+    assert.equal(globalThis.__coverPurposes[0],'preview');
+    assert.equal(b.host.querySelector('img').getAttribute('src'),'https://files.test/full.webp');
+    await act(async()=>b.host.querySelector('img').dispatchEvent(new window.Event('load',{bubbles:true})));
+    assert.equal(b.host.querySelector('[data-cover-state]').dataset.coverState,'ready');
+  }finally{await b.close();}
+});

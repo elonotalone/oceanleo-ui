@@ -1,5 +1,7 @@
 "use client";
 
+import { useAutoRecovery } from "../lib/auto-recovery";
+
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { LibraryItem } from "./library-data";
 import { useUI } from "../i18n/ui/useUI";
@@ -288,8 +290,8 @@ export function SpreadsheetViewer({ item, onResourceError }: { item: LibraryItem
     })().catch(() => { if (alive) setFailed(true); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; controller.abort(); };
   }, [item.key, sourceIdentity, retry]);
-  if (loading) return <div role="status" className="p-6">{tt("正在读取工作簿…")}</div>;
-  if (failed || !sheets[active]) return <div className="p-6"><p>{tt("未能读取表格内容。")}</p><button onClick={() => setRetry(v => v + 1)}>{tt("重试")}</button></div>;
+  useAutoRecovery(failed, () => setRetry(v => v + 1), sourceIdentity);
+  if (loading || failed || !sheets[active]) return <div role="status" className="p-6">{tt("正在读取工作簿…")}</div>;
   const sheet = sheets[active], rEnd = Math.min(sheet.rows, page.row + 300), cEnd = Math.min(sheet.columns, page.col + 60);
   return <div className="flex h-full min-h-[520px] flex-col bg-white" data-sheet-preview="readonly">
     <div className="flex gap-2 overflow-auto p-2">{sheets.map((s, i) => <button key={i} aria-pressed={active === i} onClick={() => { setActive(i); setPage({ row: 0, col: 0 }); }}>{s.name}</button>)}</div>

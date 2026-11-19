@@ -44,9 +44,7 @@ export function BayAssetActions(props: UseAssetActionsOptions) {
           onEdit={props.onEdit ? async (prepared) => props.onEdit?.({ ...entry, libraryItem: prepared }) : undefined}
           linkUrl={entry.linkUrl} />}
       </div>
-      {actions.failure && <p role="alert" className="mt-1 text-[11px] text-red-600">{tt(actions.failure)}
-        {actions.retry && <button type="button" disabled={actions.pending !== null} data-asset-action="retry" className="ml-2 underline" onClick={() => void actions.retry?.()}>{tt("重试")}</button>}
-      </p>}
+      {actions.recovering && <p role="status" className="mt-1 text-[11px] text-[var(--muted)]">{tt("正在刷新素材状态…")}</p>}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { useAutoRecovery } from "../lib/auto-recovery";
+
 /**
  * Library PDF preview: OceanLeo's own read-only reader on the EmbedPDF (PDFium)
  * engine.
@@ -104,6 +106,8 @@ export function LibraryPdfReader({
   const tt = useUI();
   const [opened, setOpened] = useState<PdfEngineDocument | null>(null);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useAutoRecovery(Boolean(error), () => { onRetry?.(); setAttempt(value => value + 1); }, title);
   const [width, setWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   // The loader closes over the item; only its identity-by-content matters.
@@ -139,7 +143,7 @@ export function LibraryPdfReader({
     };
     // `tt` only words the fallback message.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     const node = containerRef.current;
@@ -152,27 +156,6 @@ export function LibraryPdfReader({
     return () => observer.disconnect();
   }, [opened]);
 
-  if (error) {
-    return (
-      <div
-        role="alert"
-        className="flex min-h-[420px] flex-col items-center justify-center gap-3 p-4 text-center"
-      >
-        <p className="max-w-md text-[13px] leading-relaxed text-stone-500">
-          {error}
-        </p>
-        {onRetry ? (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="rounded-lg border border-stone-200 px-3 py-1.5 text-[12px] text-stone-600 hover:bg-stone-50"
-          >
-            {tt("重试")}
-          </button>
-        ) : null}
-      </div>
-    );
-  }
   if (!opened) {
     return (
       <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 p-4">

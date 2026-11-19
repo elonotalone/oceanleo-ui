@@ -1,35 +1,3 @@
-// ============================================================================
-// W07 P5-b — rendition 阶梯 / 失败态分档 / 重型查看器延迟挂载
-// ----------------------------------------------------------------------------
-// 四组判据，各自锁一件事：
-//
-//   ① 选档：图片族 + chart/website/game 取 `["preview","full"]`，其余取
-//     `["full","preview"]`。**任何 artifactType 都拿不到
-//     `thumbnail` / `source` / `editor_manifest`**——五档里那三档从不进查看器阶梯
-//     （`thumbnail` 只服务卡片，`source` 只服务下载，`editor_manifest` 只服务编辑器
-//     路由与保存）。这条既验纯函数，也验 `useArtifactRendition()` 真的按它取。
-//
-//   ② 签名过期：`expiresAt` 已过 ⇒ 挂载即重签，**不是报错**；重签回来的地址接手。
-//
-//   ③ 失败态分档（W07 P3 的全部意义）：
-//     - 「签名过期」按退避表自动重试，**最多三次**，第四次起 `exhausted: true`；
-//     - 「资源不存在」**一次都不重签**。两种来路都归这档：压根没有 `expiresAt`
-//       （不是签名地址，没有签名可换），或者刚换发过的新地址同样打不开
-//       （证明问题不在签名）。用计数器断言「不再发起任何重签请求」——
-//       这就是「用户不会一直点重试」的机器形式。
-//     - 用尽之后 `retry()` 必须真的还能再试一次，否则失败面上那个按钮是句空话。
-//
-//   ④ 延迟挂载的反向验证：五种重型 kind（ppt/sheet/document/threed/file）**加上
-//     `game`** 在进入视口前不挂载重型子树。`game` 是 P4 补上的那个缺口——它把整份
-//     自包含 HTML 送进沙箱 iframe，漏在闸外等于容器还没进视口就开始下载并执行整个
-//     游戏。**把 `game` 从 `HEAVY_LIBRARY_VIEWER_KINDS` 里摘掉，这里当场红。**
-//
-// ⚠️ `ArtifactRendition.tsx` 的重签缓存（`renditionRefreshCache` /
-// `renditionRefreshPending`）是**模块级**的，按 `artifactId:revisionId:purpose` 存。
-// 同一份编译产物在整份测试里只有一个实例，所以每个用例都得用**新的 artifactId**，
-// 否则上一例重签到的地址会被下一例当成缓存命中，计数器断言随即变成假绿。
-// ============================================================================
-
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -81,6 +49,7 @@ const NEVER_SETTLES = () => new Promise(() => {});
 const renditionModuleUrl = await compileModule(
   "src/shell/ArtifactRendition.tsx",
   {
+    "../i18n/ui/useUI": dataModule(`export const useUI=()=>s=>s;`),
     "./artifact-client": dataModule(`
       export async function refreshArtifactRendition(identity, purpose) {
         const bench = globalThis.__w07LadderBench;
@@ -408,146 +377,27 @@ test("expiresAt 已过：挂载即重签，新地址接手，不落在失败态�
 // ③ 失败态分档
 // ---------------------------------------------------------------------------
 
-test("签名档：退避重试最多三次，第四次起 exhausted，retry() 之后预算重置", async () => {
-  // 未过期但可签（带 expiresAt）：挂载时不重签，失败判定才走「签名」那一支。
-  const item = libraryItem("single_file_image", {
-    preview: { url: "https://signed.test/sig-preview.png", expiresAt: future() },
-  });
-  bench.reset(NEVER_SETTLES);
-
-  const mounted = await mountRendition(item);
-  try {
-    assert.equal(mounted.box.state.failure, null);
-
-    for (const attempt of [1, 2, 3]) {
+for (const expiresAt of [null, future()]) {
+  test(`transport failure recovers automatically with bounded backoff (${expiresAt ? "signed" : "public"})`, async t => {
+    const item = libraryItem("single_file_image", { preview: { url: "https://cdn.test/preview.png", expiresAt } });
+    bench.reset(async () => ({ ok: false, error: "temporary transport failure" }));
+    const mounted = await mountRendition(item);
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    try {
       await act(async () => mounted.box.state.resourceFailed());
-      const failure = mounted.box.state.failure;
-      assert.ok(failure, `第 ${attempt} 次失败没有落下失败态`);
-      assert.equal(failure.kind, "signature", `第 ${attempt} 次该判成签名过期`);
-      assert.equal(failure.attempts, attempt);
-      assert.equal(
-        failure.exhausted,
-        false,
-        `第 ${attempt} 次就宣告用尽——退避预算少于三次`,
-      );
-    }
-
-    // 第四次：退避表用尽，停下来，把决定权交回用户。
-    await act(async () => mounted.box.state.resourceFailed());
-    assert.equal(mounted.box.state.failure.kind, "signature");
-    assert.equal(mounted.box.state.failure.attempts, 3);
-    assert.equal(
-      mounted.box.state.failure.exhausted,
-      true,
-      "第四次仍未 exhausted——自动重试没有上限，网关会被打爆",
-    );
-
-    // 再多按几次也不许把预算涨回去。
-    await act(async () => mounted.box.state.resourceFailed());
-    assert.equal(mounted.box.state.failure.attempts, 3);
-    assert.equal(mounted.box.state.failure.exhausted, true);
-
-    // 失败面上那个按钮必须真的还能再试一次，否则它是句空话。
-    const before = bench.calls.length;
-    await act(async () => mounted.box.state.retry());
-    assert.equal(mounted.box.state.failure, null, "retry() 没有清掉失败态");
-    assert.ok(
-      bench.calls.length > before,
-      "retry() 没有真的再发一次重签——按钮是空的",
-    );
-  } finally {
-    await mounted.unmount();
-  }
-});
-
-test("资源档之一：没有 expiresAt 的地址失败，一次重签都不发", async () => {
-  // 不是签名地址 ⇒ 没有签名可换 ⇒ 重签是白跑。
-  const item = libraryItem("single_file_image", {
-    preview: { url: "https://cdn.test/public-preview.png", expiresAt: null },
+      assert.equal(mounted.box.state.failure.kind, "resource");
+      assert.equal(mounted.box.state.failure.exhausted, false);
+      assert.equal(bench.calls.length, 0, "no immediate signing loop");
+      for (const [index, delay] of [1000, 2000, 4000, 8000, 15000, 30000].entries()) {
+        await act(async () => t.mock.timers.tick(delay));
+        assert.equal(bench.calls.length, index + 1);
+      }
+      await mounted.unmount();
+      t.mock.timers.tick(30000);
+      assert.equal(bench.calls.length, 6, "unmount stops recovery");
+    } finally { t.mock.timers.reset(); }
   });
-  bench.reset(NEVER_SETTLES);
-
-  const mounted = await mountRendition(item);
-  try {
-    assert.equal(bench.calls.length, 0);
-    await act(async () => mounted.box.state.resourceFailed());
-    const failure = mounted.box.state.failure;
-    assert.ok(failure);
-    assert.equal(failure.kind, "resource", "没有签名可换却判成了签名过期");
-    assert.equal(failure.exhausted, true, "资源档必须直接停手");
-    assert.equal(
-      bench.calls.length,
-      0,
-      "资源不存在却发了重签请求——用户会一直点重试",
-    );
-
-    // 再失败几次也不许改判、更不许开始重签。
-    await act(async () => mounted.box.state.resourceFailed());
-    await act(async () => mounted.box.state.resourceFailed());
-    assert.equal(mounted.box.state.failure.kind, "resource");
-    assert.equal(bench.calls.length, 0);
-  } finally {
-    await mounted.unmount();
-  }
-});
-
-test("资源档之二：刚换发的新地址同样打不开 ⇒ resource + exhausted，且不再重签", async () => {
-  const item = libraryItem("single_file_image", {
-    preview: { url: "https://signed.test/expired-preview.png", expiresAt: past() },
-  });
-  bench.reset((identity, purpose) =>
-    Promise.resolve({
-      ok: true,
-      status: 200,
-      data: {
-        purpose,
-        revisionId: identity.revisionId,
-        url: "https://signed.test/resigned-preview.png",
-        mediaType: "image/png",
-        format: "png",
-        expiresAt: future(),
-        rendererVersion: null,
-        width: 1280,
-        height: 960,
-        byteSize: 120_000,
-        digest: "sha256:3f9a1c7d55aa00ff",
-      },
-    }),
-  );
-
-  const mounted = await mountRendition(item);
-  try {
-    // 前提：确实换发过一次，手里拿的是那个新地址。
-    assert.equal(bench.calls.length, 1);
-    assert.equal(mounted.box.state.url, "https://signed.test/resigned-preview.png");
-
-    await act(async () => mounted.box.state.resourceFailed());
-    const failure = mounted.box.state.failure;
-    assert.ok(failure);
-    assert.equal(
-      failure.kind,
-      "resource",
-      "刚换发的地址又挂了，问题不在签名，不该继续判成签名过期",
-    );
-    assert.equal(failure.exhausted, true);
-    assert.equal(
-      bench.calls.length,
-      1,
-      "证明了重签没用之后还在重签——这正是 P3 要消灭的死循环",
-    );
-
-    // 给退避表最长的一档留出富余：真要有自动重试，这段时间足够它跑掉。
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    assert.equal(
-      bench.calls.length,
-      1,
-      "资源档之后仍有计时器在自动重签",
-    );
-    assert.equal(mounted.box.state.failure.kind, "resource");
-  } finally {
-    await mounted.unmount();
-  }
-});
+}
 
 // ---------------------------------------------------------------------------
 // ④ 重型查看器：进视口之前不挂载

@@ -1,5 +1,7 @@
 "use client";
 
+import { startAutoRecovery, useAutoRecovery } from "../lib/auto-recovery";
+
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
@@ -103,6 +105,9 @@ export function previewPages(payload: unknown): PreviewPage[] {
 
 function usePreviewManifest(templateId: string): PreviewPage[] {
   const [result, setResult] = useState<{ templateId: string; pages: PreviewPage[] } | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useAutoRecovery(failed, () => setAttempt(value => value + 1), templateId);
   useEffect(() => {
     const controller = new AbortController();
     if (templateId) void (async () => {
@@ -110,15 +115,16 @@ function usePreviewManifest(templateId: string): PreviewPage[] {
         const response = await fetch(templateMaterialPreviewManifestUrl(templateId), {
           method: "GET", headers: { Accept: "application/json" }, credentials: "omit", signal: controller.signal,
         });
+        if (response.status === 404) { setResult({ templateId, pages: [] }); setFailed(false); return; }
         if (!response.ok) throw new Error(String(response.status));
         const payload: unknown = await response.json();
-        if (!controller.signal.aborted) setResult({ templateId, pages: previewPages(payload) });
+        if (!controller.signal.aborted) { setResult({ templateId, pages: previewPages(payload) }); setFailed(false); }
       } catch {
-        if (!controller.signal.aborted) setResult({ templateId, pages: [] });
+        if (!controller.signal.aborted) setFailed(true);
       }
     })();
     return () => controller.abort();
-  }, [templateId]);
+  }, [templateId, attempt]);
   return result?.templateId === templateId ? result.pages : [];
 }
 
@@ -241,36 +247,20 @@ function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
   const tt = useUI();
   const [result, setResult] = useState<ArtifactApiResult<ArtifactWebsitePreview> | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const startedAt = useRef(0);
+  const permanent = result?.status === 401 || result?.status === 403 || result?.code === "missing-source";
+  const ready = result?.ok && result.data?.status === "ready";
+  useAutoRecovery(Boolean(result) && !ready && !permanent, () => setAttempt(value => value + 1), `${item.artifactId}:${item.revisionId}`);
   useEffect(() => {
     const controller = new AbortController();
-    let renewal: ReturnType<typeof setTimeout> | undefined;
-    if (!startedAt.current || attempt === 0) startedAt.current = Date.now();
-    setResult(null);
-    void getArtifactWebsitePreview(item, controller.signal).then((next) => {
+    let stopRenewal = () => {};
+    void getArtifactWebsitePreview(item, controller.signal).then(next => {
       if (controller.signal.aborted) return;
       setResult(next);
-      if (next.ok && next.data?.status === "starting") {
-        const delay = Math.min(8_000, 500 * 2 ** Math.min(attempt, 4));
-        renewal = setTimeout(() => setAttempt((value) => value + 1), delay);
-      } else if (next.ok && next.data?.status === "ready" && next.data.expiresAt) {
-        renewal = setTimeout(
-          () => setAttempt((value) => value + 1),
-          Math.max(1_000, Date.parse(next.data.expiresAt) - Date.now() - 5_000),
-        );
-      } else if (!next.ok && Date.now() - startedAt.current < 3 * 60_000) {
-        renewal = setTimeout(() => setAttempt((value) => value + 1), Math.min(8_000, 500 * 2 ** Math.min(attempt, 4)));
-      } else if (!next.ok && Date.now() - startedAt.current >= 3 * 60_000) {
-        setResult({ ok: true, data: {
-          status: "failed", sourceFormat: "website",
-          reason: { code: "preview_timeout", origin: "service", message: "网站预览准备超时，OceanLeo 预览服务出错，我们会修复" },
-        } });
+      if (next.ok && next.data?.status === "ready" && next.data.expiresAt) {
+        stopRenewal = startAutoRecovery(() => { stopRenewal(); setAttempt(value => value + 1); }, { delayMs: Math.max(1000, Date.parse(next.data.expiresAt) - Date.now() - 5000) });
       }
-    });
-    return () => {
-      controller.abort();
-      clearTimeout(renewal);
-    };
+    }).catch(() => { if (!controller.signal.aborted) setResult({ ok: false, code: "network-error" }); });
+    return () => { controller.abort(); stopRenewal(); };
   }, [item.artifactId, item.revisionId, attempt]);
 
   if (!result) {
@@ -293,7 +283,7 @@ function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
       </Panel>
     );
   }
-  if (result.ok && result.data?.status === "failed") {
+  if (result.ok && result.data?.status === "failed" && result.data.reason?.origin === "site") {
     const reason = result.data.reason;
     const isSiteFailure = reason?.origin === "site";
     return (
@@ -306,13 +296,6 @@ function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
             {reason.log.join("\n")}
           </pre>
         ) : null}
-        <button
-          type="button"
-          onClick={() => setAttempt((value) => value + 1)}
-          className="min-h-9 rounded-lg border border-stone-200 bg-white px-3 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
-        >
-          {tt(isSiteFailure ? "关闭" : "重试")}
-        </button>
       </Panel>
     );
   }
@@ -327,6 +310,7 @@ function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
   const allowPublicTemplate = !missing && (result.status === 401 || !denied);
   const templateId = allowPublicTemplate ? templateMaterialPreviewId(item) : "";
   if (templateId) return <TemplateMaterialPreview templateId={templateId} title={item.title} />;
+  if (!denied && !missing) return <Panel><span className="v-spinner h-5 w-5" /><p role="status">{tt("正在打开网站页面…")}</p></Panel>;
   const notice = denied
     ? "没有权限查看这个网站，请确认登录账号。"
     : missing
@@ -347,13 +331,6 @@ function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
           {tt(EXIT_HINT)}
         </p>
       )}
-      <button
-        type="button"
-        onClick={() => setAttempt((value) => value + 1)}
-        className="min-h-9 rounded-lg border border-stone-200 bg-white px-3 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
-      >
-        {tt("重试")}
-      </button>
     </Panel>
   );
 }
@@ -394,6 +371,10 @@ function LegacyWebsiteArtifactViewer({ item }: { item: LibraryItem }) {
     "";
   const previewTemplateId = templateMaterialPreviewId(item);
 
+  useAutoRecovery(plan.surface !== "page" && probe.status !== "probing" && !previewTemplateId, () => {
+    rendition.retry();
+    setProbeNonce(value => value + 1);
+  }, item.key);
   if (rendition.loading && !rendition.url) {
     return (
       <Panel>
@@ -434,26 +415,12 @@ function LegacyWebsiteArtifactViewer({ item }: { item: LibraryItem }) {
     <Panel>
       {cover && <StaticCover url={cover} title={item.title} />}
       <p className="max-w-xl text-center text-[13px] leading-relaxed text-stone-700">
-        {tt(plan.notice)}
+        {tt("正在打开网站页面…")}
       </p>
       <p className="max-w-xl text-center text-[12px] leading-relaxed text-stone-500">
         {tt(EXIT_HINT)}
       </p>
-      {isDisplayableText(rendition.error) && (
-        <p className="max-w-xl text-center text-[12px] leading-relaxed text-stone-400">
-          {rendition.error}
-        </p>
-      )}
-      <button
-        type="button"
-        onClick={() => {
-          rendition.retry();
-          setProbeNonce((value) => value + 1);
-        }}
-        className="min-h-9 rounded-lg border border-stone-200 bg-white px-3 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
-      >
-        {tt("重试")}
-      </button>
+
     </Panel>
   );
 }
@@ -562,8 +529,22 @@ function SandboxedPage({ url, title }: { url: string; title: string }) {
  * 沙箱值出现两遍，将来就会有一遍被单独放宽。
  */
 function UntrustedFrame({ url, title }: { url: string; title: string }) {
+  const [attempt, setAttempt] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useAutoRecovery(failed && !ready, () => setAttempt(value => value + 1), url);
+  useEffect(() => {
+    setReady(false);
+    setFailed(false);
+    const timeout = setTimeout(() => setFailed(true), 15_000);
+    return () => clearTimeout(timeout);
+  }, [url, attempt]);
   return (
     <iframe
+      key={attempt}
+      onLoad={() => { setReady(true); setFailed(false); }}
+      onError={() => { setReady(false); setFailed(true); }}
+      aria-busy={!ready}
       src={url}
       title={title}
       className="min-h-0 flex-1 border-0 bg-white"
