@@ -99,13 +99,12 @@ function hasClasses(root,classes){return [...root.querySelectorAll('*')].some(el
 const fixtures=[
  ['conversation/ForwardMessagesDialog','ForwardMessagesDialog',{targets:[],error:null,busy:false,onClose(){},onForward(){}}],
  ['groups/ConversationInfoPanel','ConversationInfoPanel',{conversationId:'c1',onClose(){},onOpenConversation(){}}],
- ['groups/NewConversationDialog','NewConversationDialog',{open:true,onClose(){},onCreated(){},presetMemberIds:['u1','u2']}],
  ['groups/TeamInviteDialog','TeamInviteDialog',{orgId:'o1',onClose(){}}],
  ['groups/UpgradeToTeamDialog','UpgradeToTeamDialog',{conversationId:'c1',onClose(){},onDone(){}}],
- ['people/InviteLinkDialog','InviteLinkDialog',{onClose(){}}],
+ ['people/InviteLinkDialog','InviteLinkDialog',{onClose(){},conversationId:'c1'}],
  ['invite/InviteAcceptDialog','InviteAcceptDialog',{code:'fixture',onClose(){},onDone(){}}],
  ['people/ProfileCard','ProfileCard',{userId:'u1',onClose(){},onOpenConversation(){}}],
- ['people/RequestsList','RequestsList',{onBack(){}}],['people/BlockedList','BlockedList',{onBack(){}}],
+ ['people/BlockedList','BlockedList',{onBack(){}}],
  ['search/SearchView','SearchView',{onOpenResult(){},onBack(){}}],
  ['SettingsView','SettingsView',{onOpenBlocks(){}}],
  ['report/ReportDialog','ReportDialog',{target:{kind:'user',id:'u1'},onClose(){}}],
@@ -115,11 +114,11 @@ const fixtures=[
  ['cases/MessagesContentCases','MessagesContentCases',{onBack(){}}],
  ['call/diagnostics/CallTestPanel','CallTestPanel',{open:true,onClose(){}}],
 ];
-test('fixtures inventory stays complete',()=>assert.equal(fixtures.length,18));
+test('fixtures inventory stays complete',()=>assert.equal(fixtures.length,16));
 for(const [rel,name,props] of fixtures) test(`${name} uses its assigned frame and size`,async()=>{
  const Component=await surface(`src/shell/messages/${rel}.tsx`,name), view=await mount(Component,props);
  try {
-  const compact=['UpgradeToTeamDialog','InviteAcceptDialog'].includes(name);
+  const compact=['UpgradeToTeamDialog','InviteAcceptDialog','ProfileCard'].includes(name);
   const panel=document.querySelector(compact?'[data-message-prompt]':'[data-message-settings-frame]');assert.ok(panel,name);
   if(compact){
    assert.equal(document.querySelector('[data-message-settings-frame]'),null);
@@ -140,14 +139,6 @@ for(const [rel,name,props] of fixtures) test(`${name} uses its assigned frame an
   if(!['ConversationInfoPanel','SettingsView','CallTestPanel','MessagesContentCases'].includes(name))assert.ok(hasClasses(panel,frame.CARD),`${name}: Settings CARD`);
   assert.ok(hasClasses(panel,frame.QUIET),`${name}: Settings button`);
   assert.ok(hasClasses(panel,frame.CARD_TITLE),`${name}: Settings title`);
-  if(name==='NewConversationDialog'){
-   const chips=panel.querySelector('[data-picker-chips]'),search=panel.querySelector('input[type=search]');
-   assert.ok(chips.compareDocumentPosition(search)&window.Node.DOCUMENT_POSITION_FOLLOWING);
-   assert.equal(chips.querySelectorAll('button').length,2);
-   assert.equal(panel.querySelector('aside'),null);
-   assert.ok(panel.querySelector('[data-field=title]'));
-   assert.ok(hasClasses(panel,frame.PRIMARY));assert.ok(hasClasses(panel,frame.QUIET));
-  }
  } finally {await view.close();}
 });
 test('replay picker uses shared settings frame',async()=>{
@@ -204,27 +195,6 @@ test('call issue details stay a 320px anchored popover',async()=>{
  const Component=await surface('src/shell/messages/call/diagnostics/CallIssueButton.tsx','CallIssueButton');
  const view=await mount(Component);
  try{await act(async()=>view.host.querySelector('[data-call-issue-button]').click());assert.equal(view.host.querySelector('[data-call-issue-panel]').style.width,'320px');assert.equal(view.host.querySelector('[data-message-settings-frame]'),null);assert.ok(hasClasses(view.host,frame.QUIET));}finally{await view.close();}
-});
-
-test('new conversation chips remove people, then Done opens the selected DM',async()=>{
- const Component=await surface('src/shell/messages/groups/NewConversationDialog.tsx','NewConversationDialog');let opened;
- const view=await mount(Component,{open:true,onClose(){},onCreated(id){opened=id;},presetMemberIds:['u1','u2']});
- try{
-  await act(async()=>view.host.querySelector('[data-picker-chips] button').click());
-  assert.equal(view.host.querySelectorAll('[data-picker-chips] button').length,1);assert.equal(view.host.querySelector('[data-field=title]'),null);
-  await act(async()=>view.host.querySelector('[data-action=start-dm]').click());
-  assert.equal(opened,'dm-fixture');assert.deepEqual(globalThis.__LC2Created,{kind:'dm',id:'u2'});
- }finally{await view.close();}
-});
-test('new group keeps selected members and shows the actual creation result before entering',async()=>{
- const Component=await surface('src/shell/messages/groups/NewConversationDialog.tsx','NewConversationDialog');let opened;
- const view=await mount(Component,{open:true,onClose(){},onCreated(id){opened=id;},presetMemberIds:['u1','u2']});
- try{
-  await act(async()=>view.host.querySelector('[data-action=create-group]').click());
-  assert.deepEqual(globalThis.__LC2Created,{kind:'group',input:{title:'',member_ids:['u1','u2']}});assert.equal(opened,undefined);
-  assert.match(view.host.querySelector('[data-create-result]').textContent,/已加入 2 人/);
-  await act(async()=>view.host.querySelector('[data-action=enter]').click());assert.equal(opened,'group-fixture');
- }finally{await view.close();}
 });
 
 test('diagnostic dialog portal has the exact collapsed Settings size',async()=>{

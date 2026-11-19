@@ -150,14 +150,14 @@ test("portalInviteUrlOf：只认 https 且 origin 正好是本家门户", () => 
 });
 
 test("qrFileName：说明文字变成 .png 文件名，去掉非法字符", () => {
-  assert.equal(qrFileName("邀请二维码-加联系人"), "邀请二维码-加联系人.png");
+  assert.equal(qrFileName("邀请二维码-加入群聊"), "邀请二维码-加入群聊.png");
   assert.equal(qrFileName("邀请二维码-加入 Team"), "邀请二维码-加入-Team.png");
   assert.equal(qrFileName('a/b\\c:d*e?"f<g>h|'), "abcdefgh.png");
   assert.equal(qrFileName("  "), "invite-qr.png");
 });
 
 test("InviteQrCode：本家门户地址出码（<img data:image/png>）并有下载 PNG 的按钮", async () => {
-  const view = await mount(React.createElement(InviteQrCode, { url: GOOD, fileLabel: "邀请二维码-加联系人" }));
+  const view = await mount(React.createElement(InviteQrCode, { url: GOOD, fileLabel: "邀请二维码-加入群聊" }));
   try {
     const img = view.q("img[data-invite-qr]");
     assert.ok(img, "应该画出二维码");
@@ -167,7 +167,7 @@ test("InviteQrCode：本家门户地址出码（<img data:image/png>）并有下
     const dl = view.q('a[data-action="download-qr"]');
     assert.ok(dl, "应该有下载二维码");
     assert.match(dl.getAttribute("href"), PNG);
-    assert.equal(dl.getAttribute("download"), "邀请二维码-加联系人.png");
+    assert.equal(dl.getAttribute("download"), "邀请二维码-加入群聊.png");
     assert.equal(dl.textContent, "下载二维码");
     assert.equal(view.qa("svg").length, 0, "不用 SVG 字符串注入");
   } finally {
@@ -213,12 +213,12 @@ test("InviteQrCode 源码：用 toDataURL，不用 SVG 字符串 + dangerouslySe
 
 function linkRow(over = {}) {
   return {
-    code: "abc123", kind: "contact", url: GOOD, conversation_id: null, requires_approval: false,
+    code: "abc123", kind: "group", url: GOOD, conversation_id: "c1", requires_approval: false,
     max_uses: null, uses: 0, expires_at: null, created_at: "2026-10-06T00:00:00Z", ...over,
   };
 }
 
-test("联系人邀请：生成链接后自动出二维码，能下载；已有链接可显示 / 隐藏二维码", async () => {
+test("群邀请：生成链接后自动出二维码，能下载；已有链接可显示 / 隐藏二维码", async () => {
   const existing = linkRow({ code: "old1", url: "https://oceanleo.com/join?code=old1" });
   const created = linkRow({ code: "new1", url: "https://oceanleo.com/join?code=new1" });
   const store = [existing];
@@ -228,19 +228,19 @@ test("联系人邀请：生成链接后自动出二维码，能下载；已有�
       "POST /v1/im/invite-links": () => { store.push(created); return { link: created }; },
     }),
   };
-  const view = await mount(React.createElement(InviteLinkDialog, { onClose() {} }), im);
+  const view = await mount(React.createElement(InviteLinkDialog, { onClose() {}, conversationId: "c1" }), im);
   try {
     assert.equal(view.q("img[data-invite-qr]"), null, "还没点开就没有码");
     await view.click(view.q('[data-invite-code="old1"] [data-action="toggle-qr"]'));
     assert.ok(view.q('[data-invite-code="old1"] img[data-invite-qr]'), "已有链接显示二维码");
     assert.equal(view.q('[data-invite-code="old1"] [data-action="toggle-qr"]').textContent, "隐藏二维码");
-    assert.equal(view.q('[data-invite-code="old1"] a[data-action="download-qr"]').getAttribute("download"), "邀请二维码-加联系人.png");
+    assert.equal(view.q('[data-invite-code="old1"] a[data-action="download-qr"]').getAttribute("download"), "邀请二维码-加入群聊.png");
     await view.click(view.q('[data-invite-code="old1"] [data-action="toggle-qr"]'));
     assert.equal(view.q("img[data-invite-qr]"), null, "再点一下收起");
 
     await view.click(view.q('[data-action="generate"]'));
     const posted = im.fetch.calls.find((c) => c.method === "POST");
-    assert.equal(posted.json.kind, "contact");
+    assert.equal(posted.json.kind, "group");
     assert.ok(view.q('[data-invite-code="new1"] img[data-invite-qr]'), "新生成的链接自动展开二维码");
     assert.equal(view.qa("img[data-invite-qr]").length, 1);
   } finally {
@@ -264,7 +264,7 @@ test("群邀请链接：同样有二维码和下载，文件名说明是加入�
 test("邀请链接不是本家门户地址时：不出码，链接和复制照常可用", async () => {
   const link = linkRow({ code: "x1", url: "https://evil.example.com/join?code=x1" });
   const im = { fetch: router({ "GET /v1/im/invite-links": { items: [link] } }) };
-  const view = await mount(React.createElement(InviteLinkDialog, { onClose() {} }), im);
+  const view = await mount(React.createElement(InviteLinkDialog, { onClose() {}, conversationId: "c1" }), im);
   try {
     await view.click(view.q('[data-invite-code="x1"] [data-action="toggle-qr"]'));
     assert.equal(view.q("img[data-invite-qr]"), null);

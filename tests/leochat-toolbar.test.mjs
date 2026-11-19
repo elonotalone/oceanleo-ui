@@ -73,7 +73,7 @@ const inboxStubs = {
   "../../lib/im/search-api": dataModule(`export function searchQueryReady(){ return false; }`),
   "./InboxRow": dataModule(`export function InboxRow(){ return null; }`),
   "./notices/InboxNoticesRow": dataModule(`export function InboxNoticesRow(){ return null; }`),
-  "./people/InviteLinkDialog": dataModule(`export function InviteLinkDialog(){ return null; }`),
+  "./groups/NewConversationDialog": dataModule(`export function NewConversationDialog(){ return null; }`),
   "./search/SearchView": dataModule(`export function SearchView(){ return null; }`),
   "./realtime/hooks": dataModule(`
     export function useImInbox(){ return { items: [], filter: "all", loaded: true, loading: false, error: null, nextCursor: null }; }
@@ -95,7 +95,7 @@ const peopleStubs = {
   "../realtime/hooks": dataModule(`export function useImEvent(){}`),
   "./BlockedList": dataModule(`export function BlockedList(){ return null; }`),
   "./ContactList": dataModule(`export function ContactList(){ return null; }`),
-  "./InviteLinkDialog": dataModule(`export function InviteLinkDialog(){ return null; }`),
+  "./PeopleDiscovery": dataModule(`export function FindPeople(){ return null; }`),
   "./ProfileCard": dataModule(`export function ProfileCard(){ return null; }`),
   "./RequestsList": dataModule(`export function RequestsList(){ return null; }`),
 };
@@ -137,7 +137,10 @@ test("Inbox、PeopleView 各有一套头部；没有横向滚动容器；LeoBay 
   assert.doesNotMatch(src("shell/bay/shell/BayList.tsx"), /data-leochat-toolbar/);
 });
 
-test("InviteLinkDialog 联系人那一种的标题是添加联系人", () => {
+test("personal invite entry routes to Find people; both toolbars have no menus", () => {
   const text = src("shell/messages/people/InviteLinkDialog.tsx");
-  assert.match(text, /kind === "group" \? tt\("群邀请链接"\) : tt\("添加联系人"\)/);
+  assert.match(text, /<FindPeople /);
+  for (const out of [html(React.createElement(Inbox, { onOpenConversation() {}, onNew() {}, onOpenNotices() {}, activeConversationId: null })), html(React.createElement(PeopleView, { onOpenConversation() {} }))]) {
+    assert.doesNotMatch(out, /aria-haspopup="menu"/);
+  }
 });

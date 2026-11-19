@@ -140,6 +140,7 @@ async function mount(element, im) {
 }
 
 const STUBS = {
+  "../people/ProfileCard": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function ProfileCard({userId, onOpenConversation}) { return React.createElement("button", { "data-profile-card": userId, onClick: () => onOpenConversation("dm-profile") }, "Follow / Message"); }`),
   "../../../i18n/ui/useUI": uiHookStub,
   "../../../ui": uiPrimitivesStub,
   "../../../lib/im/client": imClientStub,
@@ -185,19 +186,6 @@ test("inviteOutcomeOf：结果与失效的归一", () => {
   assert.equal(inviteOutcomeOf({ error: { status: 410, code: "gone" } }), "gone");
   assert.equal(inviteOutcomeOf({ error: { status: 404, code: "not_found" } }), "gone");
   assert.equal(inviteOutcomeOf({ error: { status: 202, code: "need_consent" } }), "pending");
-});
-
-test("联系人邀请：预览显示谁邀请；接受 → 成为联系人，onDone 不带会话", async () => {
-  const { view, im, done } = await open({ [PREVIEW]: contactPreview(), [ACCEPT]: { status: "contact" } });
-  try {
-    assert.match(view.text(), /邀请人小林/);
-    assert.match(view.text(), /邀请你成为联系人/);
-    await view.click(view.q('[data-action="accept"]'));
-    assert.deepEqual(done, [{ conversationId: null }]);
-    assert.ok(im.fetch.calls.some((c) => c.method === "POST" && c.path.endsWith("/accept")));
-  } finally {
-    view.cleanup();
-  }
 });
 
 test("群邀请：预览显示群名、邀请人、人数；接受 → 进群，onDone 带会话 id", async () => {
@@ -257,7 +245,7 @@ test("链接失效：预览 410 / 404、预览 expired、接受时才发现失�
 });
 
 test("其他拒绝（如被拉黑）：留在预览页，显示后端给的原因", async () => {
-  const { view, done } = await open({ [PREVIEW]: contactPreview(), [ACCEPT]: () => { throw apiError(403, "blocked", "对方不接收你的邀请") } });
+  const { view, done } = await open({ [PREVIEW]: groupPreview(), [ACCEPT]: () => { throw apiError(403, "blocked", "对方不接收你的邀请") } });
   try {
     await view.click(view.q('[data-action="accept"]'));
     assert.match(view.q('[role="alert"]').textContent, /对方不接收你的邀请/);
@@ -268,16 +256,7 @@ test("其他拒绝（如被拉黑）：留在预览页，显示后端给的原�
   }
 });
 
-test("已经是联系人 / 已在群里 / 已申请过：不再显示接受；群成员可以直接打开群", async () => {
-  {
-    const { view } = await open({ [PREVIEW]: contactPreview({ already: "contact" }) });
-    try {
-      assert.ok(view.q('[data-already="contact"]'));
-      assert.equal(view.q('[data-action="accept"]'), null);
-    } finally {
-      view.cleanup();
-    }
-  }
+test("已在群里 / 已申请过：不再显示接受；群成员可以直接打开群", async () => {
   {
     const { view, done } = await open({ [PREVIEW]: groupPreview({ already: "member" }) });
     try {
@@ -300,7 +279,7 @@ test("已经是联系人 / 已在群里 / 已申请过：不再显示接受；�
 });
 
 test("没登录：先出登录框（不打预览接口）；登录成功后停在同一个邀请，显示预览", async () => {
-  const { view, im } = await open({ [PREVIEW]: contactPreview() }, { signedIn: false });
+  const { view, im } = await open({ [PREVIEW]: groupPreview() }, { signedIn: false });
   try {
     assert.ok(view.q("[data-auth-dialog]"), "先引导登录");
     assert.equal(im.fetch.calls.length, 0, "没登录不请求邀请预览");
@@ -323,27 +302,13 @@ test("预览回 401（令牌过期）：也引导登录，而不是显示失效"
   }
 });
 
-test("好友邀请需要同意，留言随请求发出，等待文案指向对方", async () => {
-  const { view, im, done } = await open({ [PREVIEW]: contactPreview({ requires_approval: true }), [ACCEPT]: { status: "pending" } });
+test("personal invite opens the public profile instead of requesting friendship", async () => {
+  const { view, im, done } = await open({ [PREVIEW]: contactPreview() });
   try {
-    assert.equal(view.q('[data-action="accept"]').textContent, "发送好友请求");
-    await view.type(view.q('input'), "We met at work");
-    await view.click(view.q('[data-action="accept"]'));
-    assert.deepEqual(done, []);
-    assert.match(view.text(), /等对方同意/);
-    assert.doesNotMatch(view.text(), /群管理员/);
-    assert.deepEqual(im.fetch.calls.find((c) => c.path.endsWith("/accept")).json, { message: "We met at work" });
-  } finally { view.cleanup(); }
-});
-
-test("已有好友申请的邀请链接仍可更正留言再发一次，拒绝不会改变这个界面", async () => {
-  const { view, im, done } = await open({ [PREVIEW]: contactPreview({ requires_approval: true, already: "pending" }), [ACCEPT]: { status: "pending" } });
-  try {
-    assert.equal(view.q('[data-action="accept"]').textContent, "再发一次请求");
-    await view.type(view.q("input"), "Corrected note");
-    await view.click(view.q('[data-action="accept"]'));
-    assert.deepEqual(done, []);
-    assert.deepEqual(im.fetch.calls.find((c) => c.path.endsWith("/accept")).json, { message: "Corrected note" });
-    assert.match(view.text(), /等对方同意/);
+    assert.equal(view.q("[data-profile-card]").getAttribute("data-profile-card"), "u-inviter");
+    assert.equal(view.q('[data-action="accept"]'), null);
+    await view.click(view.q("[data-profile-card]"));
+    assert.deepEqual(done, [{ conversationId: "dm-profile" }]);
+    assert.ok(!im.fetch.calls.some(c => c.method === "POST"));
   } finally { view.cleanup(); }
 });
