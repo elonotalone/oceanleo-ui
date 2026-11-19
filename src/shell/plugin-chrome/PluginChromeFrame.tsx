@@ -785,7 +785,7 @@ export function PluginChromeFrame({
               pointerEvents: sidePanel ? "auto" : "none",
               borderRightWidth: sidePanel ? undefined : 0,
             }}
-            className="flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] transition-[width,flex-basis,opacity] duration-300 ease-out motion-reduce:transition-none"
+            className="flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] transition-[width,flex-basis,opacity] duration-[var(--leo-dur-4)] ease-out motion-reduce:transition-none"
           >
             {displayedPanel && (
               <>

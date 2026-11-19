@@ -14,7 +14,7 @@ import { sealVaultValue } from "../../lib/vault-seal";
 export type VaultPrefill = { name?: string; kind?: string; target?: string };
 
 const FIELD = "w-full rounded-lg border border-neutral-200 bg-transparent px-3 py-2 text-[13px] outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:border-neutral-700";
-const QUIET = "rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800";
+const QUIET = "rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800";
 const PRIMARY = "rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900";
 
 /** Shared by the two vault surfaces; callers supply prose in both supported fallbacks. */

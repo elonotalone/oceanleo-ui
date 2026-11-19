@@ -303,7 +303,7 @@ html.dark [data-oceanleo-sidebar-expand]:focus-visible {
   pointer-events: none;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
   transform: translateY(-50%);
-  animation: leo-rail-tip-in var(--leo-dur-3, 160ms) var(--leo-ease-standard, ease-out);
+  animation: leo-rail-tip-in var(--leo-dur-3) var(--leo-ease-standard);
 }
 [data-oceanleo-rail-tip-bubble][data-rtl] {
   transform: translate(-100%, -50%);

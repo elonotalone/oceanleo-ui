@@ -346,7 +346,7 @@ function CallTestDialog({ onClose }: { onClose(): void }) {
                 <span
                   key={index}
                   aria-hidden="true"
-                  className={`flex-1 rounded-[2px] transition-colors duration-75 ${
+                  className={`flex-1 rounded-[2px] transition-colors duration-[var(--leo-dur-1)] ${
                     micLevel * 20 > index
                       ? index >= 17
                         ? "bg-red-500"

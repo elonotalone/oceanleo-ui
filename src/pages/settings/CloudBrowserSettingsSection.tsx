@@ -17,7 +17,7 @@ import { MyBrowserPanel } from "./MyBrowserPanel";
 import { CloudBrowserFlowsSection } from "./CloudBrowserFlowsSection";
 
 const card = "rounded-2xl border border-neutral-200 p-5 dark:border-neutral-800";
-const button = "rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-600 outline-none transition-colors hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-sky-400 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800";
+const button = "rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-600 outline-none transition-colors duration-[var(--leo-dur-2)] hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-sky-400 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800";
 const description = "mt-1 text-[12px] leading-relaxed text-neutral-500";
 type SettingsData = { settings: BrowserTrustSettings; logins: BrowserSavedLogin[]; approvals: BrowserApprovalGrant[] };
 type LoginDeleteRequest = {

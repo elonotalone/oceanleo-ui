@@ -98,7 +98,7 @@ export function ChangeEmailDialog({ currentEmail, onClose, onChanged }: ChangeEm
             type="button"
             aria-label={tt("关闭")}
             onClick={onClose}
-            className={`rounded-lg p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 ${RING}`}
+            className={`rounded-lg p-1 text-neutral-400 transition duration-[var(--leo-dur-2)] hover:bg-neutral-100 hover:text-neutral-700 ${RING}`}
           >
             <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
               <path

@@ -154,7 +154,7 @@ function CallStartedCard({ message, meta }: { message: ImMessage; meta: CallCard
               disabled={join.pending || join.state === "busy" || join.state === "hidden"}
               onClick={() => void join.run({ title: ctx.conversationTitle || undefined, callId: meta.callId })}
               className={
-                "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors disabled:opacity-60 " +
+                "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors duration-[var(--leo-dur-2)] disabled:opacity-60 " +
                 (inThis
                   ? "bg-neutral-50 text-neutral-700 hover:bg-neutral-100 dark:bg-neutral-900/15 dark:text-neutral-300"
                   : "bg-neutral-900 text-white hover:bg-neutral-900")

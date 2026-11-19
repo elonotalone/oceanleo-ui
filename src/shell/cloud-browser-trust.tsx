@@ -5,7 +5,7 @@ import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import type { BrowserApprovalScope } from "../lib/browser-trust";
 import { useCloudBrowserTrust, useCloudBrowserTrustVisible } from "./cloud-browser-trust-state";
 
-const button = "rounded-lg border border-neutral-200 px-3 py-2 text-[12px] font-medium text-neutral-700 outline-none transition-colors hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50";
+const button = "rounded-lg border border-neutral-200 px-3 py-2 text-[12px] font-medium text-neutral-700 outline-none transition-colors duration-[var(--leo-dur-2)] hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50";
 
 export function browserTrustActionLabel(kind: string, tt: UITranslate): string {
   const labels: Record<string, string> = {
@@ -51,7 +51,7 @@ export function CloudBrowserTrustPanel({
       )}
       {canOfferLogin && (
         <div className="pointer-events-auto flex flex-col items-end gap-1">
-          <button type="button" disabled={trust.busy} aria-busy={trust.busy} data-cloud-browser-login-offer onClick={() => void trust.offerLogin()} className="rounded-lg bg-stone-900/90 px-3 py-1.5 text-[12px] text-stone-200 outline-none transition-colors hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">{tt("保存此网站的登录")}</button>
+          <button type="button" disabled={trust.busy} aria-busy={trust.busy} data-cloud-browser-login-offer onClick={() => void trust.offerLogin()} className="rounded-lg bg-stone-900/90 px-3 py-1.5 text-[12px] text-stone-200 outline-none transition-colors duration-[var(--leo-dur-2)] hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">{tt("保存此网站的登录")}</button>
           {trust.busy && <p role="status" className="rounded-lg bg-stone-900/90 px-2 py-1 text-[11px] text-stone-200">{tt("正在请求保存确认…")}</p>}
         </div>
       )}

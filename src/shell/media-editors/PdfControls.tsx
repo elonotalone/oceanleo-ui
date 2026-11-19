@@ -149,7 +149,7 @@ export const PdfControls = memo(function PdfControls({
               setDropAt(index);
             }}
             onDrop={(event) => drop(event, index)}
-            className={`group relative rounded-lg p-1 transition ${
+            className={`group relative rounded-lg p-1 transition duration-[var(--leo-dur-2)] ${
               dropAt === index && dragFrom !== index
                 ? "ring-2 ring-[var(--awb-accent)]"
                 : current
@@ -176,7 +176,7 @@ export const PdfControls = memo(function PdfControls({
               </span>
             </button>
             {!locked ? (
-              <div className="pointer-events-none absolute right-0.5 top-0.5 flex opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+              <div className="pointer-events-none absolute right-0.5 top-0.5 flex opacity-0 transition duration-[var(--leo-dur-2)] group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
                 <button
                   type="button"
                   data-pdf-page-rotate={page}

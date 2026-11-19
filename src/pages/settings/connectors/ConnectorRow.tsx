@@ -72,7 +72,7 @@ function ConnectorRowMenu({
     run();
   };
   const item =
-    "block w-full rounded-lg px-3 py-2 text-left text-[13px] transition hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none dark:hover:bg-neutral-800";
+    "block w-full rounded-lg px-3 py-2 text-left text-[13px] transition duration-[var(--leo-dur-2)] hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none dark:hover:bg-neutral-800";
   return (
     <div ref={rootRef} className="relative" data-connector-row-menu>
       <button
@@ -81,7 +81,7 @@ function ConnectorRowMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="min-h-11 min-w-11 inline-flex h-10 w-10 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800"
+        className="min-h-11 min-w-11 inline-flex h-10 w-10 items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800"
       >
         <MoreIcon />
       </button>
@@ -149,7 +149,7 @@ export function ConnectorRow({
       data-my-connector-status={status}
       data-connector-row=""
       data-connector-highlighted={highlighted ? "true" : "false"}
-      className={`flex min-w-0 items-center gap-3 border-b border-neutral-200 px-1 py-3.5 transition-colors last:border-b-0 dark:border-neutral-800 ${
+      className={`flex min-w-0 items-center gap-3 border-b border-neutral-200 px-1 py-3.5 transition-colors duration-[var(--leo-dur-2)] last:border-b-0 dark:border-neutral-800 ${
         highlighted ? "rounded-lg bg-sky-50/80 ring-1 ring-sky-200 dark:bg-sky-950/35 dark:ring-sky-800" : ""
       }`}
     >
@@ -172,7 +172,7 @@ export function ConnectorRow({
         type="button"
         data-connector-primary-action=""
         onClick={primaryAction}
-        className={`min-h-10 shrink-0 rounded-lg px-3 text-[13px] font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${
+        className={`min-h-10 shrink-0 rounded-lg px-3 text-[13px] font-medium transition duration-[var(--leo-dur-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${
           primaryDestructive
             ? "text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
             : "bg-neutral-900 text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"

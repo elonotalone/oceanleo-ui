@@ -58,5 +58,5 @@ export function DeviceDialog({ title, children, footer, onClose, compact = false
   );
 }
 
-export const DEVICE_BUTTON = "inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45";
-export const DEVICE_PRIMARY_BUTTON = "inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45";
+export const DEVICE_BUTTON = "inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-medium text-neutral-800 transition duration-[var(--leo-dur-2)] hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45";
+export const DEVICE_PRIMARY_BUTTON = "inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-900 px-3.5 py-2 text-sm font-medium text-white transition duration-[var(--leo-dur-2)] hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45";

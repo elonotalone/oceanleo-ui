@@ -33,7 +33,7 @@ export function CallButton({ conversationId, title, kind, disabled = false }: Ca
         disabled={disabled || entry.state === "busy" || entry.pending}
         onClick={() => void entry.run({ title: title || undefined })}
         className={
-          "inline-flex h-[30px] shrink-0 items-center gap-1 rounded-[10px] px-2 text-[12.5px] font-medium transition-colors disabled:cursor-default disabled:opacity-50 " +
+          "inline-flex h-[30px] shrink-0 items-center gap-1 rounded-[10px] px-2 text-[12.5px] font-medium transition-colors duration-[var(--leo-dur-2)] disabled:cursor-default disabled:opacity-50 " +
           (inThisCall
             ? "bg-neutral-50 text-neutral-700 hover:bg-neutral-100 dark:bg-neutral-900/15 dark:text-neutral-300 dark:hover:bg-neutral-900/25"
             : "text-neutral-500 hover:bg-black/5 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-100")

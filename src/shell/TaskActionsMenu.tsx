@@ -72,7 +72,7 @@ export function TaskActionsMenu({
     <button ref={anchorRef} type="button" onClick={() => onOpenChange(!open)} aria-label={tt("更多操作")} aria-haspopup="menu" aria-expanded={open}
       className={variant === "header"
         ? "inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800 active:scale-95"
-        : `rounded p-0.5 transition ${active ? "text-neutral-500 hover:bg-neutral-300/60" : `text-neutral-400 hover:bg-neutral-200 ${open ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}`}>
+        : `rounded p-0.5 transition duration-[var(--leo-dur-2)] ${active ? "text-neutral-500 hover:bg-neutral-300/60" : `text-neutral-400 hover:bg-neutral-200 ${open ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}`}>
       <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
     </button>
   );

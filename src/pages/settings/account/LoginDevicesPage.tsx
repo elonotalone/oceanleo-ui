@@ -345,7 +345,7 @@ function DeviceCard({
           type="button"
           data-login-device-revoke={session.id}
           onClick={onRemove}
-          className="shrink-0 text-[13px] text-neutral-500 transition hover:text-red-600"
+          className="shrink-0 text-[13px] text-neutral-500 transition duration-[var(--leo-dur-2)] hover:text-red-600"
         >
           {tt("移除")}
         </button>

@@ -78,7 +78,7 @@ function endpointOf(provider: KeyProvider | undefined): string {
 const RING =
   "outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45";
 const QUIET_BTN =
-  `rounded-lg border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-neutral-800 transition hover:bg-neutral-50 ${RING}`;
+  `rounded-lg border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-neutral-800 transition duration-[var(--leo-dur-2)] hover:bg-neutral-50 ${RING}`;
 const ROW = "flex items-start justify-between gap-4 py-3";
 
 function ByokRow({

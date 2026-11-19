@@ -84,7 +84,7 @@ export function LocalTaskRows({ tasks, selected }: { tasks: ClientLocalTask[]; s
     const active = selected === id || selected === task.remoteTaskId;
     const stage = `${tt("在本机执行")} · ${tt(STAGES[task.stage] || task.stage)}`;
     return <button key={task.id} type="button" title={`${tt(task.title)}\n${stage}`} onClick={() => router.push(`/history?task=${encodeURIComponent(id)}`)}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[14px] leading-5 transition ${active ? "bg-neutral-200/80 text-neutral-900" : "text-neutral-800 hover:bg-neutral-200/50"}`}>
+      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[14px] leading-5 transition duration-[var(--leo-dur-2)] ${active ? "bg-neutral-200/80 text-neutral-900" : "text-neutral-800 hover:bg-neutral-200/50"}`}>
       <span className="w-4 shrink-0" aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate">{tt(task.title)}</span>
     </button>;

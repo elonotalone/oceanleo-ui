@@ -19,7 +19,7 @@ export type SiteVaultPanelProps = {
 };
 
 const FIELD = "w-full rounded-lg border border-neutral-200 bg-transparent px-3 py-2 text-[13px] outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:border-neutral-700";
-const BUTTON = "rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800";
+const BUTTON = "rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] transition duration-[var(--leo-dur-2)] hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800";
 
 export function SiteVaultPanel(props: SiteVaultPanelProps) {
   return <SiteVaultContent key={props.projectId} {...props} />;

@@ -36,7 +36,7 @@ import {
 import { DANGER_BUTTON, INPUT_CLASS, SECONDARY_BUTTON, SellerCard, SellerEmpty, SellerField, SellerNotice, TEXTAREA_CLASS } from "./seller-ui";
 
 // 几选一的一项：白底圆角小块；选中的深色边框，没选的浅边框（与 form/BayChoice 同一长相）。
-const OPTION_CLASS = "flex cursor-pointer items-start gap-3 rounded-xl border bg-white px-3.5 py-3 text-left transition-colors";
+const OPTION_CLASS = "flex cursor-pointer items-start gap-3 rounded-xl border bg-white px-3.5 py-3 text-left transition-colors duration-[var(--leo-dur-2)]";
 const OPTION_ON = "border-neutral-900 ring-1 ring-neutral-900";
 const OPTION_OFF = "border-neutral-200 hover:border-neutral-300";
 

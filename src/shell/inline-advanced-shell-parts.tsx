@@ -188,7 +188,7 @@ export function FallbackDetailAside({
         pointerEvents: fallbackDetail ? "auto" : "none",
         borderRightWidth: fallbackDetail ? undefined : 0,
       }}
-      className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] transition-[width,flex-basis,opacity] duration-300 ease-out motion-reduce:transition-none"
+      className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] transition-[width,flex-basis,opacity] duration-[var(--leo-dur-4)] ease-out motion-reduce:transition-none"
     >
       {displayed && (
         <>

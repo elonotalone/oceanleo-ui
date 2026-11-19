@@ -47,7 +47,7 @@ export function isCurrentDevice(device: MediaDeviceLite, current: string | null,
 }
 
 const FOCUS_RING = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-500";
-const ROUND = `inline-flex shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`;
+const ROUND = `inline-flex shrink-0 items-center justify-center rounded-full transition-colors duration-[var(--leo-dur-2)] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`;
 const TONE_NEUTRAL = "bg-neutral-100 text-neutral-800 hover:bg-neutral-200 dark:bg-white/10 dark:text-neutral-100 dark:hover:bg-white/15";
 const TONE_OFF = "bg-neutral-50 text-neutral-600 hover:bg-neutral-100 dark:bg-neutral-900/40 dark:text-neutral-300 dark:hover:bg-white/10";
 const TONE_ON = "bg-neutral-900 text-white hover:opacity-90";

@@ -12,7 +12,7 @@ export type BayChoiceOption<T extends string> = {
 };
 
 const TILE =
-  "flex w-full items-start gap-3 border-0 bg-white px-3.5 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+  "flex w-full items-start gap-3 border-0 bg-white px-3.5 py-3 text-left transition-colors duration-[var(--leo-dur-2)] disabled:cursor-not-allowed disabled:opacity-50";
 const TILE_ON = "bg-neutral-900 text-white";
 const TILE_OFF = "text-neutral-900 hover:bg-neutral-50";
 
