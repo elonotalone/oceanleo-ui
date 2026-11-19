@@ -46,16 +46,34 @@ export function useAcpSessionControls(taskId: string | null | undefined, link: s
     const controller = new AbortController();
     setSaved(null);
     setFailure(null);
-    void request<Partial<Controls>>(`/v1/tasks/${encodeURIComponent(taskId)}/session-controls`, { signal: controller.signal })
-      .then((state) => {
-        if (!controller.signal.aborted) setSaved({ taskId, state: {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let failures = 0;
+    const read = async () => {
+      try {
+        const state = await request<Partial<Controls>>(`/v1/tasks/${encodeURIComponent(taskId)}/session-controls`, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        setSaved({ taskId, state: {
           capabilities: state.capabilities && typeof state.capabilities === "object" ? state.capabilities : {},
           commands: Array.isArray(state.commands) ? state.commands : [],
           usage: state.usage ?? null, positions: state.positions, after: typeof state.after === "number" ? state.after : 0,
         } });
-      }).catch((error) => { if (!controller.signal.aborted) setFailure({ taskId, text: acpErrorText(error) }); });
-    return () => controller.abort();
+        setFailure(null);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        failures += 1;
+        // A single failed read is quiet. Keep retrying; only a persistent
+        // failure gets one labelled line in the conversation, never the footer.
+        setFailure({ taskId, text: failures >= 3 ? acpErrorText(error) : "" });
+        timer = setTimeout(() => void read(), Math.min(15_000, 2_000 * 2 ** (failures - 1)));
+      }
+    };
+    void read();
+    return () => { controller.abort(); clearTimeout(timer); };
   }, [taskId, link]);
-  return useMemo(() => ({ ...applyControlRows(saved && saved.taskId === taskId ? saved.state : EMPTY, rows),
-    error: failure && failure.taskId === taskId ? failure.text : null }), [saved, taskId, rows, failure]);
+  return useMemo(() => {
+    const state = applyControlRows(saved && saved.taskId === taskId ? saved.state : EMPTY, rows);
+    const unavailable = Boolean(failure && failure.taskId === taskId);
+    return { ...state, commands: unavailable ? [] : state.commands, usage: unavailable ? null : state.usage,
+      error: unavailable ? failure?.text ?? null : null };
+  }, [saved, taskId, rows, failure]);
 }

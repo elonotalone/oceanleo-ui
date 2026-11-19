@@ -8,6 +8,7 @@
 // 运行。组合内每项能力的模型从上到下依次兜底。
 // ============================================================================
 
+import { StreamNotice, useHasStreamNoticeTarget } from "./transcript/StreamNotice";
 import { useEffect, useRef, useState } from "react";
 import {
   getModelGroups,
@@ -419,6 +420,7 @@ function LeoComposerSettings({ className, groups, activeKey, summary, loading, b
   onActivate: (key: string) => void;
 }) {
   const tt = useUI();
+  const inTaskStream = useHasStreamNoticeTarget();
   const [fast, setFast] = useState(false);
   useEffect(() => {
     setFast(readLeoFastMode());
@@ -430,6 +432,8 @@ function LeoComposerSettings({ className, groups, activeKey, summary, loading, b
   const rows = leoSettingRows({ groups, activeKey, busy, fast, onActivate, onFast: writeLeoFastMode, tt });
   if (computerId) rows.push(oceanleoModeRow({ state: mode.state, onPick: mode.pick, tt }));
   return (
+    <>
+    {inTaskStream && error && <StreamNotice><p role="alert" className="text-[12px] text-rose-500" data-leo-settings-error="">{error}</p></StreamNotice>}
     <ComposerSettingsMenu
       className={className}
       summary={summary}
@@ -441,13 +445,14 @@ function LeoComposerSettings({ className, groups, activeKey, summary, loading, b
       popoverAttrs={{ "data-model-picker-popover": true }}
       footer={
         <>
-          {error ? <p className="px-2.5 py-1.5 text-[11px] text-rose-600" data-leo-settings-error="">{error}</p> : null}
+          {!inTaskStream && error ? <p className="px-2.5 py-1.5 text-[11px] text-rose-600" data-leo-settings-error="">{error}</p> : null}
           <a href={apiHref} className="block rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900">
             {tt("管理模型组合 →")}
           </a>
         </>
       }
     />
+    </>
   );
 }
 

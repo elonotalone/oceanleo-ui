@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { StreamNoticeTarget } from "./StreamNotice";
 import { useUI } from "../../i18n/ui/useUI";
 import { AGENT_CONVERSATION_MAX_WIDTH_CLASS } from "../agent-conversation-layout";
 import { OlderHistoryTop, type OlderHistoryState } from "../history/older-history";
@@ -67,7 +68,10 @@ export function TranscriptPane({ pane, scrollRef, onScroll, top, empty, items, t
   history: OlderHistoryState;
 }) {
   const { ref: footerRef, height: footerHeight } = useMeasuredFooter();
-  return <div className="relative flex h-full min-h-0 flex-col" data-agent-stream={pane}>
+  const noticeRef = useRef<HTMLDivElement | null>(null);
+  const [noticeTarget, setNoticeTarget] = useState<HTMLDivElement | null>(null);
+  useEffect(() => { setNoticeTarget(noticeRef.current); }, []);
+  return <StreamNoticeTarget.Provider value={noticeTarget}><div className="relative flex h-full min-h-0 flex-col" data-agent-stream={pane}>
     {top}
     <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto overflow-x-hidden px-4 py-4"
@@ -76,6 +80,7 @@ export function TranscriptPane({ pane, scrollRef, onScroll, top, empty, items, t
           {empty}
           {accessStatus}
           {canView && <><OlderHistoryTop hasMore={hasMore} {...history} />{items}{tail}</>}
+          <div ref={noticeRef} data-agent-stream-notices="" style={{ display: "contents" }} />
         </div>
       </div>
       {overlay && <div className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2" style={{ bottom: footerHeight + 12 }}>
@@ -87,5 +92,5 @@ export function TranscriptPane({ pane, scrollRef, onScroll, top, empty, items, t
       <div className={`pointer-events-auto mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS} space-y-2`}>{footer}</div>
     </div>
     {after}
-  </div>;
+  </div></StreamNoticeTarget.Provider>;
 }

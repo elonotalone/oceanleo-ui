@@ -1192,6 +1192,10 @@ function AgentChatInner({
     });
   }, [hasOrgPanel, taskId, refresh, applyTask, captureTaskAccess]);
 
+  // StrictMode replays mount effects, including the access decision's lifetime.
+  // Its new lifetime needs its own detail read rather than the old load marker.
+  useEffect(() => () => { loadedTaskRef.current = ""; }, []);
+
   // Provider 算出的 task_id 只在**有值**时接管本地 task。
   // 操作员 2026-09-07 图 f2dde413（LeoSheet 首页）：发完 hi、回答已出现，几秒后整块对话
   // 变成「新任务 / 在下方输入…」。服务端日志：task 出生时没绑上会话（startNew 没返回
@@ -3333,6 +3337,19 @@ function AgentChatInner({
       <>
           {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
           <ActiveLibraryEditStatus />
+          {branchFromMessageId && (
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2 text-[12px] text-indigo-700">
+              <span>{tt("将从所选消息之前创建新分支；原对话保持不变。")}</span>
+              <button
+                type="button"
+                onClick={() => setBranchFromMessageId(null)}
+                className="shrink-0 font-medium underline underline-offset-2"
+              >
+                {tt("取消")}
+              </button>
+            </div>
+          )}
+
           {/* 卡住了叫真人：求助状态就地长在对话流里，人接住了这里会出现系统气泡。 */}
           <HumanHandoffStatus originRef={taskId || ""} accent={accent} />
           {/* 流式回落的告知。正文仍会到齐（轮询始终是真源），所以这是一句说明、
@@ -3356,18 +3373,6 @@ function AgentChatInner({
             <>
           {composerHeader}
           {cloudComposerCaps.quickChips && <QuickActionChips onFire={(prompt) => void fireAgentText(prompt)} />}
-          {branchFromMessageId && (
-            <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2 text-[12px] text-indigo-700">
-              <span>{tt("将从所选消息之前创建新分支；原对话保持不变。")}</span>
-              <button
-                type="button"
-                onClick={() => setBranchFromMessageId(null)}
-                className="shrink-0 font-medium underline underline-offset-2"
-              >
-                {tt("取消")}
-              </button>
-            </div>
-          )}
           <LeoComposer
             optimizeImages
             boundExecutionTarget={taskId && !unboundCopy ? resolvedBoundTarget : undefined}
@@ -3445,6 +3450,7 @@ function AgentChatInner({
     ),
     tail: (
       <>
+        <AcpBackgroundTaskStrip tasks={acpView.backgroundTasks} onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined} />
         {acpErrorLine && (
           <p className="whitespace-pre-wrap break-words px-1 text-[13px] text-rose-500 [overflow-wrap:anywhere]" role="alert" data-acp-error="">{acpErrorLine}</p>
         )}
@@ -3467,7 +3473,6 @@ function AgentChatInner({
       <>
         {acpComposerCaps.quickChips && <QuickActionChips onFire={(prompt) => void sendAcpMessage(undefined, prompt)} />}
         <AcpSessionControls commands={acpControls.commands} usage={acpControls.usage} error={acpControls.error} input={input} onChange={setInput} disabled={readOnly} />
-        <AcpBackgroundTaskStrip tasks={acpView.backgroundTasks} onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined} />
         <LeoComposer
           optimizeImages
           boundExecutionTarget={taskId ? resolvedBoundTarget : undefined}
@@ -3527,10 +3532,10 @@ function AgentChatInner({
           </div>
         );
       })}
-      {surfaceActive && canManageTask && (
+      {surfaceActive && canManageTask && <>
+        {conversationNotice && <div className={`absolute inset-x-0 z-10 mx-auto w-full space-y-1 px-4 ${AGENT_CONVERSATION_MAX_WIDTH_CLASS}`} style={{ bottom: surfaceFooter.height }}>{conversationNotice}</div>}
         <div ref={surfaceFooter.ref} data-agent-chat-footer className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-3 pt-6" style={{ background: "linear-gradient(to bottom, transparent, var(--surface, #faf8f5) 24px)" }}>
           <div className={`pointer-events-auto mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS}`}>
-            {conversationNotice && <div className="space-y-1 px-4 pt-2">{conversationNotice}</div>}
             <ConversationBar
               conversation={conversation!}
               onConversationChange={onConversationChange}
@@ -3541,7 +3546,7 @@ function AgentChatInner({
             />
           </div>
         </div>
-      )}
+      </>}
     </div>
   );
 

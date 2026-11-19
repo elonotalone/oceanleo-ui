@@ -31,7 +31,7 @@ for (const pane of ["cloud", "acp"]) {
         });
         await act(async () => complete({ ok: true, data: detail }));
         if (pane === "acp") { await connect(); await deliver(rows.prompt(1, "Owner prompt"), rows.chunk("Owner answer"), rows.done(1)); }
-        assert.ok(view.composer(pane));
+        assert.ok(view.composer(pane), view.host.textContent);
         assert.ok(view.host.querySelector("[data-share-entry]"));
         assert.match(view.host.querySelector(`[data-agent-stream="${pane}"]`).textContent, pane === "acp" ? /Owner answer/ : /同比增长 12%/);
         const composer = view.composer(pane);
@@ -111,6 +111,7 @@ test("first shared decision has a visible loading placeholder, then shows the re
     await act(async () => resolve({ ...ownerAccess(), role: "view", state: "member", can_send: false, can_manage: false }));
     assert.match(stream.textContent, /同比增长 12%/);
     assert.equal(stream.querySelector('[data-task-access-status="loading"]'), null);
-    assert.match(view.host.querySelector('[data-task-access-composer]').textContent, /此任务仅供查看/);
+    assert.match(stream.textContent, /此任务仅供查看/);
+    assert.doesNotMatch(view.host.querySelector('[data-task-access-composer]').textContent, /此任务仅供查看/);
   } finally { await view.unmount(); }
 });

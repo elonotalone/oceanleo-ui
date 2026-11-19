@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { StreamNotice } from "./transcript/StreamNotice";
 import { useComposerInputActivity } from "./use-composer-input-activity";
 import { type LeoContext } from "./LeoAssistant";
 import { LeoEntryButton } from "./LeoEntryButton";
@@ -704,7 +705,7 @@ export function LeoComposer({
 
       {/* 附件没传上：不发送，文字留着；写明原因，就地重试 / 移除（F3 2026-11-02）。 */}
       {attachmentFailure && (
-        <div role="alert" className="flex flex-wrap items-center gap-2 px-4 pb-1 text-[12px] text-rose-600" data-composer-upload-failed="">
+        <StreamNotice><div role="alert" className="flex flex-wrap items-center gap-2 px-4 pb-1 text-[12px] text-rose-600" data-composer-upload-failed="">
           <span>{attachmentFailure}</span>
           {onRetryAttachment && (
             <button type="button" className="font-medium underline-offset-2 hover:underline"
@@ -718,13 +719,13 @@ export function LeoComposer({
               {tt("移除")}
             </button>
           )}
-        </div>
+        </div></StreamNotice>
       )}
       {/* 停止没生效：写明原因（电脑离线 / 没能停下 / 没有回应），停止键仍可再点。 */}
       {stopError && (
-        <p role="alert" className="px-4 pb-1 text-[12px] text-rose-600" data-composer-stop-error="">
+        <StreamNotice><p role="alert" className="px-4 pb-1 text-[12px] text-rose-600" data-composer-stop-error="">
           {stopError}
-        </p>
+        </p></StreamNotice>
       )}
       <div className="flex items-center justify-between px-4 pb-3.5" data-composer-bottom-toolbar>
         <div className="flex flex-wrap items-center gap-2">
@@ -883,9 +884,9 @@ export function LeoComposer({
       </div>
 
       {sendBlockedReason && (
-        <p id="leo-composer-send-blocked" role="status" className="px-4 pb-2 text-right text-[12px] text-stone-500">
+        <StreamNotice><p id="leo-composer-send-blocked" role="status" className="px-4 pb-2 text-right text-[12px] text-stone-500">
           {sendBlockedReason}
-        </p>
+        </p></StreamNotice>
       )}
 
       {/* 隐藏的本地文件选择 input（「从本地添加文件」点它） */}

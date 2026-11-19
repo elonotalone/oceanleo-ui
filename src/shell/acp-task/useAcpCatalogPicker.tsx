@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { StreamNotice } from "../transcript/StreamNotice";
 import { useUI } from "../../i18n/ui/useUI";
 import { acpErrorText, getCatalog, type AcpSessionChoices } from "../../lib/acp-frames-api";
 import { putProgramChoice, type ProgramChoice } from "../../lib/program-choice-api";
@@ -244,8 +245,11 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
       selectedModel: selectedModel || (taskId ? tt("未知") : ""), setSelectedModel: setModel,
       mode: lists.mode, selectedMode: choice.mode || (!taskId ? lists.mode?.current : "") || "", setMode, setConfig,
     };
-    picker = nativeModelPickerFor({ program, computerId, dialog, waiting: false, disabled, notice: current.error, onOpen })
+    picker = nativeModelPickerFor({ program, computerId, dialog, waiting: false, disabled, notice: taskId ? "" : current.error, onOpen })
       ?? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} disabled fallbackSummary={selectedModel || (taskId ? tt("未知") : program)} />;
   }
+  if (taskId && current.error) picker = <>{picker}<StreamNotice>
+    <p role="alert" data-native-choice-error="" className="text-[12px] text-rose-500">{current.error}</p>
+  </StreamNotice></>;
   return { picker, choice, forSend };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useState } from "react";
+import { StreamNotice } from "../transcript/StreamNotice";
 import { useUI } from "../../i18n/ui/useUI";
 import { SHARE_ACCESS_COPY_SOURCE as copy } from "../../i18n/ui/messages/share-access-copy-source";
 import { notifyHistoryChanged } from "../../lib/history-events";
@@ -55,17 +56,17 @@ export function TaskAccessComposer({ taskId, access, signedIn, loading, error, o
   };
   const buttonClass = "rounded-xl border border-neutral-200/80 dark:border-white/10 bg-white dark:bg-neutral-950 px-4 py-2 text-sm hover:bg-[var(--surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
   return <div data-task-access-composer={loading ? "loading" : access?.state ?? "unavailable"} className="space-y-2 py-2 text-neutral-800 dark:text-neutral-100" aria-busy={busy || loading}>
-    {loading ? <TaskAccessStatus loading onRefresh={onRefresh} /> : !access || access.state === "none" ? <p role="alert" className="text-sm">{tt(error ? copy.loadFailed : copy.noAccess)} <button type="button" className="underline" onClick={() => void onRefresh()}>{tt(copy.retry)}</button></p> : <>
-      <p className="text-sm text-[var(--muted-foreground)]">{tt(access.state === "removed" ? copy.removed : copy.readOnly)}</p>
+    {loading ? <StreamNotice><TaskAccessStatus loading onRefresh={onRefresh} /></StreamNotice> : !access || access.state === "none" ? <StreamNotice><p role="alert" className="text-sm">{tt(error ? copy.loadFailed : copy.noAccess)} <button type="button" className="underline" onClick={() => void onRefresh()}>{tt(copy.retry)}</button></p></StreamNotice> : <>
+      <StreamNotice><p role="status" className="text-[12px] text-stone-500">{tt(access.state === "removed" ? copy.removed : copy.readOnly)}</p></StreamNotice>
       {access.state === "invited" ? <div className="flex flex-wrap gap-2">
         <button type="button" className={buttonClass} disabled={busy} onClick={() => void action("accept")}>{tt(copy.accept)}</button>
         <button type="button" className={buttonClass} disabled={busy} onClick={() => void action("decline")}>{tt(copy.decline)}</button>
       </div> : (access.can_fork || !signedIn && access.state === "public") && <>
         <button type="button" className={buttonClass} disabled={busy} onClick={() => void action("fork")}>{tt(copy.continueOwn)}</button>
-        <p className="text-xs text-stone-500 dark:text-stone-400">{tt(copy.forkNote)}</p>
+        <StreamNotice><p role="status" className="text-xs text-stone-500 dark:text-stone-400">{tt(copy.forkNote)}</p></StreamNotice>
       </>}
     </>}
-    {failure && <p role="alert" className="text-sm">{failure}</p>}
+    {failure && <StreamNotice><p role="alert" className="text-[12px] text-rose-500">{failure}</p></StreamNotice>}
     {showAuth && <Suspense fallback={<span role="status" className="v-spinner" />}>
       <TaskSignInDialog onClose={() => setShowAuth(false)} onSuccess={() => { setShowAuth(false); void onRefresh(); }} />
     </Suspense>}
