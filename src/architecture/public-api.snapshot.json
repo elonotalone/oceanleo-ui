@@ -24,6 +24,7 @@
     "./lib/auth/config": "./src/lib/auth/config.ts",
     "./lib/auth/middleware": "./src/lib/auth/middleware.ts",
     "./lib/motion": "./src/lib/motion/index.ts",
+    "./lib/recovery": "./src/lib/lazy-with-retry.tsx",
     "./library": "./src/facades/library.ts",
     "./manifest": "./src/contracts/site-manifest.ts",
     "./native-agent-core": "./src/native-agent-core/index.ts",
@@ -3118,6 +3119,138 @@
           "name": "SpringValue",
           "importedName": "SpringValue",
           "source": "./spring"
+        }
+      ]
+    },
+    "./lib/recovery": {
+      "target": "./src/lib/lazy-with-retry.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "CHUNK_CACHE_BUST_PARAM",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "CHUNK_RELOAD_STORAGE_KEY",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "CHUNK_RETRY_DELAYS_MS",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "chunkRetryLoader",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "chunkRouteState",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "chunkUrlFromError",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "importWithChunkReload",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "isChunkLoadError",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "jitteredDelay",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "lazyWithRetry",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "loadChunkWithRetry",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "reloadChunkOnce",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "resetChunkRoutes",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "startAutoRecovery",
+          "importedName": "startAutoRecovery",
+          "source": "./auto-recovery"
+        },
+        {
+          "kind": "named",
+          "name": "useAutoRecovery",
+          "importedName": "useAutoRecovery",
+          "source": "./auto-recovery"
+        },
+        {
+          "kind": "named",
+          "name": "useChunkRouteState",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "withCacheBust",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "withChunkRetry",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ChunkErrorProps",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ChunkLoadOutcome",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ChunkPhase",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ChunkProbe",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ChunkReloadRuntime",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ChunkRetryRuntime",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ChunkRouteState",
+          "source": ""
         }
       ]
     },
