@@ -1441,6 +1441,7 @@ export const BUILD_1103_GAP_MESSAGES: Record<Locale, Record<string, string>> =
     }
     return [locale, Object.fromEntries(SOURCE.flatMap((key, index) => {
       // These two base entries predate this table; fill only the missing locales.
+      if (key === "电脑") return [];
       if (key === "在 Library 中查看" && (locale === "zh" || locale === "en")) return [];
       return [[key, translated[index]]];
     }))];

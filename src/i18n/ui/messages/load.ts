@@ -1,3 +1,4 @@
+import { STEP_UP_MESSAGES } from "./step-up-copy";
 import { SERVER_PAGE_MESSAGES } from "./server-services-copy";
 import { LIBRARY_PREVIEW_MESSAGES } from "./library-preview-copy";
 import { SHEET_NAMING_MESSAGES } from "./sheet-naming-copy";
@@ -178,5 +179,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...MATERIAL_TAXONOMY_MESSAGES[locale],
     ...SHEET_NAMING_MESSAGES[locale],
     ...SERVER_PAGE_MESSAGES[locale],
+    ...STEP_UP_MESSAGES[locale],
   };
 };

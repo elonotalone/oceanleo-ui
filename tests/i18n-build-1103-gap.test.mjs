@@ -232,7 +232,7 @@ test("non-Chinese locales use real localized copy and preserve product and proto
     }
   }
   assert.equal(merged("en")["看板"], "Dashboard");
-  assert.equal(merged("es")["电脑"], "Ordenador");
+  assert.equal(merged("es")["电脑"], "Equipo");
   assert.equal(merged("es-419")["电脑"], "Computadora");
   assert.match(merged("es-419")["允许云端助手使用这台电脑"], /esta computadora$/);
   assert.doesNotMatch(Object.values(merged("es-419")).join("\n"), /este computadora/);
