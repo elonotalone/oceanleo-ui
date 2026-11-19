@@ -23,6 +23,7 @@ export type AcpFrameRow = {
   sender_user_id?: string | null;
   sender_name?: string | null;
   sender_initial?: string | null;
+  model?: { id: string; label: string } | null;
 };
 
 export type JsonRpcId = number | string;
@@ -236,6 +237,8 @@ export type AcpItem =
   | { type: "unknown"; key: string; row: AcpFrameRow; reason: string };
 
 export type AcpTurn = {
+  /** Snapshot for this turn; never the currently selected model of a later turn. */
+  model?: { id: string; label: string } | null;
   key: string;
   author?: MessageAuthor | null;
   /** Client prompt row. */

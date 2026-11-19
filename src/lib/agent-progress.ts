@@ -270,6 +270,19 @@ export function buildAgentRenderItems(
     segmentStart = segmentEnd;
   }
 
+  let modelShown = false;
+  for (const item of items) {
+    if (item.type !== "message") continue;
+    const message = item.message;
+    if (message.role === "user") modelShown = false;
+    const model = message.meta?.model;
+    if (message.role === "assistant" && ["text", "artifact"].includes(message.kind || "text") &&
+        model && typeof model === "object" && typeof (model as { label?: unknown }).label === "string") {
+      const visible = Boolean(message.content?.trim() || message.kind === "artifact");
+      item.message = { ...message, meta: { ...message.meta, show_model: visible && !modelShown } };
+      if (visible) modelShown = true;
+    }
+  }
   return items;
 }
 

@@ -327,6 +327,9 @@ export function reduceRows(rows: readonly AcpFrameRow[], _program = ""): AcpView
     clientRequests.delete(key);
     if (request.turn) {
       request.turn.open = false;
+      // Completed legacy turns have no recorded attribution. Never relabel
+      // them with a session's later selection.
+      request.turn.model = row.model ?? null;
       if (error) request.turn.error = error;
       else if (isRecord(result) && typeof result.stopReason === "string") request.turn.stopReason = result.stopReason;
       return;
@@ -400,7 +403,15 @@ export function reduceRows(rows: readonly AcpFrameRow[], _program = ""): AcpView
         // A prompt after an exit went to a process the gateway started again.
         view.exited = null;
         const queued = openTurns().some((turn) => turn.sessionId === parsed.sessionId);
+        const modelOption = view.configOptions?.find(option => option.category === "model" || option.id === "model");
+        const modelId = typeof modelOption?.currentValue === "string" ? modelOption.currentValue : view.modelId;
+        const optionName = (options: unknown): string => Array.isArray(options) ? options.reduce((label: string, option: unknown) => {
+          if (label || !isRecord(option)) return label;
+          return option.value === modelId ? str(option.name) : optionName(option.options);
+        }, "") : "";
+        const modelLabel = optionName(modelOption?.options) || view.models.find(model => model.modelId === modelId)?.name || modelId;
         const turn: AcpTurn = {
+          model: modelId && modelLabel ? { id: modelId, label: modelLabel } : null,
           key: `turn-${row.id}`,
           rowId: row.id,
           requestId: parsed.id,

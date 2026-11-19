@@ -345,6 +345,13 @@ export function turnBlocks(turn: AcpTurn, live: boolean, labels: AcpLabels): Acp
     ...(turn.open && turn.queued ? { queued: turn } : {}),
   };
   const blocks = [prompt, ...itemBlocks(turn.items, live, labels)];
+  if (turn.model) {
+    const first = blocks.find(block => block.type === "bubble" && block.message.role === "assistant" &&
+      ["text", "artifact"].includes(block.message.kind || "text"));
+    if (first?.type === "bubble") first.message = {
+      ...first.message, meta: { ...first.message.meta, model: turn.model },
+    };
+  }
   if (turn.error) blocks.push(bubble(`${turn.key}-error`, turn.rowId, "error", errorText(turn.error)));
   if (turn.stopReason === "cancelled") {
     let text: Extract<AcpBlock, { type: "bubble" }> | undefined;

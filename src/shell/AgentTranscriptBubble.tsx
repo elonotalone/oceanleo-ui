@@ -156,7 +156,12 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
     turnCopyText,
   } = props;
   const author = props.showAuthors && message.role === "user" ? messageAuthor(message, props.ownerAuthor) : null;
+  const model = message.meta?.model;
+  const modelLabel = message.role === "assistant" && ["text", "artifact"].includes(message.kind || "text") &&
+    message.meta?.show_model !== false && model && typeof model === "object" &&
+    "label" in model && typeof model.label === "string" ? model.label : "";
   const body = <>
+    {modelLabel && <div data-agent-model="" className="mb-1 text-[12px] text-stone-400">{modelLabel}</div>}
     {author && <div data-message-author="" className="mb-1 flex items-center gap-1.5 text-[12px] text-[var(--muted-foreground)]">
       <span aria-hidden="true" className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--background-secondary)] font-medium text-[var(--foreground)]">{author.initial}</span>
       <span className="min-w-0 truncate">{author.name || tt("参与者")}</span>
