@@ -600,3 +600,14 @@ test("源码级红线：回放这一面不新增 dangerouslySetInnerHTML，也�
     assert.doesNotMatch(code, /innerHTML/, `${name} 不许直接写 innerHTML`);
   }
 });
+
+test("replay without an id or supplied data is empty and never fabricates a transcript", async () => {
+  const view = await mount(React.createElement(AgentReplayPage, {}));
+  try {
+    assert.ok(view.container.querySelector('[data-replay-root="empty"]'));
+    assert.equal(rows(view.container).length, 0);
+    assert.doesNotMatch(view.container.textContent, /英伟达|周报封面/);
+  } finally {
+    await view.unmount();
+  }
+});

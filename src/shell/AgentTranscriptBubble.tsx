@@ -314,6 +314,21 @@ function TranscriptBody({
   const tt = useUI();
   const artifactLabels = agentArtifactLabels(tt);
 
+  if (message.kind === "error" || message.kind === "notice" || message.role === "system") {
+    const error = message.kind === "error";
+    return (
+      <div
+        role={error ? "alert" : "status"}
+        data-agent-system={error ? "error" : "notice"}
+        data-agent-notice={typeof message.meta?.native_notice === "string" ? message.meta.native_notice : undefined}
+        className={`min-w-0 whitespace-pre-wrap break-words px-1 text-[12px] leading-relaxed [overflow-wrap:anywhere] ${error ? "text-rose-600" : "text-stone-500"}`}
+      >
+        <span>{tt(error ? "系统错误" : "系统通知")}{": "}</span>
+        <HighlightedText text={message.content} query={highlightQuery} />
+      </div>
+    );
+  }
+
   const sender = message.meta?.sender as { kind?: unknown; label?: unknown; program?: unknown; task_id?: unknown; from_task?: unknown; source_task_id?: unknown } | undefined;
   const sourceTask = sender && (sender.task_id || sender.from_task || sender.source_task_id || message.meta?.from_task || message.meta?.source_task_id);
   if (sender?.kind === "agent" && typeof sender.label === "string" && (message.role !== "user" || Boolean(sourceTask))) {
@@ -440,28 +455,6 @@ function TranscriptBody({
     );
     const call = transcriptAppCall(message);
     return call ? <TranscriptApp call={call} fallback={fallback} /> : fallback;
-  }
-  if (message.kind === "error") {
-    return (
-      <div className="min-w-0 whitespace-pre-wrap break-words rounded-lg bg-rose-50 px-3 py-2 text-[14px] text-rose-600 [overflow-wrap:anywhere]">
-        <HighlightedText text={message.content} query={highlightQuery} />
-      </div>
-    );
-  }
-  if (message.kind === "notice") {
-    // A program's informational notice (e.g. its process exited): neutral, not a failure.
-    return (
-      <div
-        role="status"
-        data-agent-notice={typeof message.meta?.native_notice === "string" ? message.meta.native_notice : ""}
-        className="flex min-w-0 items-start gap-2 px-1 text-[13px] leading-relaxed text-stone-500"
-      >
-        <span aria-hidden="true" className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-stone-300" />
-        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-          <HighlightedText text={message.content} query={highlightQuery} />
-        </span>
-      </div>
-    );
   }
   if (message.kind === "device_status") {
     return (

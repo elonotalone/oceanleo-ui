@@ -1,5 +1,7 @@
 // @oceanleo/ui — UI 文案词典：Tiếng Việt (vi)。人工翻译。
 const vi: Record<string, string> = {
+  "系统错误": "Lỗi hệ thống",
+  "系统通知": "Thông báo hệ thống",
   "查看任务": "Xem tác vụ",
   "现在是只读状态，不能修改。": "Tệp này chỉ cho phép đọc và không thể chỉnh sửa.",
 

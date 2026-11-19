@@ -416,6 +416,13 @@ function LeoAssistantPanel({
           else if (res.error !== "anonymous") setTurnErr(tt("记录暂时不可用，稍后再试。"));
           return;
         }
+        if (res.data.action === "error" || res.data.error) {
+          transcript.applyTurn(tempId, res.data.entries.filter((entry) => entry.role === "user"));
+          setTurnErr(`${tt("系统错误")}: ${res.data.error || tt("请求失败，请稍后再试。")}`);
+          if (res.data.session) sessions.upsert(res.data.session);
+          if (res.data.session_id && sessions.supported) sessions.select(res.data.session_id);
+          return;
+        }
         let entries = res.data.entries;
         if (entries.length === 0 && res.data.reply.trim()) {
           // 服务端没回 entries（旧版网关）：用 reply 就地补两条，面板不空转。
@@ -605,7 +612,7 @@ function LeoAssistantPanel({
         <LeoTranscript state={transcript} />
 
         {turnErr && (
-          <p data-leo-turn-error className="mx-3 mb-1 rounded-xl bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-600">
+          <p role="alert" data-leo-turn-error className="mx-3 mb-1 px-1 py-2 text-xs leading-relaxed text-rose-600">
             {turnErr}
           </p>
         )}

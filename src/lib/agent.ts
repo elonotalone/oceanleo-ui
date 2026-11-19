@@ -279,7 +279,7 @@ export interface MessageAuthor {
 
 export interface AgentMessage {
   id: number;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   kind: string; // text | plan | step | artifact | ui_action | error
   content: string;
   meta?: {

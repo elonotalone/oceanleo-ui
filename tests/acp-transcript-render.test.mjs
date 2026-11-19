@@ -298,12 +298,12 @@ test("cursor/create_plan renders a native question gate", () => {
   assert.ok(gate.querySelector('[data-native-question-option="rejected"]'));
 });
 
-test("a prompt error response is shown verbatim in an error bubble", () => {
+test("a prompt error response is shown verbatim in a labelled system error line", () => {
   const body = render([
     prompt(1, "hi"),
     agent({ id: 1, error: { code: -32603, message: "Internal error: boom", data: { detail: "x" } } }),
   ]);
-  const errors = [...body.querySelectorAll(".bg-rose-50")];
+  const errors = [...body.querySelectorAll('[role="alert"][data-agent-system="error"]')];
   assert.equal(errors.length, 1);
   assert.ok(errors[0].textContent.includes("Internal error: boom"));
 });

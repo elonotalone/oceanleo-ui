@@ -1,5 +1,7 @@
 // @oceanleo/ui — UI 文案词典：Türkçe (tr)。人工翻译。
 const tr: Record<string, string> = {
+  "系统错误": "Sistem hatası",
+  "系统通知": "Sistem bildirimi",
   "查看任务": "Görevi görüntüle",
   "现在是只读状态，不能修改。": "Bu dosya salt okunurdur ve düzenlenemez.",
 

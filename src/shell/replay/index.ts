@@ -31,4 +31,3 @@ export {
   type FetchSharedReplayOptions,
   type SharedReplay,
 } from "./share-client";
-export { REPLAY_SAMPLE } from "./replay-sample";

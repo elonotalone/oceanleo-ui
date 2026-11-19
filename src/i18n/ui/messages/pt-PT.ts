@@ -1,5 +1,7 @@
 // @oceanleo/ui — UI 文案词典：Português Portugal (pt-PT)。人工翻译。
 const ptPT: Record<string, string> = {
+  "系统错误": "Erro do sistema",
+  "系统通知": "Aviso do sistema",
   "查看任务": "Ver tarefa",
   "现在是只读状态，不能修改。": "Este ficheiro é só de leitura e não pode ser editado.",
 

@@ -1,5 +1,7 @@
 // @oceanleo/ui — UI 文案词典：Deutsch. 人工翻译。
 const de: Record<string, string> = {
+  "系统错误": "Systemfehler",
+  "系统通知": "Systemhinweis",
   "查看任务": "Aufgabe ansehen",
   "现在是只读状态，不能修改。": "Diese Datei ist schreibgeschützt und kann nicht bearbeitet werden.",
 

@@ -1,5 +1,7 @@
 // @oceanleo/ui — UI 文案词典：Français。人工翻译。
 const fr: Record<string, string> = {
+  "系统错误": "Erreur système",
+  "系统通知": "Notification système",
   "查看任务": "Voir la tâche",
   "现在是只读状态，不能修改。": "Ce fichier est en lecture seule et ne peut pas être modifié.",
 

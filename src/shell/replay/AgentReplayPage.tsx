@@ -28,7 +28,6 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { REPLAY_SAMPLE } from "./replay-sample";
 import {
   buildReplaySteps,
   createReplayState,
@@ -59,14 +58,14 @@ export interface AgentReplayPageProps {
 
 type LoadState =
   | { phase: "loading" }
+  | { phase: "empty" }
   | { phase: "ready"; replay: SharedReplay }
   | { phase: "error"; message: string; status?: number };
 
 function initialLoadState(props: AgentReplayPageProps): LoadState {
   if (props.replay) return { phase: "ready", replay: props.replay };
   if (props.shareId) return { phase: "loading" };
-  // 既没有 id 也没有数据 = 本地开发：用写死样例，别给一张白页。
-  return { phase: "ready", replay: REPLAY_SAMPLE };
+  return { phase: "empty" };
 }
 
 /** 工作回放的分享码前缀（work-chat 契约 §7.1）。 */
@@ -122,7 +121,7 @@ function AgentTaskReplayPage(props: AgentReplayPageProps) {
       return;
     }
     if (!shareId) {
-      setLoad({ phase: "ready", replay: REPLAY_SAMPLE });
+      setLoad({ phase: "empty" });
       return;
     }
     let active = true;
@@ -191,6 +190,13 @@ function AgentTaskReplayPage(props: AgentReplayPageProps) {
     dispatch({ type: "skip" });
   }, []);
 
+  if (load.phase === "empty") {
+    return (
+      <div data-replay-root="empty" className="grid min-h-[60vh] place-items-center px-6 text-center text-[13px] text-stone-500">
+        {tt("暂无内容")}
+      </div>
+    );
+  }
   if (load.phase === "loading") {
     return (
       <div

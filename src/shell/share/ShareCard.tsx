@@ -82,8 +82,10 @@ export function buildShareCardMessages(
 ): ShareCardMessage[] {
   return messages
     .map((message) => ({
-      role: message.role,
-      speaker: message.role === "user" ? speakers.user : speakers.assistant,
+      role: message.role === "user" ? "user" as const : "assistant" as const,
+      speaker: message.role === "system" || message.kind === "error" || message.kind === "notice"
+        ? tt(message.kind === "error" ? "系统错误" : "系统通知")
+        : message.role === "user" ? speakers.user : speakers.assistant,
       blocks: shareBlocksForMessage(message, tt),
     }))
     .filter((message) => message.blocks.length > 0);

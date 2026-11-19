@@ -1,5 +1,7 @@
 // @oceanleo/ui — UI 文案词典：English。人工翻译。
 const en: Record<string, string> = {
+  "系统错误": "System error",
+  "系统通知": "System notice",
   "查看任务": "View task",
   "现在是只读状态，不能修改。": "This is read-only right now, so it can't be edited.",
 

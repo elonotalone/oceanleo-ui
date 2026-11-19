@@ -688,3 +688,23 @@ for (const failure of ["disconnect", "missing-done"]) {
     }
   });
 }
+
+test("Leo provider failure is labelled outside Leo bubbles and preserves the user's input", async () => {
+  installFetch({ leoBody: {
+    reply: "", action: "error", task: null, error: "provider invalid_api_key",
+    entries: [{ id: "failed-user", role: "user", text: "hi" }],
+  } });
+  const view = await renderAssistant();
+  try {
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
+    await typeAndSend(view.host, "hi");
+    const error = view.host.querySelector('[data-leo-turn-error][role="alert"]');
+    assert.ok(error);
+    assert.match(error.textContent, /系统错误.*provider invalid_api_key/);
+    assert.equal(view.host.querySelectorAll('[data-leo-turn="leo"]').length, 0);
+    assert.match(view.host.querySelector('[data-leo-turn="user"]').textContent, /hi/);
+    assert.equal(postsTo("/v1/agent/tasks").length, 0);
+  } finally {
+    await view.cleanup();
+  }
+});

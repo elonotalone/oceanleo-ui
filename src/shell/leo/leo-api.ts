@@ -66,7 +66,7 @@ export interface LeoTurnResult {
   action: "reply" | "task" | "error";
   entries: LeoTranscriptEntry[];
   task: LeoTranscriptTask | null;
-  error: "" | "llm_unavailable" | "create_failed";
+  error: string;
 }
 
 export type LeoTurnStreamEvent =
@@ -146,9 +146,7 @@ export async function leoTurn(body: LeoTurnBody): Promise<LeoApiResult<LeoTurnRe
       entries: normalizeEntries(data.entries),
       task: normalizeTask(data.task),
       error:
-        data.error === "llm_unavailable" || data.error === "create_failed"
-          ? data.error
-          : "",
+        typeof data.error === "string" ? data.error : "",
     },
   };
 }
@@ -244,7 +242,7 @@ function normalizeLeoTurnResult(value: unknown): LeoTurnResult | null {
     action: data.action === "task" || data.action === "error" ? data.action : "reply",
     entries: normalizeEntries(data.entries),
     task: normalizeTask(data.task),
-    error: data.error === "llm_unavailable" || data.error === "create_failed" ? data.error : "",
+    error: typeof data.error === "string" ? data.error : "",
   };
 }
 
