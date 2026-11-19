@@ -1859,6 +1859,7 @@ const { Inbox } = await import(
     "../../lib/im/search-api": dataModule(`export function searchQueryReady(){ return globalThis.__w08.searching; }`),
     "../../ui": dataModule(`export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; } export function Modal({children}){ return children; }`),
     "./InboxRow": nullStub("InboxRow"),
+    "./groups/NewConversationDialog": nullStub("NewConversationDialog"),
     "./people/InviteLinkDialog": nullStub("InviteLinkDialog"),
     "./search/SearchView": nullStub("SearchView"),
     "./call/chat/InboxCallBadge": nullStub("InboxCallDecor"),

@@ -87,7 +87,7 @@ function GroupInviteLink({ onClose, conversationId }: { onClose: () => void; con
   }
 
   return (
-    <Modal contentHeight onClose={onClose} title={tt("群邀请链接")} labelledBy="im-invite-title">
+    <Modal onClose={onClose} title={tt("群邀请链接")} labelledBy="im-invite-title">
       <div data-invite-link-dialog data-kind={kind}>
 
         {kind === "group" && <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">{tt("拿到链接的人点开、登录后就能进群。")}</p>}

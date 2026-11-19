@@ -13,7 +13,7 @@ const useUI = dataModule('export function useUI(){return (s)=>s}');
 const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props));
 const { WorkConversationHeader } = await import(await compileModule('src/shell/messages/conversation/WorkConversationHeader.tsx', {
   '../../../i18n/ui/useUI': useUI,
-  '../../../lib/im/people-api': dataModule('export async function blockUser(id){globalThis.__iwActs.push(["block",id])}; export async function sendContactRequest(id){globalThis.__iwActs.push(["friend",id])}'),
+  '../../../lib/im/people-api': dataModule('export async function blockUser(id){globalThis.__iwActs.push(["block",id])}'),
   '../people/ProfileCard': dataModule('export function ProfileCard(){return "profile-open"}'),
   '../report/ReportDialog': dataModule('export function ReportDialog(){return "report-open"}'),
 }));

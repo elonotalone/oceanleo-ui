@@ -1,4 +1,4 @@
-// 联系人、请求、邀请链接、拉黑、资料卡的接口封装（work-chat 契约 §4.1）+ 这块界面共用的纯函数。
+// 关注、联系人、群邀请链接、拉黑、资料卡的接口封装与界面共用的纯函数。
 // 所有请求都走 W08 的 imFetch（带 token 与网关地址）；后端拒绝时抛 ImApiError，message 是后端给的中文原因。
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -207,13 +207,6 @@ export async function listContacts(): Promise<ImContact[]> {
 
 export async function listContactGroups(): Promise<ImConversationSummary[]> {
   return itemsOf(await imFetch<Items<ImConversationSummary>>("/v1/im/contacts/groups"));
-}
-
-export async function sendContactRequest(toUserId: string, message = ""): Promise<void> {
-  await imFetch("/v1/im/contact-requests", {
-    method: "POST",
-    json: { to_user_id: toUserId, ...(message.trim() ? { message: message.trim() } : {}) },
-  });
 }
 
 export async function createInviteLink(input: {

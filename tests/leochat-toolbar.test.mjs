@@ -88,7 +88,6 @@ const { Inbox } = await import(await compileModule("src/shell/messages/Inbox.tsx
 const peopleStubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/im/people-api": dataModule(`
-    export function listContactRequests(){ return Promise.resolve([]); }
     export function listGroupInvites(){ return Promise.resolve([]); }
     export function useLoader(){ return { data: [], loading: false, reload(){} }; }
   `),

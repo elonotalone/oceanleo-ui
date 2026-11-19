@@ -401,7 +401,6 @@ const viewStubs = {
     export function conversationDisplayTitle(c) { return c?.title ?? ""; }
     export function visiblePersonName(p) { return p?.display_name ?? ""; }
     export async function blockUser() {}
-    export async function sendContactRequest() {}
   `),
   "../../../lib/im/messages-api": dataModule(`
     const V = () => globalThis.__W08V;

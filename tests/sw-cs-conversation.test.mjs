@@ -69,7 +69,7 @@ const { MessagesHost } = await import(await compileModule("src/shell/messages/Me
   "../leochat/LeoChatTabs": no("LeoChatTabs"),
   "../replay/work/WorkReplayHost": no("WorkReplayHost"),
   "./MessagesLayout": dataModule(`import React from ${JSON.stringify(reactUrl)};export function MessagesLayout({detail}){return React.createElement('main',{},detail)}`),
-  "./notices/notice-unread": dataModule('export function combineUnread(){return 0}'),
+  "./notices/notice-unread": dataModule('export function cleanCount(n){return Number.isFinite(n)?Math.max(0,Math.floor(n)):0}'),
   "./notices/open-notice": no("setNoticeNavigator"),
   "./notices/use-notices": dataModule('const store={refresh:async()=>{},getState:()=>({unread:0}),subscribe:()=>()=>{}};export function noticeStore(){return store} export function useLeoChatUnread(){return {total:0,requests:0}}export function useNoticePolling(){}'),
   "./notify/sound": dataModule("export function attachMessageSound(){return ()=>{}} export function createBrowserMessageSound(){}"),

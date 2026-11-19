@@ -10,7 +10,7 @@
 //     failed sends keep their own error and explicit resend action;
 //   - send → POST /send body; another program in the dock → POST /switch;
 //     a program's refusal (409 {"error"}) is not repeated under the composer,
-//     a gateway refusal is shown verbatim; the text stays either way;
+//     a gateway refusal explains how to resend; the text stays either way;
 //   - Stop → /stop while a turn is open (from the rows), a permission
 //     answer → /answer, a background task stop → /stop-task (Close is not
 //     on the task page: the device panel ends programs, UX wave 2026-11-07);
@@ -567,7 +567,7 @@ test("a queued ACP receipt marks the optimistic bubble queued", async () => {
   } finally { await view.unmount(); }
 });
 
-test("a program's refusal (409 with its JSON-RPC error) is not repeated under the composer; a gateway refusal is shown verbatim; the text stays", async () => {
+test("a program's refusal (409 with its JSON-RPC error) is not repeated under the composer; a gateway refusal explains how to resend; the text stays", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
   try {
     await connect();
@@ -582,7 +582,7 @@ test("a program's refusal (409 with its JSON-RPC error) is not repeated under th
       ? { status: 409, body: { detail: { code: "agent_not_running", message: "agent process is not running" } } } : null;
     await submit(view, "acp");
     assert.equal(view.host.querySelector("[data-acp-error]"), null);
-    assert.equal(view.host.querySelector("[data-acp-pending-error]")?.textContent, "agent process is not running");
+    assert.equal(view.host.querySelector("[data-acp-pending-error]")?.textContent, "智能体没有运行，请启动智能体后重发。");
     assert.equal(view.composer("acp").__props.value, "用 gpt-x");
     const ids = posts("/send").map((call) => call.body.client_message_id);
     assert.equal(ids.length, 2);

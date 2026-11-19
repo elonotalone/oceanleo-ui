@@ -558,6 +558,7 @@ const { Inbox } = await import(
     "../leochat/PanelToolbar": nullComponent("PanelToolbar"),
     "./InboxRow": nullComponent("InboxRow"),
     "./notices/InboxNoticesRow": nullComponent("InboxNoticesRow"),
+    "./groups/NewConversationDialog": nullComponent("NewConversationDialog"),
     "./people/InviteLinkDialog": nullComponent("InviteLinkDialog"),
     "./search/SearchView": nullComponent("SearchView"),
     "./call/chat/InboxCallBadge": nullComponent("InboxCallDecor"),

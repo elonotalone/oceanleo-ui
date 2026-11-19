@@ -32,8 +32,7 @@ const special = {
  useOwnerCases:'()=>({phase:"ready",cases:[],reload:async()=>{},apply(){}})',
  conversationCaps:'()=>({isGroupLike:true,canEditSettings:true,isManual:true,canAddMembers:true})',
  conversationDisplayTitle:'(c)=>c.title', visiblePersonName:'(p)=>p.display_name', sectionLetter:'(s)=>s[0].toUpperCase()',
- classifyCandidate:'()=>"contact"',
- searchDirectory:`async()=>${JSON.stringify(people)}`, listBlocks:'async()=>[]', listMyOrgs:'async()=>[]',
+ listBlocks:'async()=>[]', listMyOrgs:'async()=>[]',
  fetchConversations:'async()=>({items:[]})',
  searchQueryReady:'()=>false', normalizeSearchQuery:'s=>s', filtersToParams:'()=>({})',
  accessToken:'()=>new Promise(()=>{})',
@@ -118,6 +117,15 @@ test('fixtures inventory stays complete',()=>assert.equal(fixtures.length,16));
 for(const [rel,name,props] of fixtures) test(`${name} uses its assigned frame and size`,async()=>{
  const Component=await surface(`src/shell/messages/${rel}.tsx`,name), view=await mount(Component,props);
  try {
+  if(name==='SearchView'){
+   const panel=view.host.querySelector('[data-search-view]');assert.ok(panel);
+   assert.ok(panel.classList.contains('flex-1'));assert.ok(panel.classList.contains('min-h-0'));
+   assert.ok(panel.querySelector('[data-message-settings-header]'));
+   assert.ok(panel.querySelector('[data-search-controls]'));
+   assert.ok(panel.querySelector('[data-search-results]').classList.contains('overflow-y-auto'));
+   assert.equal(panel.querySelector('[data-message-settings-frame]'),null);
+   return;
+  }
   const compact=['UpgradeToTeamDialog','InviteAcceptDialog','ProfileCard'].includes(name);
   const panel=document.querySelector(compact?'[data-message-prompt]':'[data-message-settings-frame]');assert.ok(panel,name);
   if(compact){
@@ -125,11 +133,11 @@ for(const [rel,name,props] of fixtures) test(`${name} uses its assigned frame an
    assert.ok(panel.closest('[role=dialog]').classList.contains('max-w-md'));
   }else{
    const column=panel.querySelector('[data-message-settings-content]');assert.ok(column.classList.contains('max-w-[800px]'));assert.ok(column.classList.contains('mx-auto'));
-   if(['ForwardMessagesDialog','TeamInviteDialog','ProfileCard','ReportDialog','ArtifactPickerDialog'].includes(name)){
+   if(['ForwardMessagesDialog','TeamInviteDialog','ProfileCard','ReportDialog','ArtifactPickerDialog','InviteLinkDialog'].includes(name)){
     assert.ok(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT),`${name}: exact Settings height`);
     assert.ok(panel.parentElement.classList.contains('!w-[min(1040px,94vw)]'),`${name}: exact Settings width`);
    }
-   if(['NewConversationDialog','InviteLinkDialog'].includes(name)){
+   if(['NewConversationDialog'].includes(name)){
     assert.equal(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT),false,`${name}: follows content height`);
     assert.ok(panel.parentElement.classList.contains('max-h-[min(760px,88vh)]'));
    }
@@ -215,10 +223,26 @@ test('conversation remark editor is a compact one-field prompt',async()=>{
  }finally{await view.close();}
 });
 
-test('group invite link keeps the full Settings height while add contacts follows content',async()=>{
+test('group invite link keeps the full Settings height',async()=>{
  const Component=await surface('src/shell/messages/people/InviteLinkDialog.tsx','InviteLinkDialog');
- for(const group of [false,true]){
-  const view=await mount(Component,{onClose(){},conversationId:group?'group1':null});
-  try{const panel=view.host.querySelector('[data-message-settings-frame]');assert.equal(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT),group);assert.ok(panel.querySelector('[data-message-settings-content]').classList.contains('max-w-[800px]'));}finally{await view.close();}
- }
+ const view=await mount(Component,{onClose(){},conversationId:'group1'});
+ try{const panel=view.host.querySelector('[data-message-settings-frame]');assert.ok(panel);assert.ok(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT));assert.ok(panel.querySelector('[data-message-settings-content]').classList.contains('max-w-[800px]'));}finally{await view.close();}
+});
+
+test('personal invite entry delegates to Find people instead of a contact invite sheet',async()=>{
+ const Component=(await import(await compileModule('src/shell/messages/people/InviteLinkDialog.tsx',{
+  '../MessageSettingsFrame': frameUrl,
+  '../../../i18n/ui/useUI': uiHook,
+  './PeopleDiscovery': dataModule('export function FindPeople(props){globalThis.__LC2FindPeople=props;return null;}'),
+  '../host-state': dataModule('export function hostState(){return {showConversation(id){globalThis.__LC2Opened=id;}}}'),
+ }))).InviteLinkDialog;
+ let closed=0;
+ const view=await mount(Component,{onClose(){closed++;}});
+ try{
+  assert.equal(view.host.querySelector('[data-invite-link-dialog]'),null);
+  assert.equal(typeof globalThis.__LC2FindPeople.onBack,'function');
+  globalThis.__LC2FindPeople.onOpenConversation('dm-person');
+  assert.equal(globalThis.__LC2Opened,'dm-person');assert.equal(closed,1);
+  globalThis.__LC2FindPeople.onBack();assert.equal(closed,2);
+ }finally{await view.close();delete globalThis.__LC2FindPeople;delete globalThis.__LC2Opened;}
 });

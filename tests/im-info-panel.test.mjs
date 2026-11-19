@@ -197,7 +197,11 @@ function routes(role, over = {}, extra = {}) {
     "GET /v1/im/me": { profile: profile(ME[role] ?? "u-me", "我") },
     "GET /v1/im/conversations/c1": detailFor(role, over),
     "GET /v1/im/conversations/c1/join-requests": { items: [] },
-    "GET /v1/im/directory": { items: [{ ...profile("u-new", "新人"), relation: "contact" }, { ...profile("u-far", "远人"), relation: "member" }] },
+    "GET /v1/im/follow-suggestions": { groups: [{ key: "team", title_key: "team", people: [
+      { user_id: "u-new", username: "new", name: "新人", avatar_url: null, following: false, follows_me: false, blocked: false },
+      { user_id: "u-far", username: "far", name: "远人", avatar_url: null, following: false, follows_me: false, blocked: false },
+    ] }] },
+    "GET /v1/im/follows": { people: [], next_cursor: null },
     "GET /v1/im/blocks": { items: [] },
     "GET /v1/im/profiles": { items: [] },
     ...extra,
@@ -368,8 +372,8 @@ test("加成员：选人后拉进群，显示 已加入 / 等待同意 / 没能�
   try {
     await view.click(view.q('[data-action="add-members"]'));
     assert.ok(view.q("[data-add-members]"));
-    await view.click(view.q('[data-candidate="u-new"]'));
-    await view.click(view.q('[data-candidate="u-far"]'));
+    await view.click(view.q('[data-person="u-new"] button'));
+    await view.click(view.q('[data-person="u-far"] button'));
     await view.click(view.q('[data-action="confirm-add"]'));
     const post = im.fetch.calls.find((c) => c.method === "POST");
     assert.deepEqual(post.json, { user_ids: ["u-new", "u-far"] });
