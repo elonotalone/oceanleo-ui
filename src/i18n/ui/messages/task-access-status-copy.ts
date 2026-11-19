@@ -21,6 +21,6 @@ const text: Record<Locale, readonly [string, string]> = {
   th: ["กำลังโหลดสิทธิ์การเข้าถึง…", "เครือข่ายไม่เสถียร กำลังลองอีกครั้ง"],
   hi: ["पहुँच अनुमतियाँ लोड हो रही हैं…", "नेटवर्क अस्थिर है, फिर से कोशिश की जा रही है।"],
 };
-export const TASK_ACCESS_STATUS_MESSAGES = Object.fromEntries(LOCALES.map(locale => [locale, {
+export const TASK_ACCESS_STATUS_MESSAGES = Object.fromEntries<Record<string, string>>(LOCALES.map(locale => [locale, {
   [loading]: text[locale][0], [unstable]: text[locale][1],
 }])) as Record<Locale, Record<string, string>>;
