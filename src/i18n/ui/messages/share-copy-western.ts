@@ -7,7 +7,7 @@ export const SHARE_COPY_WESTERN = {
   en: {
     checkToShare: "Pick the messages to share",
     selectedCount: "{count} selected",
-    deselectAll: "Clear selection",
+    deselectAll: "Deselect all",
     copyText: "Copy text",
     generateLongImage: "Generate image",
     selectThisMessage: "Select this message",

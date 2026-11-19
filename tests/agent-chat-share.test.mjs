@@ -83,12 +83,15 @@ test("Share selects transcript messages and exposes export actions at the top wh
     assert.doesNotMatch(text, /ls -la/);
 
     // Untick the prompt: only the reply is copied.
+    await act(async () => boxes[0].dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true })));
     await click(boxes[0]);
+    assert.equal(view.host.querySelector("[data-share-entry]").getAttribute("aria-pressed"), "true", "transcript selection keeps the panel open");
     await click(button(view, "复制文本"));
     assert.doesNotMatch(copied.at(-1), /列出文件/);
     assert.match(copied.at(-1), /目录里有三个文件。/);
 
-    await click([...document.querySelectorAll("[data-task-share-actions] button")].find(node => node.textContent === "清除选择"));
+    await click(view.host.querySelector("[data-share-entry]"));
+    assert.equal(document.querySelector("[data-task-share-actions]")?.closest("[data-access-popover]").hidden ?? true, true);
     assert.equal(stream(view).querySelectorAll('[role="checkbox"]').length, 0);
     assert.ok(view.composer("acp"), "the composer is back");
   } finally { await view.unmount(); }
@@ -198,4 +201,34 @@ test("public task viewers see each participant's authorship",async()=>{
  const view=await mount({taskId:"t1"},{task,taskAccess:access});
  try {const labels=[...view.host.querySelectorAll('[data-message-author]')].map(node=>node.textContent);assert.equal(labels.length,2);assert.ok(labels.some(label=>label.includes("Teammate")));}
  finally {await view.unmount();}
+});
+
+
+for (const pane of ["cloud", "acp"]) test(`${pane} Share selects all on every open and exits on trigger, Escape and outside pointer`, async () => {
+  const view = await mount({ taskId: "t1" }, { task: pane === "acp" ? computerTask() : cloudTask(), sessions });
+  try {
+    if (pane === "acp") { await connect(); await deliver(rows.prompt(3, "Show selection"), rows.chunk("Selected reply"), rows.done(3)); }
+    const entry = view.host.querySelector('[data-share-entry]');
+    const boxes = () => [...view.host.querySelectorAll(`[data-agent-stream="${pane}"] [role="checkbox"]`)];
+    for (const method of ["trigger", "escape", "outside"]) {
+      await click(entry);
+      assert.equal(entry.getAttribute('aria-pressed'), "true");
+      assert.ok(boxes().length >= 2);
+      assert.ok(boxes().every(box => box.getAttribute('aria-checked') === "true"));
+      const toggle = () => [...document.querySelectorAll('[data-task-share-actions] button')].find(node => /^(全选|取消全选)$/.test(node.textContent));
+      await click(toggle());
+      assert.ok(boxes().every(box => box.getAttribute('aria-checked') === "false"));
+      assert.equal(toggle().textContent, "全选");
+      await click(toggle());
+      assert.ok(boxes().every(box => box.getAttribute('aria-checked') === "true"));
+      if (method === "trigger") await click(entry);
+      if (method === "escape") await act(async () => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+      if (method === "outside") await act(async () => document.body.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true })));
+      assert.equal(entry.getAttribute('aria-pressed'), "false", method);
+      assert.equal(entry.getAttribute('aria-expanded'), "false", method);
+      assert.equal(document.querySelector('[data-task-share-actions]')?.closest("[data-access-popover]").hidden ?? true, true, method);
+      assert.equal(boxes().length, 0, method);
+      assert.ok(view.composer(pane), "composer stays mounted");
+    }
+  } finally { await view.unmount(); }
 });

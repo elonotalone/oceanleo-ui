@@ -805,7 +805,6 @@ function AgentChatInner({
   const [knownParticipants, setKnownParticipants] = useState({ taskId: "", count: 1 });
   const [continuedCopy, setContinuedCopy] = useState({ taskId: "", unbound: false });
   const unboundCopy = canManageTask && continuedCopy.taskId === taskId && continuedCopy.unbound;
-  const [shareOpenRequest, setShareOpenRequest] = useState(0);
   const showAuthors = (accessState.access?.participant_count ?? 1) > 1 ||
     knownParticipants.taskId === taskId && knownParticipants.count > 1 ||
     ["member", "invited", "public", "removed"].includes(accessState.access?.state ?? "") ||
@@ -3209,7 +3208,6 @@ function AgentChatInner({
       {taskId && accessState.access && accessRights.canView && sharePaneShown && (
         <TaskSharePanel key={taskId} taskId={taskId} taskUrl={taskQuoteHref(taskId)}
           access={{...accessState.access, can_manage: canManageTask}} share={share}
-          openRequest={shareOpenRequest}
           onParticipants={count => setKnownParticipants({taskId, count})} />
       )}
       {taskId && (
@@ -3223,7 +3221,6 @@ function AgentChatInner({
           {...taskActions}
           canManage={canManageTask}
           canDelete={canManageTask}
-          onShare={() => { if (!share.active && share.selectable.length) share.enter("all"); setShareOpenRequest(value => value + 1); }}
         />
       )}
     </div>

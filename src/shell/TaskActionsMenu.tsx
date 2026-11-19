@@ -3,13 +3,10 @@
 import { useRef, type ReactNode } from "react";
 import { runtimePageOrigin } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
-import { useToast } from "../ui/Toast";
 import { FloatingMenu, FloatingMenuItem, FloatingMenuSeparator } from "../ui/menu/FloatingMenu";
 
 const ICONS = {
   open: "M14 3h7v7m0-7L10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5",
-  link: "M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2m3 6a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2",
-  share: "M12 16V3m-5 5 5-5 5 5M5 13v7h14v-7",
   quote: "M7 17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6v6H7v6Zm10 0h-2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6v6h-4v6Z",
   rename: "m15 4 5 5M4 20l5-1L21 7l-5-5L4 14z",
   pin: "m16 3 5 5-4 2-3 5-5-5 5-3zM9 15l-6 6",
@@ -44,7 +41,6 @@ export interface TaskActionsMenuProps extends TaskActionCallbacks {
   canDelete?: boolean;
   /** Shared task visitors may read/copy; only the owner changes the task. */
   canManage?: boolean;
-  onShare?: () => void;
   inProject?: boolean;
   href: string;
   taskId?: string;
@@ -56,23 +52,12 @@ export interface TaskActionsMenuProps extends TaskActionCallbacks {
 /** The one task menu used by My Tasks rows and task headers. */
 export function TaskActionsMenu({
   open, onOpenChange, active = false, variant = "row", pinned = false, favorite = false,
-  canDelete = true, canManage = true, onShare, inProject = false, href, taskId, taskTitle = "", trigger,
+  canDelete = true, canManage = true, inProject = false, href, taskId, taskTitle = "", trigger,
   onRename, onTogglePin, onToggleFavorite, onMove, onRemoveFromProject, onDelete, onQuote,
 }: TaskActionsMenuProps) {
   const tt = useUI();
-  const toast = useToast();
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const origin = runtimePageOrigin();
-  const absoluteHref = origin ? new URL(href, origin).toString() : href;
   const closeAnd = (action?: () => void) => () => { onOpenChange(false); action?.(); };
-  const copyLink = async () => {
-    try { if (!navigator.clipboard) return; await navigator.clipboard.writeText(absoluteHref); toast.success(tt("已复制")); onOpenChange(false); } catch { /* denied */ }
-  };
-  const share = () => {
-    if (onShare) { onOpenChange(false); onShare(); return; }
-    if (navigator.share) { onOpenChange(false); void navigator.share({ title: document.title, url: absoluteHref }).catch(() => {}); }
-    else void copyLink();
-  };
   const quote = () => {
     if (!taskId) return;
     try {
@@ -92,8 +77,6 @@ export function TaskActionsMenu({
   );
   return <div className="relative shrink-0">{button}<FloatingMenu open={open} anchorRef={anchorRef} onClose={() => onOpenChange(false)} align="end" ariaLabel={tt("更多操作")}>
     <FloatingMenuItem icon={<Icon name="open" />} label={tt("在新标签打开")} href={href} external onSelect={() => onOpenChange(false)} />
-    <FloatingMenuItem icon={<Icon name="link" />} label={tt("复制链接")} onSelect={() => void copyLink()} />
-    {canManage && <FloatingMenuItem icon={<Icon name="share" />} label={tt("分享")} onSelect={share} />}
     {taskId && <FloatingMenuItem icon={<Icon name="quote" />} label={tt("在新任务中引用")} onSelect={quote} />}
     {canManage && <><FloatingMenuSeparator />
     <FloatingMenuItem icon={<Icon name="rename" />} label={tt("重命名")} onSelect={closeAnd(onRename)} />

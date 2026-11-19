@@ -263,14 +263,8 @@ test("side placement fits beside anchor and falls back to unchanged vertical res
   }
 });
 
-test("HistoryRowMenu preserves callbacks, grouping, external link, copy feedback and visibility", async () => {
+test("HistoryRowMenu preserves callbacks, grouping, external link and visibility without duplicate Share actions", async () => {
   const calls = [];
-  let copied = "";
-  let denyClipboard = false;
-  Object.defineProperty(navigator, "clipboard", {configurable: true, value: {async writeText(value) {
-    if (denyClipboard) throw new Error("denied");
-    copied = value;
-  }}});
   function Bed() {
     const [open, onOpenChange] = useState(false);
     return h(HistoryRowMenu, {
@@ -290,7 +284,7 @@ test("HistoryRowMenu preserves callbacks, grouping, external link, copy feedback
     assert.equal(external.getAttribute("target"), "_blank");
     assert.equal(external.getAttribute("rel"), "noreferrer");
     assert.match(external.textContent, /↗/);
-    assert.equal(menu().querySelectorAll('[role="menuitem"] svg').length, 8);
+    assert.equal(menu().querySelectorAll('[role="menuitem"] svg').length, 6);
     const labels = ["重命名", "置顶", "收藏", "移动到项目", "删除"];
     for (const label of labels) {
       if (!menu()) await click(trigger);
@@ -300,18 +294,7 @@ test("HistoryRowMenu preserves callbacks, grouping, external link, copy feedback
     }
     assert.deepEqual(calls, ["rename", "pin", "favorite", "move", "delete"]);
     await click(trigger);
-    const panel = menu();
-    await click(item("复制链接"));
-    assert.equal(copied, "https://word.oceanleo.com/tasks/one");
-    assert.deepEqual(globalThis.__w11Toasts, ["已复制"]);
-    closed(panel);
-    await click(trigger);
-    denyClipboard = true;
-    await click(item("复制链接"));
-    assert.deepEqual(globalThis.__w11Toasts, ["已复制"], "denied clipboard must not announce success");
-    assert.ok(menu());
-    denyClipboard = false;
-    await click(item("分享"));
-    assert.equal(globalThis.__w11Toasts.length, 2, "share fallback copies and confirms");
+    assert.equal(item("复制链接"), undefined, "Copy link lives in the separate Share menu");
+    assert.equal(item("分享"), undefined, "Share has a separate entry");
   } finally { await bed.unmount(); }
 });

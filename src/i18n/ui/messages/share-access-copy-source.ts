@@ -26,7 +26,7 @@ export const SHARE_ACCESS_COPY_SOURCE = {
   readFileFailed: "无法读取文件，请重试。",
   retry: "重试",
   back: "返回",
-  clearSelection: "清除选择",
+  membersAndAccess: "成员与权限",
   sharedBy: "由 {name} 分享",
   sender: "参与者",
   forkNote: "新任务只带上可见的对话，不会连接对方的电脑、文件或会话。",

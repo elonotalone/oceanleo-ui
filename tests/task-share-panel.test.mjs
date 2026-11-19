@@ -18,6 +18,10 @@ const overrides = {
   "../../i18n/ui/useUI": dataModule("export function useUI(){return (text, params={}) => text.replace(/\\{(\\w+)\\}/g,(_,k)=>params[k] ?? k);}"),
   "../access/task-access-client": clientUrl,
 };
+const { TaskActionsMenu } = await import(await compileModule("src/shell/TaskActionsMenu.tsx", {
+  "../i18n/ui/useUI": overrides["../../i18n/ui/useUI"],
+  "../contracts/domain-family": dataModule('export function runtimePageOrigin(){return "https://oceanleo.test";} export function sharedCookieDomainFor(){return undefined;}'),
+}));
 const { TaskSharePanel } = await import(await compileModule("src/shell/share/TaskSharePanel.tsx", overrides));
 const { TaskAccessComposer } = await import(await compileModule("src/shell/access/TaskAccessComposer.tsx", { ...overrides, "./task-access-client": clientUrl }));
 
@@ -32,23 +36,26 @@ const button = text => [...document.querySelectorAll("[data-access-popover] butt
 const shareState = () => ({ active: false, selectable: [{ id: 1 }], selectedCount: 1, selectedIds: new Set([1]), allSelected: true, busy: null, notice: null,
   enter() {}, exit() {}, toggleAll() {}, copyText() {}, generateImage() {}, generateDocument() {} });
 
-test("actions panel publishes only when owner enters Share, copies the task URL, and has a back page", async () => {
+test("actions menu publishes only on Members and permissions, copies the task URL, and has a back page", async () => {
   const client = new TaskAccessMock();
   const copied = [];
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(value) { copied.push(value); } } });
   const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "https://oceanleo.test/tasks/t", access: client.access, share: shareState(), client });
   try {
     await click(view.host.querySelector("[data-share-entry]"));
-    assert.deepEqual([...document.querySelectorAll("[data-task-share-actions] > button")].map(node => node.textContent), ["分享", "复制文本", "生成长图", "生成文档", "清除选择"]);
+    assert.deepEqual([...document.querySelectorAll("[data-task-share-actions] > button")].map(node => node.textContent), ["成员与权限", "复制链接", "复制文本", "生成长图", "生成文档", "取消全选"]);
     assert.equal(client.calls.length, 0, "opening the actions panel leaves task private");
-    await click(button("分享"));
+    await click(button("复制链接"));
+    assert.equal(copied.at(-1), "https://oceanleo.test/tasks/t");
+    assert.equal(client.calls.length, 0, "copying the task URL does not publish or change access");
+    await click(button("成员与权限"));
     assert.equal(client.calls.filter(call => call.action === "setAccess").length, 1);
     assert.equal(client.access.general_access, "public_view");
     assert.ok(document.querySelector("[data-task-share-members]"));
+    await click(button("返回"));
     await click(button("复制链接"));
     assert.equal(copied.at(-1), "https://oceanleo.test/tasks/t");
-    await click(document.querySelector('[aria-label="返回"]'));
-    await click(button("分享"));
+    await click(button("成员与权限"));
     assert.equal(client.calls.filter(call => call.action === "setAccess").length, 1, "returning to members never republishes");
   } finally { await view.close(); }
 });
@@ -57,7 +64,7 @@ test("failed first-publication stays private, exposes retry, and rolls back gene
   const client = new TaskAccessMock(); client.fail = "setAccess";
   const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "/tasks/t", access: client.access, share: shareState(), client });
   try {
-    await click(view.host.querySelector("[data-share-entry]")); await click(button("分享"));
+    await click(view.host.querySelector("[data-share-entry]")); await click(button("成员与权限"));
     assert.equal(client.access.general_access, "private"); assert.ok(document.querySelector('[role="alert"]'));
     client.fail = null; await click(button("重试"));
     const select = document.querySelector("[data-task-share-members] select");
@@ -70,7 +77,7 @@ test("failed first-publication stays private, exposes retry, and rolls back gene
 test("read-only visitor never receives Share management entry", async () => {
   const client = new TaskAccessMock();
   const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "/tasks/t", access: { ...client.access, state: "public", role: "view", can_manage: false }, share: shareState(), client });
-  try { await click(view.host.querySelector("[data-share-entry]")); assert.equal(button("分享"), undefined); assert.equal(client.calls.length, 0); }
+  try { await click(view.host.querySelector("[data-share-entry]")); assert.equal(button("成员与权限"), undefined); assert.equal(client.calls.length, 0); }
   finally { await view.close(); }
 });
 
@@ -131,4 +138,60 @@ test("accepting an invitation refreshes My Tasks immediately",async()=>{
  const view=await mount(TaskAccessComposer,{taskId:"t",access:client.access,signedIn:true,client,onRefresh:async()=>{}});
  try {await click(button("接受邀请"));assert.equal(changes,1);}
  finally {await view.close();window.removeEventListener("oceanleo:history-changed",changed);}
+});
+
+
+test("Share and task actions use identical container, row, icon and separator classes", async () => {
+  const client = new TaskAccessMock();
+  const menu = await mount(TaskActionsMenu, { open: true, onOpenChange() {}, href: "/tasks/t" });
+  const menuElement = document.querySelector('[role="menu"]');
+  const expected = {
+    container: menuElement.className,
+    row: menuElement.querySelector('[role="menuitem"]').className,
+    icon: menuElement.querySelector('[role="menuitem"] > [aria-hidden="true"]').className,
+    separator: menuElement.querySelector('[role="separator"]').className,
+  };
+  await menu.close();
+  const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "/tasks/t", access: client.access, share: shareState(), client });
+  try {
+    const entry = view.host.querySelector('[data-share-entry]');
+    assert.equal(entry.textContent, "", "Share has no visible label");
+    assert.equal(entry.getAttribute('aria-label'), "分享");
+    assert.equal(entry.querySelector('path').getAttribute('d'), "M4 12v-1a7 7 0 0 1 7-7h8m0 0-4-4m4 4-4 4");
+    await click(entry);
+    const panel = document.querySelector('[data-access-popover]');
+    assert.equal(panel.id, entry.getAttribute('aria-controls'));
+    assert.equal(panel.className, expected.container);
+    for (const row of panel.querySelectorAll('[role="menuitem"]')) {
+      assert.equal(row.className, expected.row);
+      assert.equal(row.querySelector('[aria-hidden="true"]').className, expected.icon);
+      assert.ok(row.querySelector('svg'));
+    }
+    for (const separator of panel.querySelectorAll('[role="separator"]')) assert.equal(separator.className, expected.separator);
+    assert.match(panel.textContent, /已选 1 条/);
+    assert.doesNotMatch(panel.textContent, /清除选择/);
+    await click(button("成员与权限"));
+    const memberPage = document.querySelector('[data-access-popover]');
+    assert.equal(memberPage.className, expected.container);
+    assert.equal(memberPage.id, panel.id, "members open inside the same popover");
+    for (const node of [memberPage, ...memberPage.querySelectorAll('[class]')]) {
+      assert.doesNotMatch(node.className, /var\(--(?:background|foreground|border)\)/);
+    }
+  } finally { await view.close(); }
+});
+
+test("empty selections disable exports; Copy link remains available to viewers and reports failure", async () => {
+  const client = new TaskAccessMock();
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText() { throw Error("denied"); } } });
+  const share = { ...shareState(), selectedCount: 0, allSelected: false };
+  const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "/tasks/t", access: { ...client.access, state: "public", role: "view", can_manage: false }, share, client });
+  try {
+    await click(view.host.querySelector('[data-share-entry]'));
+    for (const text of ["复制文本", "生成长图", "生成文档"]) assert.equal(button(text).disabled, true);
+    assert.equal(button("复制链接").disabled, false);
+    assert.ok(button("全选"));
+    await click(button("复制链接"));
+    assert.match(document.querySelector('[role="status"]').textContent, /复制失败/);
+    assert.equal(client.calls.length, 0);
+  } finally { await view.close(); }
 });
