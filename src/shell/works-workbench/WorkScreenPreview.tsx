@@ -26,7 +26,7 @@ export function WorkScreenPreview({ workId, deviceId, deviceName }: { workId: st
     const portal = remoteDesktopPortal();
     if (!portal) return;
     // A concurrent desktop belongs to its existing opener; never move that session.
-    if (portal.childElementCount) { setError(tt("已有远程桌面正在使用，请先关闭它。")); return; }
+    if (portal.childElementCount) { setError(tt("已有远程桌面正在使用，请先关闭它。")); setTicket(null); return; }
     const originalParent = portal.parentNode;
     const container = host.current;
     container.appendChild(portal);
@@ -52,7 +52,7 @@ export function WorkScreenPreview({ workId, deviceId, deviceName }: { workId: st
       <p>{deviceName}</p><p className="text-xs opacity-70">{tt("连接后使用远程桌面的授权、操作与计费规则。")}</p>
       <button type="button" onClick={() => { setError(""); setTicket(remoteDesktopTicket()); }}>{tt("连接服务器画面")}</button>
     </div>}
-    {error && <p role="alert">{error} <button type="button" onClick={() => { setTicket(null); setError(""); }}>{tt("重试")}</button></p>}
+    {error && <p role="alert">{error}</p>}
     {ticket && attached && <Suspense fallback={<p role="status">{tt("加载中…")}</p>}>
       <RemoteDesktopPanel deviceId={deviceId} deviceName={deviceName} ticket={ticket} consent={remoteAgent.consent} agent={remoteAgent.agent}
         onClose={() => { setTicket(null); setPicking(false); }} />

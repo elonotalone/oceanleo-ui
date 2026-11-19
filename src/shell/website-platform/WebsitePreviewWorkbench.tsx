@@ -1,4 +1,5 @@
 "use client";
+import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { notifyHistoryChanged } from "../../lib/history-events";
@@ -288,7 +289,7 @@ export function WebsitePreviewWorkbench({ projectId, runtimeApi = websiteRuntime
       </>}
     </div>}
     {actionError && <p role="alert" className="px-3 py-1 text-xs text-red-600">{actionError}</p>}
-    {sourceError && <p role="alert" className="p-3">{tt(sourceError)} <button type="button" onClick={() => setRefresh(value => value + 1)}>{tt("重试")}</button></p>}
+    {sourceError && <AutoRecovery identity="src/shell/website-platform/WebsitePreviewWorkbench.tsx:0" error={sourceError} recover={() => setRefresh(value => value + 1)} />}
     {runtime?.manifest_source === "detected" && view !== "configuration" && <div className="shrink-0 border-b px-3 py-1 text-xs">
       <button type="button" disabled={pending} onClick={() => void run(() => runtimeApi.fix(projectId, tt("请写入 .oceanleo/run.json 运行说明。")), true)}>{tt("让 agent 写入运行说明")}</button>
     </div>}
@@ -314,7 +315,7 @@ export function WebsitePreviewWorkbench({ projectId, runtimeApi = websiteRuntime
         : work && readOnly && !url ? <WorkNotWired />
         : sourceError ? <WorkNotWired />
         : work && previewSource?.resolved.state === "unavailable" ? <div role="status" className="p-5">{tt("状态暂不可用")}<p>{previewSource.resolved.detail}</p>{projectId && <button type="button" onClick={fix}>{tt("让 agent 修复")}</button>}</div>
-        : error ? <div className="p-5"><p role="alert">{error}</p><button type="button" onClick={() => setRefresh(value => value + 1)}>{tt("重试")}</button></div>
+        : error ? <AutoRecovery identity="src/shell/website-platform/WebsitePreviewWorkbench.tsx:1" error={error} recover={() => setRefresh(value => value + 1)} />
         : running && url ? <>
           <div ref={stage} className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden" data-testid="website-preview-stage">
             <div className="relative shrink-0 overflow-hidden" style={{ width: viewport.displayWidth, height: viewport.displayHeight }} data-testid="website-preview-viewport">

@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useState } from "react";
 import { listDevices, type Device } from "../../api/devices";
 import type { WorkPreviewSource } from "../works/model";
@@ -32,6 +33,6 @@ export function WorkPreviewSourceControl({ source, pending, onChange }: {
       {devices.filter(device => ["linux", "macos", "windows"].includes(device.platform)).map(device => <option key={device.device_id} value={`screen:${device.device_id}`}>{device.device_name}{device.online ? "" : ` · ${tt("离线")}`}</option>)}
       <option value="none">{tt("不接入预览")}</option>
     </select></label>
-    {error && <span role="status">{tt("暂时无法读取服务器列表。")}{" "}<button type="button" onClick={() => setRetry(value => value + 1)}>{tt("重试")}</button></span>}
+    {error && <AutoRecovery identity="src/shell/works-workbench/WorkPreviewSourceControl.tsx:0" recover={() => setRetry(value => value + 1)} />}
   </div>;
 }

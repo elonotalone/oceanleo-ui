@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -76,7 +77,7 @@ export function WorkWorkbenchRoute({ item, taskId, siteId = "", accent, onClose,
       event.preventDefault(); if (tier) setChoice({ identity, tier });
     }}><HostingTierChoice value={tier} onChange={setTier} />
       <button type="submit" disabled={!tier} className="mt-4 rounded-lg bg-stone-800 px-4 py-2 text-sm text-white disabled:opacity-50">{tt("创建作品")}</button>
-    </form> : current?.error ? <p role="alert" className="p-4">{tt(current.error)} <button type="button" onClick={() => setRetry(value => value + 1)}>{tt("重试")}</button></p>
+    </form> : current?.error ? <AutoRecovery identity="src/shell/works-workbench/WorkWorkbenchRoute.tsx:0" error={current.error} recover={() => setRetry(value => value + 1)} />
       : !work ? <p role="status" className="p-4">{tt("加载中…")}</p>
       : <>
         {work.access === "view" && <div className="flex shrink-0 flex-wrap items-center gap-3 border-b p-2 text-xs" data-testid="work-view-access">

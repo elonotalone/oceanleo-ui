@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { WebsiteTierSampleError, WebsiteConnectorPreset, WebsiteConnectorsApi } from "../../api/website-connectors";
 import { useWebsiteLanguage, useWebsiteUI } from "./website-preview-i18n";
@@ -51,8 +52,7 @@ export function WebsiteTierPresets({ projectId, api, presets, blocked, available
     <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">{tt("服务层级")}</h3>
       <button type="button" className="text-xs underline" onClick={() => setRevision(value => value + 1)}>{tt("刷新层级状态")}</button></div>
     {!visibleTiers && !error && <p role="status">{tt("加载中…")}</p>}
-    {error != null && <p role="alert" className="text-xs">{tt(missingWorkFeature(error) ? "此功能尚未在当前服务端开通" : "暂时无法读取服务层级。")}{" "}
-      <button type="button" className="underline" onClick={() => setRevision(value => value + 1)}>{tt("重试")}</button></p>}
+    {error != null && <AutoRecovery identity="src/shell/website-platform/WebsiteTierPresets.tsx:0" error={error} recover={() => setRevision(value => value + 1)} />}
     {oldGateway || (visibleTiers && !visibleTiers.some(isTier)) ? legacy : visibleTiers?.map(tier => {
       const unavailable = tier.available === false || tier.status === "not_ready";
       return <article className="space-y-2 rounded border border-[var(--awb-border)] p-3 text-xs" key={tier.id} data-tier-id={tier.id}>

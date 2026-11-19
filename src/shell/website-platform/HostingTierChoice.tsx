@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { websiteConnectorsApi, type WebsiteConnectorPreset } from "../../api/website-connectors";
@@ -64,8 +65,7 @@ export function HostingTierChoice({ value, onChange, disabled = false }: {
     <legend className="text-sm font-medium">{tt("服务层级")}</legend>
     <button type="button" className="text-xs underline" onClick={() => { onChange(""); setRetry(n => n + 1); }}>{tt("刷新层级状态")}</button>
     {!tiers && !error && <p role="status" className="text-xs">{tt("加载中…")}</p>}
-    {error && <p role="alert" className="text-xs">{tt("暂时无法读取服务层级。")}{" "}
-      <button type="button" className="underline" onClick={() => setRetry(n => n + 1)}>{tt("重试")}</button></p>}
+    {error && <AutoRecovery identity="src/shell/website-platform/HostingTierChoice.tsx:0" error={error} recover={() => setRetry(n => n + 1)} />}
     {sampleError && <p role="alert" className="text-xs">{tt(sampleError)}</p>}
     {tiers?.map(tier => {
       const id = tier.id as HostingTier, unavailable = tier.available === false || tier.status === "not_ready";

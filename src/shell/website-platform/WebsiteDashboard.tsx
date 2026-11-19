@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useState } from "react";
 import { websitePanelsApi, type WebsitePanel, type WebsitePanelData, type WebsitePanelsApi } from "../../api/website-panels";
 import type { WebsiteRuntime } from "../../api/website-runtime";
@@ -108,7 +109,7 @@ export function WebsiteDashboard({ projectId, runtime, runtimeError, api = websi
     <WebsiteManagementPanels projectId={projectId} api={managementApi || websitePlatformApi} defaultBoards={defaultBoards} />
     <WebsiteResourceBoards projectId={projectId} api={managementApi || websitePlatformApi} defaultBoards={defaultBoards} />
     <details className="my-3 rounded border p-3"><summary>{tt("发布")}</summary><WebsitePublishPanel projectId={projectId} api={managementApi || websitePlatformApi} /></details>
-    {error && <div role="alert" className="mb-3 text-xs text-red-600">{error} <button type="button" className="underline" onClick={() => setRefresh(value => value + 1)}>{tt("重试")}</button></div>}
+    {error && <AutoRecovery identity="src/shell/website-platform/WebsiteDashboard.tsx:0" error={error} recover={() => setRefresh(value => value + 1)} />}
     {loading ? <p role="status">{tt("加载中…")}</p> : <div className="contents">
       {platformPanels.map(panel => <DashboardCard key={panel.id} order={first(panel.id)} projectId={projectId} panel={panel} api={api} pending={pending} onWire={() => {}} />)}
     </div>}

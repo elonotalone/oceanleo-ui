@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   websiteConnectorsApi, type WebsiteConnectorChange, type WebsiteConnectorDetails,
@@ -395,7 +396,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
     <div className="min-h-0 flex-1"><Suspense fallback={<p role="status">{tt("加载中…")}</p>}><SampleWorkbench workId={"cloud:" + sampleProject} /></Suspense></div>
   </section>;
   if (notWired) return <section className="h-full overflow-auto p-3">
-    <p role="status">{tt("此功能尚未在当前服务端开通")} <button type="button" className="underline" onClick={() => setRefresh(value => value + 1)}>{tt("重试")}</button></p>
+    <AutoRecovery identity="src/shell/website-platform/WebsiteConfiguration.tsx:1" recover={() => setRefresh(value => value + 1)} />
     <WorkNotWired page="configuration" /><WorkUsagePanel projectId={projectId} api={usageApi} />
   </section>;
 
@@ -421,7 +422,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
     <p className="mt-1 text-xs opacity-65">{tt("服务选择对整个作品生效；连接状态和配置任务会注明环境。开发服务固定为预览环境，托管与域名固定为生产环境。")}</p>
     <p className="mt-1 text-xs opacity-65">{tt("保存选择不会授予服务权限、建立连接或发布作品。")}</p>
     {loading && <p role="status" className="mt-4">{tt("加载中…")}</p>}
-    {error && <p role="alert" className="mt-3 text-xs text-red-600">{error} <button type="button" className="underline" onClick={() => setRefresh(value => value + 1)}>{tt("重试")}</button></p>}
+    {error && <AutoRecovery identity="src/shell/website-platform/WebsiteConfiguration.tsx:2" error={error} recover={() => setRefresh(value => value + 1)} />}
     {actionError && <p role="alert" className="mt-3 text-xs text-red-600">{actionError}</p>}
     <p data-testid="website-export-status" role={exportNotice?.error ? "alert" : "status"} aria-live="polite" className={`mt-2 text-xs ${exportNotice?.error ? "text-red-600" : "opacity-65"}`}>{exportNotice?.text}</p>
     {(uncertain || snapshot?.changes.some(isUnconfirmed)) && <p role="status" className="mt-3 rounded border p-3 text-xs" data-testid="website-connector-unconfirmed">

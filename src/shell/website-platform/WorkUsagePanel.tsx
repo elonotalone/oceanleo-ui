@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useRef, useState } from "react";
 import { workUsageApi, type WorkMoney, type WorkUsage, type WorkUsageApi, type WorkUsageLimit } from "../../api/work-usage";
 import { useWebsiteLanguage, useWebsiteUI } from "./website-preview-i18n";
@@ -15,13 +16,8 @@ export function monthlyLimitMinor(value: string): number | null {
   return Number.isSafeInteger(minor) && minor <= 100_000_000_000 ? minor : null;
 }
 
-function LoadError({ error, retry, message }: { error: unknown; retry: () => void; message: string }) {
-  const tt = useWebsiteUI();
-  return <p role="alert" className="mt-2 text-xs">
-    {tt(missingWorkFeature(error) ? "此功能尚未在当前服务端开通"
-      : (error as { code?: string })?.code === "metering_unavailable" ? "用量记录存储尚未就绪。" : message)}{" "}
-    <button type="button" className="underline" onClick={retry}>{tt("重试")}</button>
-  </p>;
+function LoadError({ error, retry }: { error: unknown; retry: () => void; message: string }) {
+  return <AutoRecovery identity="src/shell/website-platform/WorkUsagePanel.tsx:0" error={error} recover={retry} />;
 }
 
 function MonthlyUsage({ projectId, api }: { projectId: string; api: WorkUsageApi }) {

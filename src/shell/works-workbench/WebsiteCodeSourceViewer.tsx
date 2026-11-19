@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useState } from "react";
 import { websiteFileText, websitePlatformApi, type WebsiteProjectFile } from "../../lib/website-platform-api";
 import { useWebsiteUI } from "../website-platform/website-preview-i18n";
@@ -9,8 +10,8 @@ export function WebsiteCodeSourceViewer({ projectId }: { projectId: string }) {
   const tt = useWebsiteUI();
   const [retry, setRetry] = useState(0);
   const [chosen, setChosen] = useState("");
-  const [listing, setListing] = useState<{ projectId: string; files?: WebsiteProjectFile[]; error?: string } | null>(null);
-  const [file, setFile] = useState<{ key: string; text?: string; binary?: boolean; error?: string } | null>(null);
+  const [listing, setListing] = useState<{ projectId: string; files?: WebsiteProjectFile[]; error?: unknown } | null>(null);
+  const [file, setFile] = useState<{ key: string; text?: string; binary?: boolean; error?: unknown } | null>(null);
   const current = listing?.projectId === projectId ? listing : null;
   const path = current?.files?.some(entry => entry.path === chosen) ? chosen : current?.files?.[0]?.path || "";
   const key = `${projectId}:${path}:${retry}`;
@@ -20,7 +21,7 @@ export function WebsiteCodeSourceViewer({ projectId }: { projectId: string }) {
     void websitePlatformApi.files(projectId, undefined, abort.signal).then(result => {
       if (!abort.signal.aborted) setListing({ projectId, files: result.files });
     }).catch(error => {
-      if (!abort.signal.aborted) setListing({ projectId, error: String(error instanceof Error ? error.message : error) });
+      if (!abort.signal.aborted) setListing({ projectId, error });
     });
     return () => abort.abort();
   }, [projectId, retry]);
@@ -30,13 +31,13 @@ export function WebsiteCodeSourceViewer({ projectId }: { projectId: string }) {
     void websitePlatformApi.file(projectId, path, undefined, abort.signal).then(result => {
       if (!abort.signal.aborted) setFile({ key, ...websiteFileText(result) });
     }).catch(error => {
-      if (!abort.signal.aborted) setFile({ key, error: String(error instanceof Error ? error.message : error) });
+      if (!abort.signal.aborted) setFile({ key, error });
     });
     return () => abort.abort();
   }, [projectId, path, key]);
   const error = current?.error || loaded?.error;
   return <div className="grid gap-3 p-4" data-testid="website-code-source-view">
-    {error ? <div role="alert">{error}<button type="button" onClick={() => setRetry(value => value + 1)}>{tt("重试")}</button></div>
+    {error ? <AutoRecovery identity="src/shell/works-workbench/WebsiteCodeSourceViewer.tsx:0" error={error} recover={() => setRetry(value => value + 1)} />
       : !current ? <p role="status">{tt("加载中…")}</p>
       : !current.files?.length ? <p>{tt("暂无文件")}</p>
       : <><select aria-label={tt("源文件")} value={path} onChange={event => setChosen(event.target.value)}>

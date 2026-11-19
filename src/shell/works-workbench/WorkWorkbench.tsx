@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useState } from "react";
 import { worksApi, type WorksApi } from "../../lib/works-api";
 import type { Work } from "../works/model";
@@ -14,7 +15,7 @@ export function WorkWorkbench({ workId, initialWork, readOnly = false, api = wor
   const tt = useWebsiteUI();
   const locale = useWebsiteLanguage();
   const [retry, setRetry] = useState(0);
-  const [loaded, setLoaded] = useState<{ id: string; work?: Work; error?: string } | null>(null);
+  const [loaded, setLoaded] = useState<{ id: string; work?: Work; error?: unknown } | null>(null);
   const [kinds, setKinds] = useState<WorkKindDefinition[]>([DEFAULT_KIND_DEFINITION]);
   useEffect(() => {
     const abort = new AbortController();
@@ -23,7 +24,7 @@ export function WorkWorkbench({ workId, initialWork, readOnly = false, api = wor
       setLoaded(null);
       void api.get(workId, abort.signal).then(work => {
         if (!abort.signal.aborted) setLoaded({ id: workId, work: { ...work, ...(work.orientation || !initialWork?.orientation ? {} : { orientation: initialWork.orientation }) } });
-      }).catch(() => { if (!abort.signal.aborted) setLoaded({ id: workId, error: tt("暂时无法读取作品，请重试。") }); });
+      }).catch(error => { if (!abort.signal.aborted) setLoaded({ id: workId, error }); });
     }
     void api.kinds().then(next => { if (!abort.signal.aborted) setKinds(next); })
       .catch(() => { if (!abort.signal.aborted) setKinds([DEFAULT_KIND_DEFINITION]); });
@@ -32,7 +33,7 @@ export function WorkWorkbench({ workId, initialWork, readOnly = false, api = wor
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workId, api, retry, readOnly, initialWork]);
   const current = loaded?.id === workId ? loaded : null;
-  if (current?.error) return <div role="alert" className="p-4">{tt(current.error)} <button type="button" onClick={() => setRetry(value => value + 1)}>{tt("重试")}</button></div>;
+  if (current?.error) return <AutoRecovery identity="src/shell/works-workbench/WorkWorkbench.tsx:0" error={current.error} recover={() => setRetry(value => value + 1)} />;
   if (!current?.work) return <p role="status" className="p-4">{tt("加载中…")}</p>;
   const work = current.work;
   const projectId = work.home.type === "cloud" ? work.home.project_id || (work.id.startsWith("cloud:") ? work.id.slice(6) : "") : "";
