@@ -72,6 +72,12 @@
         },
         {
           "kind": "named",
+          "name": "BackButton",
+          "importedName": "BackButton",
+          "source": "./shell"
+        },
+        {
+          "kind": "named",
           "name": "parseRow",
           "importedName": "parseRow",
           "source": "./acp"
@@ -10455,6 +10461,12 @@
       "declarations": [
         {
           "kind": "named",
+          "name": "BackButton",
+          "importedName": "BackButton",
+          "source": "./BackButton"
+        },
+        {
+          "kind": "named",
           "name": "BUTTON_DEFAULT_SIZE",
           "importedName": "BUTTON_DEFAULT_SIZE",
           "source": "./Button"
@@ -10586,6 +10598,12 @@
           "name": "useToast",
           "importedName": "useToast",
           "source": "./Toast"
+        },
+        {
+          "kind": "type",
+          "name": "BackButtonProps",
+          "importedName": "BackButtonProps",
+          "source": "./BackButton"
         },
         {
           "kind": "type",
