@@ -28,7 +28,6 @@ export function setBayFollowing(userId: string, following: boolean) {
   return following ? bayPost<{ following: boolean }>("/v1/im/follows", { user_id: userId })
     : bayDelete<{ following: boolean }>(`/v1/im/follows/${encodeURIComponent(userId)}`);
 }
-export async function getBayFollowPerson(userId: string, username: string, signal?: AbortSignal) {
-  const result = await bayGet<{ people: BayPersonCard[] }>(`/v1/im/users/search?${new URLSearchParams({ q: username, limit: "20" })}`, { signal });
-  return result.people.find((person) => person.user_id === userId) ?? null;
+export function getBayFollowPerson(userId: string, signal?: AbortSignal): Promise<BayPersonCard> {
+  return bayGet(`/v1/im/users/${encodeURIComponent(userId)}`, { signal });
 }

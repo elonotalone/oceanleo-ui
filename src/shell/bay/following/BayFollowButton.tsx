@@ -25,9 +25,9 @@ export function BayFollowButton({ userId, username, initialFollowing }: { userId
       if (controller.signal.aborted) return;
       setOwn(viewer === userId);
       if (viewer === userId || initialFollowing !== undefined) return;
-      const person = await getBayFollowPerson(userId, username, controller.signal);
+      const person = await getBayFollowPerson(userId, controller.signal);
       if (controller.signal.aborted) return;
-      if (person && !person.blocked) setFollowing(person.following);
+      if (person?.user_id === userId && !person.blocked) setFollowing(person.following);
       else setError("关注状态暂不可用。");
     }).catch(() => { if (!controller.signal.aborted) { setLoadFailed(true); setError("关注状态暂不可用。"); } });
     const update = (event: Event) => {
