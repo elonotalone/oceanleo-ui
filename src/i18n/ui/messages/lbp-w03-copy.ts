@@ -59,7 +59,6 @@ const SOURCE = {
   followedSignIn: "登录后查看你关注的网站或软件",
   followedLoadFailed: "没读到你关注的网站或软件，请稍后再试。",
   followedEmpty: "你还没有关注任何网站或软件。在详情页点「关注」，它更新时你会收到通知",
-  shelfLoadFailed: "列表没读出来，请稍后点「重试」。",
   // ---- 泛指一件商品（原「服务」）：详情、结账、会话主题、统一发布表单 ----
   itemMissingOrDown: "这件商品不存在或已经下架",
   itemYours: "这是你发布的商品",
@@ -130,7 +129,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "Couldn’t load the websites and software you follow. Please try again later.",
     followedEmpty:
       "You aren’t following any website or software yet. Tap Follow on a details page to get notified when it updates.",
-    shelfLoadFailed: "Couldn’t load the list. Tap Retry in a moment.",
     itemMissingOrDown: "This item doesn’t exist or has been taken down",
     itemYours: "This is an item you posted",
     deliveryOffPlatform: "Delivery happens off the platform",
@@ -200,7 +198,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "Die Websites und Software, denen du folgst, konnten nicht geladen werden. Bitte versuche es später erneut.",
     followedEmpty:
       "Du folgst noch keiner Website oder Software. Tippe auf der Detailseite auf „Folgen“, dann wirst du bei Updates benachrichtigt.",
-    shelfLoadFailed: "Die Liste konnte nicht geladen werden. Tippe in einem Moment auf „Erneut versuchen“.",
     itemMissingOrDown: "Dieses Produkt existiert nicht oder wurde zurückgezogen",
     itemYours: "Das ist dein Produkt",
     deliveryOffPlatform: "Die Lieferung erfolgt außerhalb der Plattform",
@@ -270,7 +267,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "No se pudieron cargar los sitios web y el software que sigues. Inténtalo de nuevo más tarde.",
     followedEmpty:
       "Aún no sigues ningún sitio web ni software. Pulsa Seguir en su página de detalles para recibir avisos cuando se actualice.",
-    shelfLoadFailed: "No se pudo cargar la lista. Pulsa Reintentar en un momento.",
     itemMissingOrDown: "Este producto no existe o se ha retirado",
     itemYours: "Este es un producto que publicaste",
     deliveryOffPlatform: "La entrega se hace fuera de la plataforma",
@@ -340,7 +336,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "No se pudieron cargar los sitios web y el software que sigues. Inténtalo de nuevo más tarde.",
     followedEmpty:
       "Todavía no sigues ningún sitio web ni software. Toca Seguir en su página de detalles para recibir avisos cuando se actualice.",
-    shelfLoadFailed: "No se pudo cargar la lista. Toca Reintentar en un momento.",
     itemMissingOrDown: "Este producto no existe o se retiró",
     itemYours: "Este es un producto que publicaste",
     deliveryOffPlatform: "La entrega se hace fuera de la plataforma",
@@ -410,7 +405,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "Impossible de charger les sites web et logiciels que vous suivez. Réessayez plus tard.",
     followedEmpty:
       "Vous ne suivez encore aucun site web ni logiciel. Appuyez sur Suivre sur sa page de détails pour être prévenu lors des mises à jour.",
-    shelfLoadFailed: "Impossible de charger la liste. Appuyez sur Réessayer dans un instant.",
     itemMissingOrDown: "Ce produit n’existe pas ou a été retiré",
     itemYours: "Ceci est un produit que vous avez publié",
     deliveryOffPlatform: "La livraison se fait en dehors de la plateforme",
@@ -480,7 +474,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "Impossibile caricare i siti web e i software che segui. Riprova più tardi.",
     followedEmpty:
       "Non segui ancora nessun sito web o software. Tocca Segui nella sua pagina dei dettagli per ricevere avvisi quando si aggiorna.",
-    shelfLoadFailed: "Impossibile caricare l’elenco. Tocca Riprova tra un attimo.",
     itemMissingOrDown: "Questo prodotto non esiste o è stato rimosso",
     itemYours: "Questo è un prodotto che hai pubblicato",
     deliveryOffPlatform: "La consegna avviene fuori dalla piattaforma",
@@ -550,7 +543,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "Não foi possível carregar os sites e softwares que você segue. Tente novamente mais tarde.",
     followedEmpty:
       "Você ainda não segue nenhum site ou software. Toque em Seguir na página de detalhes para ser avisado quando ele atualizar.",
-    shelfLoadFailed: "Não foi possível carregar a lista. Toque em Tentar novamente daqui a pouco.",
     itemMissingOrDown: "Este produto não existe ou foi removido",
     itemYours: "Este é um produto que você publicou",
     deliveryOffPlatform: "A entrega é feita fora da plataforma",
@@ -620,7 +612,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "Não foi possível carregar os sites e o software que segue. Tente novamente mais tarde.",
     followedEmpty:
       "Ainda não segue nenhum site ou software. Toque em Seguir na página de detalhes para ser avisado quando atualizar.",
-    shelfLoadFailed: "Não foi possível carregar a lista. Toque em Tentar novamente daqui a pouco.",
     itemMissingOrDown: "Este produto não existe ou foi retirado",
     itemYours: "Este é um produto que publicou",
     deliveryOffPlatform: "A entrega é feita fora da plataforma",
@@ -689,7 +680,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "Không tải được các website và phần mềm bạn theo dõi. Hãy thử lại sau.",
     followedEmpty:
       "Bạn chưa theo dõi website hoặc phần mềm nào. Bấm Theo dõi trên trang chi tiết để nhận thông báo khi nó cập nhật.",
-    shelfLoadFailed: "Không tải được danh sách. Lát nữa hãy bấm Thử lại.",
     itemMissingOrDown: "Sản phẩm này không tồn tại hoặc đã bị gỡ",
     itemYours: "Đây là sản phẩm bạn đã đăng",
     deliveryOffPlatform: "Việc giao hàng diễn ra ngoài nền tảng",
@@ -758,7 +748,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "Takip ettiğin web siteleri ve yazılımlar yüklenemedi. Lütfen daha sonra tekrar dene.",
     followedEmpty:
       "Henüz hiçbir web sitesini veya yazılımı takip etmiyorsun. Güncellendiğinde haberdar olmak için ayrıntılar sayfasında Takip et’e dokun.",
-    shelfLoadFailed: "Liste yüklenemedi. Biraz sonra Tekrar dene’ye dokun.",
     itemMissingOrDown: "Bu ürün yok veya yayından kaldırılmış",
     itemYours: "Bu, senin yayınladığın bir ürün",
     deliveryOffPlatform: "Teslimat platform dışında yapılır",
@@ -824,7 +813,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedSignIn: "登入後查看你關注的網站或軟體",
     followedLoadFailed: "沒讀到你關注的網站或軟體，請稍後再試。",
     followedEmpty: "你還沒有關注任何網站或軟體。在詳情頁點「關注」，它更新時你會收到通知",
-    shelfLoadFailed: "列表沒讀出來，請稍後點「重試」。",
     itemMissingOrDown: "這件商品不存在或已經下架",
     itemYours: "這是你發布的商品",
     deliveryOffPlatform: "交付在平台外完成",
@@ -892,7 +880,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "フォロー中のウェブサイトやソフトウェアを読み込めませんでした。しばらくしてからもう一度お試しください。",
     followedEmpty:
       "まだどのウェブサイトやソフトウェアもフォローしていません。詳細ページで「フォロー」を押すと、更新時に通知が届きます。",
-    shelfLoadFailed: "一覧を読み込めませんでした。しばらくしてから「再試行」を押してください。",
     itemMissingOrDown: "この商品は存在しないか、掲載が停止されています",
     itemYours: "これはあなたが公開した商品です",
     deliveryOffPlatform: "納品はプラットフォームの外で行われます",
@@ -961,7 +948,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "팔로우한 웹사이트와 소프트웨어를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
     followedEmpty:
       "아직 팔로우한 웹사이트나 소프트웨어가 없습니다. 상세 페이지에서 팔로우를 누르면 업데이트 알림을 받습니다.",
-    shelfLoadFailed: "목록을 불러오지 못했습니다. 잠시 후 다시 시도를 누르세요.",
     itemMissingOrDown: "이 상품이 없거나 내려갔습니다",
     itemYours: "내가 올린 상품입니다",
     deliveryOffPlatform: "납품은 플랫폼 밖에서 이루어집니다",
@@ -1030,7 +1016,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "تعذّر تحميل المواقع والبرامج التي تتابعها. حاول مرة أخرى لاحقًا.",
     followedEmpty:
       "لا تتابع أي موقع أو برنامج بعد. اضغط متابعة في صفحة التفاصيل لتصلك إشعارات عند التحديث.",
-    shelfLoadFailed: "تعذّر تحميل القائمة. اضغط إعادة المحاولة بعد قليل.",
     itemMissingOrDown: "هذا المنتج غير موجود أو أُزيل",
     itemYours: "هذا منتج نشرتَه أنت",
     deliveryOffPlatform: "يتم التسليم خارج المنصة",
@@ -1099,7 +1084,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "โหลดเว็บไซต์และซอฟต์แวร์ที่คุณติดตามไม่สำเร็จ โปรดลองอีกครั้งภายหลัง",
     followedEmpty:
       "คุณยังไม่ได้ติดตามเว็บไซต์หรือซอฟต์แวร์ใดเลย แตะติดตามที่หน้ารายละเอียดเพื่อรับแจ้งเมื่อมีการอัปเดต",
-    shelfLoadFailed: "โหลดรายการไม่สำเร็จ อีกสักครู่แตะลองอีกครั้ง",
     itemMissingOrDown: "ไม่มีสินค้านี้หรือถูกถอดออกแล้ว",
     itemYours: "นี่คือสินค้าที่คุณลงไว้",
     deliveryOffPlatform: "การส่งมอบทำนอกแพลตฟอร์ม",
@@ -1169,7 +1153,6 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "आपके फ़ॉलो किए वेबसाइट और सॉफ़्टवेयर लोड नहीं हो सके। कृपया बाद में फिर कोशिश करें।",
     followedEmpty:
       "आपने अभी कोई वेबसाइट या सॉफ़्टवेयर फ़ॉलो नहीं किया है। विवरण पृष्ठ पर फ़ॉलो करें दबाएँ, अपडेट होने पर आपको सूचना मिलेगी।",
-    shelfLoadFailed: "सूची लोड नहीं हो सकी। थोड़ी देर बाद फिर कोशिश करें दबाएँ।",
     itemMissingOrDown: "यह उत्पाद मौजूद नहीं है या हटा दिया गया है",
     itemYours: "यह आपका पोस्ट किया हुआ उत्पाद है",
     deliveryOffPlatform: "डिलीवरी प्लेटफ़ॉर्म के बाहर होती है",
