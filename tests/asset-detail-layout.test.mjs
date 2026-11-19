@@ -16,7 +16,7 @@ globalThis.__assetDetailLocale = "en";
 globalThis.__assetDetailMessages = ASSET_DETAIL_MESSAGES;
 globalThis.__assetDetailViewerProps = null;
 const ui = dataModule(`export function useUI() { return (value) => {
-  const common = {"返回列表":"Back to list", "免费":"Free", "图片":"Image", "网站":"Website", "内容":"Content"};
+  const common = {"返回列表":"Back to list", "免费":"Free", "图片":"Image", "图像":"Image", "网站":"Website", "网站与应用":"Websites & Apps", "内容":"Content"};
   const locale = globalThis.__assetDetailLocale;
   return globalThis.__assetDetailMessages[locale]?.[value] || (locale.startsWith("zh") ? value : common[value]) || value;
 }; }`);
@@ -124,7 +124,7 @@ test("resolved commerce absence supersedes stale legacy price and retains the ex
 
 test("resolved type labels do not replace the entry passed to the type viewer", () => {
   const html = render({typeItem: {...entry.libraryItem, kind:"website"}, viewerNonce:7, accent:"#123456"});
-  assert.match(html, /Website/);
+  assert.match(html, /Websites &amp; Apps/);
   assert.strictEqual(globalThis.__assetDetailViewerProps.entry, entry);
   assert.equal(globalThis.__assetDetailViewerProps.viewerNonce, 7);
   assert.equal(globalThis.__assetDetailViewerProps.accent, "#123456");

@@ -9,7 +9,7 @@ import { LibraryEditFlow } from '../src/shell/plugin-command/library-edit-flow.t
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 globalThis.__UAI_REACT=React;
 const registry=dataModule(`export function currentEditorContext(){return globalThis.__UAI_UI.surface} export function subscribeEditorContext(){return ()=>{}}`);
-const runtime=dataModule(`export function currentLibraryEdit(){return {flow:globalThis.__UAI_UI.flow,binding:globalThis.__UAI_UI.binding}} export function libraryEditFlow(){return globalThis.__UAI_UI.flow} export function bindLibraryEditor(){return ()=>{}} export function libraryDetailBinding(){return globalThis.__UAI_UI.binding}`);
+const runtime=dataModule(`export function currentLibraryEdit(){return {flow:globalThis.__UAI_UI.flow,binding:globalThis.__UAI_UI.binding}} export function libraryEditFlow(){return globalThis.__UAI_UI.flow} export function bindLibraryEditor(){return ()=>{}}`);
 const workspace=dataModule(`export function useOptionalWorkspaceSession(){return {activeFileScopeId:'scope',sessionId:'session'}}`);
 const stubs={'./registry':registry,'./library-edit-runtime':runtime,'../workspace-session-context':workspace,'../../i18n/ui/useUI':dataModule(`export function useUI(){return key=>key}`)};
 const {EditorLibraryEditEntry}=await import(await compileModule('src/shell/plugin-command/LibraryEditEntry.tsx',stubs));
@@ -48,19 +48,23 @@ const {AssetDetail}=await import(await compileModule('src/shell/asset-detail/Ass
  '../../i18n/ui/useUI':dataModule(`export function useUI(){return key=>key}`),
  '../workspace-library-view':dataModule(`export function WorkspaceLibraryEntryViewer({entry}){return globalThis.__UAI_REACT.createElement('span',{'data-preview-revision':entry.libraryItem.revisionId},entry.libraryItem.revisionId)}`),
  '../library-editor-category':dataModule(`export function libraryEditorLabel(){return 'Document'}export function translateLibraryTypeLabel(tt,label){return label}`),
- '../workspace-library-model':dataModule(`export const WORKSPACE_KIND_LABELS={};export function workspaceEntryFromLibraryItem(item){return {id:item.id,title:item.title,kind:item.kind,libraryItem:item}}`),
+ '../workspace-library-model':dataModule(`export const WORKSPACE_KIND_LABELS={};`),
  './AssetInfo':dataModule(`export function AssetInfo(){return null}`),
  '../bay/asset/BayListingContent':dataModule(`export function BayListingContent(){return null}`),
 }));
-test('owned Library detail reloads its preview after a background edit without mounting an editor',async()=>{
- const t=harness();try{
- t.h.binding.save=async()=>t.h.item;
- const entry={id:'a',title:'Report',libraryItem:t.h.item};
- act(()=>t.root.render(React.createElement(AssetDetail,{entry,actionContext:{surface:'library',owned:true,rights:{canUseInTask:true},ref:{kind:'artifact',artifactId:'a'}},onBack:()=>{}})));
- assert.match(t.host.textContent,/让 AI 修改/);
- await act(async()=>{await t.h.flow.start('Edit whole file',t.h.binding)});
- await act(async()=>{await t.h.flow.poll()});
- assert.equal(t.host.querySelector('[data-preview-revision]').getAttribute('data-preview-revision'),'r3');
- assert.equal(t.host.querySelector('[data-editor-input]'),null);
- }finally{t.close()}
-});
+for (const surface of ['library','bay','home','task',undefined]) {
+ test(`${surface || 'legacy Library'} asset detail has no AI edit entry and displays the host revision`,()=>{
+  const t=harness();try{
+   const entry={id:'a',title:'Report',libraryItem:{...t.h.item,artifact:{owner:{visibility:'private'},access:{canEdit:true}}}};
+   const props={actionContext:surface?{surface,owned:true,rights:{canUseInTask:true},ref:{kind:'artifact',artifactId:'a'}}:undefined,onBack:()=>{}};
+   act(()=>t.root.render(React.createElement(AssetDetail,{...props,entry})));
+   assert.doesNotMatch(t.host.textContent,/让 AI 修改/);
+   assert.equal(t.host.querySelector('textarea'),null);
+   assert.equal(t.host.querySelector('[data-library-ai-entry]'),null);
+   assert.equal(t.host.querySelector('[data-editor-input]'),null);
+   assert.deepEqual(t.events,[]);
+   act(()=>t.root.render(React.createElement(AssetDetail,{...props,entry:{...entry,libraryItem:item('r3')}})));
+   assert.equal(t.host.querySelector('[data-preview-revision]').getAttribute('data-preview-revision'),'r3');
+  }finally{t.close()}
+ });
+}

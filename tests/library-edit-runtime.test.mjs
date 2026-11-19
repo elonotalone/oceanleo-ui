@@ -18,10 +18,6 @@ test('restore reuses previous delivery, editor project and dependency closure wi
  let commit,read;globalThis.__UAI_API={item:async(...args)=>{read=args;return{ok:true,data:previous}},revision:async(id,body)=>{commit={id,body};return{ok:true,data:{...previous,revisionId:'r3'}}}};
  const result=await runtime.createLibraryEditPorts().restore(previous,'r2');assert.deepEqual(read,['a','r1']);assert.equal(commit.id,'a');assert.equal(commit.body.expectedRevisionId,'r2');assert.equal(commit.body.source.url,'/source/r1');assert.equal(commit.body.renditions.find(r=>r.purpose==='editor_manifest').url,'/project/r1');assert.deepEqual(commit.body.scene.dependencyRevisionIds,['dep-r1']);assert.equal(commit.body.provenance.licenseCode,'CC-BY-4.0');assert.equal(result.artifactId,'a');
 });
-test('Library detail uses whole file context and verifies the pinned revision without an editor',async()=>{
- globalThis.__UAI_API={head:async()=>({ok:true,data:previous})};const binding=runtime.libraryDetailBinding(previous);assert.ok(binding.writable());assert.deepEqual(binding.context().selection,{kind:'whole-file'});assert.equal((await binding.save()).revisionId,'r1');
- globalThis.__UAI_API.head=async()=>({ok:true,data:{...previous,revisionId:'other'}});await assert.rejects(()=>binding.save(),/revision_conflict/);
-});
 test('binding unmount is identity-aware and running task state is retained across drawer remounts',()=>{
  const flow=runtime.libraryEditFlow('scope',previous);assert.equal(runtime.libraryEditFlow('scope',previous),flow);assert.notEqual(runtime.libraryEditFlow('other-scope',previous),flow);
 });

@@ -3,7 +3,6 @@ import { createTask, getTask, stopTask } from "../../lib/agent";
 import { localAgentFailure, taskLocalAgentState, localAgentRunLive } from "../../lib/local-agent-task";
 import { createArtifactRevision, getArtifactItem, getCurrentArtifactItem } from "../artifact-client";
 import type { LibraryItem } from "../library-data";
-import { boundedAgentContent } from "./bounded-agent-content";
 import { currentEditorContext } from "./registry";
 import { LibraryEditFlow, type EditBinding, type EditPorts } from "./library-edit-flow";
 
@@ -72,16 +71,4 @@ export function currentLibraryEdit(scopeId?: string | null): { flow: LibraryEdit
   const registered = bindings.get(keyFor(target.workspaceScopeId, target.artifactId));
   if (!registered) return null;
   return { flow: libraryEditFlow(target.workspaceScopeId, registered.binding.item()), binding: registered.binding };
-}
-export function libraryDetailBinding(item: LibraryItem): EditBinding {
-  return {
-    item: () => item,
-    writable: () => item.artifact?.owner.visibility === "private",
-    save: async () => {
-      const head = requireData(await getCurrentArtifactItem(item.artifactId!));
-      if (head.revisionId !== item.revisionId) throw new Error("revision_conflict");
-      return head;
-    },
-    context: () => ({ selection: { kind: "whole-file" }, excerpt: boundedAgentContent({ title: item.title, textExcerpt: item.artifact?.textExcerpt }) }),
-  };
 }

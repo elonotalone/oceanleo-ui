@@ -2,11 +2,10 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "../workspace-session-context";
-import type { LibraryItem } from "../library-data";
 import { currentEditorContext, subscribeEditorContext } from "./registry";
-import { currentLibraryEdit, libraryDetailBinding, libraryEditFlow } from "./library-edit-runtime";
+import { currentLibraryEdit } from "./library-edit-runtime";
 import { editIsLocked, type LibraryEditFlow, type EditBinding } from "./library-edit-flow";
-import { LibraryEditStatus, useLibraryEditReload } from "./use-library-edit";
+import { LibraryEditStatus } from "./use-library-edit";
 
 function EditStatus({ flow }: { flow: LibraryEditFlow }) {
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot, flow.getSnapshot);
@@ -40,19 +39,4 @@ export function EditorLibraryEditEntry({ editorId, onTask }: { editorId: string;
   const active = currentLibraryEdit(workspace?.activeFileScopeId);
   if (!active || currentEditorContext()?.editorId !== editorId) return <p role="status" className="p-3 text-sm">{tt("请先打开我的库中的文件。")}</p>;
   return <EditForm flow={active.flow} binding={active.binding} onTask={onTask} />;
-}
-/** Library detail uses the very same flow without mounting a native editor. */
-export function LibraryDetailEditEntry({ item, onRevision }: { item: LibraryItem; onRevision?: (item: LibraryItem) => void }) {
-  const tt = useUI();
-  const workspace = useOptionalWorkspaceSession();
-  const [open, setOpen] = useState(false);
-  useLibraryEditReload(item, next => onRevision?.(next));
-  const active = currentLibraryEdit(workspace?.activeFileScopeId);
-  const matching = active && active.binding.item().artifactId === item.artifactId ? active : null;
-  const binding = matching?.binding || libraryDetailBinding(item);
-  const flow = matching?.flow || libraryEditFlow(workspace?.activeFileScopeId || "standalone", item, item.siteId || "", workspace?.sessionId || undefined);
-  return <div className="shrink-0 border-b border-[var(--border)] p-2">
-    <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}>{tt("让 AI 修改")}</button>
-    {open && <EditForm flow={flow} binding={binding} />}
-  </div>;
 }

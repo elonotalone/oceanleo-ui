@@ -1,15 +1,14 @@
 "use client";
 
-import { forwardRef, useState, type ReactNode, type Ref } from "react";
+import { forwardRef, type ReactNode, type Ref } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
 import { libraryEditorLabel, translateLibraryTypeLabel } from "../library-editor-category";
-import { WORKSPACE_KIND_LABELS, workspaceEntryFromLibraryItem, type WorkspaceLibraryEntry } from "../workspace-library-model";
+import { WORKSPACE_KIND_LABELS, type WorkspaceLibraryEntry } from "../workspace-library-model";
 import { WorkspaceLibraryEntryViewer } from "../workspace-library-view";
 import type { AssetActionContext } from "./types";
 import { BayListingContent } from "../bay/asset/BayListingContent";
 import { AssetInfo } from "./AssetInfo";
-import { LibraryDetailEditEntry } from "../plugin-command/LibraryEditEntry";
 
 export interface AssetDetailProps {
   entry: WorkspaceLibraryEntry;
@@ -34,13 +33,7 @@ export const AssetDetail = forwardRef<HTMLDivElement, AssetDetailProps>(function
   className = "", viewerNonce = 0, viewerRef, typeItem, info,
 }, ref) {
   const tt = useUI();
-  const baseItem = typeItem || entry.libraryItem;
-  const [aiRevision, setAiRevision] = useState<{ baseRevisionId?: string; item: LibraryItem } | null>(null);
-  const labelItem = aiRevision?.item.artifactId === baseItem?.artifactId && aiRevision?.baseRevisionId === baseItem?.revisionId ? aiRevision?.item || baseItem : baseItem;
-  const visibleEntry = labelItem && labelItem !== baseItem ? { ...entry, ...workspaceEntryFromLibraryItem(labelItem), detail: entry.detail } : entry;
-  const canAiEdit = actionContext
-    ? actionContext.surface === "library" && actionContext.owned && actionContext.rights.canUseInTask && actionContext.license?.modifyOk !== false
-    : baseItem?.artifact?.owner?.visibility === "private" && baseItem.artifact.access?.canEdit;
+  const labelItem = typeItem || entry.libraryItem;
   const kind = labelItem?.kind || entry.kind;
   return (
     <div ref={ref} data-asset-detail data-asset-surface={actionContext?.surface || "library"}
@@ -65,10 +58,9 @@ export const AssetDetail = forwardRef<HTMLDivElement, AssetDetailProps>(function
         {actions}
       </header>
       <AssetInfo entry={entry} actionContext={actionContext} />
-      {labelItem?.artifactId && labelItem.revisionId && canAiEdit && <LibraryDetailEditEntry key={labelItem.artifactId} item={labelItem} onRevision={next => setAiRevision({ baseRevisionId: baseItem?.revisionId, item: next })} />}
       <div ref={viewerRef} className="min-h-0 flex-1 overflow-auto bg-[var(--surface,#fafaf9)]">
         {actionContext?.commerce?.listingId ? <BayListingContent listingId={actionContext.commerce.listingId} purchaseState={actionContext.commerce.purchaseState} /> : actionContext?.ref.kind === "listing" ? <BayListingContent listingId={actionContext.ref.id} /> : null}
-        <WorkspaceLibraryEntryViewer entry={visibleEntry} accent={accent} viewerNonce={viewerNonce} />
+        <WorkspaceLibraryEntryViewer entry={entry} accent={accent} viewerNonce={viewerNonce} />
       </div>
     </div>
   );
