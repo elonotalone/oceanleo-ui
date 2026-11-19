@@ -97,7 +97,7 @@ export function SettingsModal({ open, onClose, ...props }: SettingsModalProps) {
         <button type="button" data-settings-expand onClick={() => setExpanded((value) => !value)} aria-label={expanded ? tt("缩小") : tt("放大")} className="pointer-events-auto flex size-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800">
           {expanded ? <ShrinkGlyph /> : <ExpandGlyph />}
         </button>
-        <button type="button" onClick={onClose} aria-label={tt("关闭")} className="pointer-events-auto flex size-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800">✕</button>
+        <button type="button" onClick={onClose} aria-label={tt("关闭")} className="min-h-11 min-w-11 pointer-events-auto flex size-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800">✕</button>
       </div>
       <SettingsHub {...props} variant="modal" onClose={onClose} />
     </div>

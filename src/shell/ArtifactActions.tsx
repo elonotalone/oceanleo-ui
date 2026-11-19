@@ -809,7 +809,7 @@ export function ArtifactActionButtons({
         }
         aria-label={`${tt(label)}「${item.title}」`}
         title={tt(state.available ? label : ACTION_UNAVAILABLE[action])}
-        className={useIcon ? iconBtnClass : chipClass}
+        className={"min-h-11 min-w-11 " + (useIcon ? iconBtnClass : chipClass)}
         style={useIcon ? iconStyle(state.available) : chipStyle(state.available)}
       >
         {isBusy(action) ? (
@@ -840,7 +840,7 @@ export function ArtifactActionButtons({
             disabled={isBusy("share")}
             aria-label={tt(`分享「${item.title}」`)}
             title={tt("分享")}
-            className={iconBtnClass}
+            className={"min-h-11 min-w-11 " + (iconBtnClass)}
             style={iconStyle(true)}
           >
             {isBusy("share") ? (
@@ -871,7 +871,7 @@ export function ArtifactActionButtons({
               aria-describedby={!downloadAvailable ? reasonId : undefined}
               aria-label={`${tt("下载")}「${item.title}」`}
               title={tt(downloadAvailable ? "下载" : downloadReason)}
-              className={iconBtnClass}
+              className={"min-h-11 min-w-11 " + (iconBtnClass)}
               style={iconStyle(downloadAvailable)}
             >
               {isBusy("download") ? (
@@ -915,7 +915,7 @@ export function ArtifactActionButtons({
                   : "收藏"
                 : favoriteReason,
             )}
-            className={iconBtnClass}
+            className={"min-h-11 min-w-11 " + (iconBtnClass)}
             style={iconStyle(favoriteAvailable)}
           >
             {isBusy("favorite") ? (
@@ -953,7 +953,7 @@ export function ArtifactActionButtons({
             aria-disabled={isBusy("fullscreen")}
             aria-label={tt(`全屏「${item.title}」`)}
             title={tt("全屏")}
-            className={iconBtnClass}
+            className={"min-h-11 min-w-11 " + (iconBtnClass)}
             style={iconStyle(true)}
           >
             {isBusy("fullscreen") ? (

@@ -100,13 +100,13 @@ export function DeviceFolderPicker({ deviceId, deviceName, title, client, onSele
   }>
     <div className="mb-4 flex items-center gap-2 text-sm text-neutral-600"><DeviceIcon className="h-5 w-5" />{deviceName}</div>
     <form className="mb-4 flex items-center gap-2" onSubmit={go}>
-      <button type="button" className={`${DEVICE_BUTTON} h-10 w-10 shrink-0 p-0`} aria-label={tt("主页")} onClick={() => void navigate(null)}>
+      <button type="button" className={"min-h-11 min-w-11 " + (`${DEVICE_BUTTON} h-10 w-10 shrink-0 p-0`)} aria-label={tt("主页")} onClick={() => void navigate(null)}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5" aria-hidden="true"><path d="m3 10 9-7 9 7v11H3zM9 21V12h6v9" /></svg>
       </button>
-      <button type="button" className={`${DEVICE_BUTTON} h-10 w-10 shrink-0 p-0`} aria-label={tt("上一级")} disabled={loading || !listing?.parent} onClick={() => { if (listing?.parent) void navigate(listing.parent); }}>
+      <button type="button" className={"min-h-11 min-w-11 " + (`${DEVICE_BUTTON} h-10 w-10 shrink-0 p-0`)} aria-label={tt("上一级")} disabled={loading || !listing?.parent} onClick={() => { if (listing?.parent) void navigate(listing.parent); }}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5" aria-hidden="true"><path d="m5 11 7-7 7 7M12 4v17" /></svg>
       </button>
-      <input aria-label={tt("文件夹路径")} value={inputPath} onInput={(event) => { const value = event.currentTarget.value; inputPathRef.current = value; setInputPath(value); if (listing?.entries.length === 0) setGrantPath(value.trim() || null); }} className="h-10 min-w-0 flex-1 rounded-xl bg-neutral-100 px-3 text-sm outline-none focus:ring-1 focus:ring-neutral-400" />
+      <input aria-label={tt("文件夹路径")} value={inputPath} onInput={(event) => { const value = event.currentTarget.value; inputPathRef.current = value; setInputPath(value); if (listing?.entries.length === 0) setGrantPath(value.trim() || null); }} className="min-h-11 h-10 min-w-0 flex-1 rounded-xl bg-neutral-100 px-3 text-sm outline-none focus:ring-1 focus:ring-neutral-400" />
       <button type="submit" className={DEVICE_BUTTON} disabled={loading || !inputPath.trim()}>{tt("前往")}</button>
     </form>
     <div className="min-h-[260px] rounded-2xl border border-neutral-200 bg-white p-2" aria-busy={loading || granting} data-device-folder-list>

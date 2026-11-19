@@ -155,7 +155,7 @@ export function VoiceRecorder({
         document.addEventListener("pointerup", onUp);
         void start();
       }}
-      className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-40"
+      className="min-h-11 min-w-11 flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-40"
     >
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
         <rect x="9" y="3" width="6" height="12" rx="3" />

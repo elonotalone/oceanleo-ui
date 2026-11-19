@@ -366,7 +366,7 @@ export function BayImageGallery(props: {
             aria-label={tt("去掉这张")}
             disabled={disabled}
             onClick={() => removeAt(index)}
-            className="absolute right-1 top-1 grid h-[18px] w-[18px] place-items-center rounded-full bg-black/70 text-[11px] leading-none text-white disabled:opacity-40"
+            className="min-h-11 min-w-11 absolute right-1 top-1 grid h-[18px] w-[18px] place-items-center rounded-full bg-black/70 text-[11px] leading-none text-white disabled:opacity-40"
           >
             ×
           </button>
@@ -419,7 +419,7 @@ export function BayImageGallery(props: {
                   aria-label={tt("去掉这张")}
                   disabled={disabled}
                   onClick={() => removeAt(index)}
-                  className="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full bg-black/70 text-[11px] leading-none text-white disabled:opacity-40"
+                  className="min-h-11 min-w-11 absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full bg-black/70 text-[11px] leading-none text-white disabled:opacity-40"
                 >
                   ×
                 </button>

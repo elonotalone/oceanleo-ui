@@ -47,7 +47,7 @@ function Switch({
       data-bay-switch={name}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className="inline-flex h-8 w-12 items-center justify-center rounded-full disabled:opacity-50"
+      className="min-h-11 min-w-11 inline-flex h-8 w-12 items-center justify-center rounded-full disabled:opacity-50"
     >
       <span className={"relative inline-flex h-5 w-9 items-center rounded-full " + (checked ? "bg-neutral-900" : "bg-neutral-300")}>
         <span

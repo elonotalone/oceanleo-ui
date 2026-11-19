@@ -682,7 +682,7 @@ export function ConnectorDialog({
             <ConnectorIcon icon={connector.icon} id={connector.id} label={tt(connector.name)} />
             <h3 className="text-[16px] font-semibold text-neutral-900">{tt(connector.name)}</h3>
           </div>
-          <button type="button" aria-label={tt("关闭")} onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100">✕</button>
+          <button type="button" aria-label={tt("关闭")} onClick={onClose} className="min-h-11 min-w-11 flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100">✕</button>
         </div>
         <form onSubmit={(event) => { event.preventDefault(); onConnect(); }}>
           <div className="space-y-4">{manualFields}</div>

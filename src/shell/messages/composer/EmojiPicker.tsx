@@ -50,7 +50,7 @@ export function EmojiPicker({
           key={emoji}
           type="button"
           onClick={() => onPick(emoji)}
-          className="flex h-8 w-full items-center justify-center rounded-md text-[16px] hover:bg-neutral-100"
+          className="min-h-11 min-w-11 flex h-8 w-full items-center justify-center rounded-md text-[16px] hover:bg-neutral-100"
         >
           {emoji}
         </button>

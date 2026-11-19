@@ -164,7 +164,7 @@ export function LoginManagePanel({ appId }: { appId: string }): ReactElement {
                         next[index] = event.target.value;
                         setUris(next);
                       }}
-                      className="h-10 min-w-0 flex-1 rounded-full border border-neutral-900 bg-white px-3 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
+                      className="min-h-11 h-10 min-w-0 flex-1 rounded-full border border-neutral-900 bg-white px-3 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
                     />
                     <button
                       type="button"

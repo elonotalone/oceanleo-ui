@@ -86,7 +86,7 @@ function TimeBox(props: {
           props.onChange(next);
         }
       }}
-      className="h-10 w-14 rounded-md border border-neutral-300 bg-white text-center text-[14px] tabular-nums text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:opacity-50"
+      className="min-h-11 h-10 w-14 rounded-md border border-neutral-300 bg-white text-center text-[14px] tabular-nums text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:opacity-50"
     />
   );
 }
@@ -221,7 +221,7 @@ export function BayDeadlineField(props: {
       {open ? (
         <fieldset disabled={props.disabled} data-bay-deadline-panel="" className="absolute left-0 top-full z-30 mt-1 w-full max-w-sm rounded-md border border-neutral-300 bg-white p-4 shadow-lg">
           <div className="flex items-center justify-between">
-            <button type="button" aria-label={tt("上个月")} onClick={() => shiftMonth(-1)} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100">
+            <button type="button" aria-label={tt("上个月")} onClick={() => shiftMonth(-1)} className="min-h-11 min-w-11 flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100">
               <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="m10 3-5 5 5 5" />
               </svg>
@@ -229,7 +229,7 @@ export function BayDeadlineField(props: {
             <p className="text-[14px] font-semibold text-neutral-900" data-bay-deadline-month="">
               {monthTitle(view.year, view.month, locale)}
             </p>
-            <button type="button" aria-label={tt("下个月")} onClick={() => shiftMonth(1)} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100">
+            <button type="button" aria-label={tt("下个月")} onClick={() => shiftMonth(1)} className="min-h-11 min-w-11 flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100">
               <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="m6 3 5 5-5 5" />
               </svg>
@@ -253,13 +253,13 @@ export function BayDeadlineField(props: {
                   data-bay-deadline-day={day}
                   aria-pressed={selected}
                   onClick={() => pickDay(day)}
-                  className={`mx-auto flex h-9 w-9 items-center justify-center rounded-full text-[13px] tabular-nums ${
+                  className={"min-h-11 min-w-11 " + (`mx-auto flex h-9 w-9 items-center justify-center rounded-full text-[13px] tabular-nums ${
                     selected
                       ? "bg-neutral-900 font-semibold text-white"
                       : isToday
                         ? "border border-neutral-900 text-neutral-900"
                         : "text-neutral-800 hover:bg-neutral-100"
-                  }`}
+                  }`)}
                 >
                   {day}
                 </button>

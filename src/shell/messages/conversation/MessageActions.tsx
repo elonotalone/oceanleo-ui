@@ -81,7 +81,7 @@ export function MessageActions({
       <div className="relative">
         <button
           type="button"
-          className={buttonClass}
+          className={"min-h-11 min-w-11 " + (buttonClass)}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           aria-label={tt("更多操作")}

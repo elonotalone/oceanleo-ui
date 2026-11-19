@@ -538,7 +538,7 @@ export function Composer(props: ComposerProps) {
               aria-label={tt("发文件或作品")}
               disabled={textOnly || disabled}
               title={tt("发文件或作品")}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100"
+              className="min-h-11 min-w-11 flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100"
             >
               <PaperclipIcon />
             </button>
@@ -581,7 +581,7 @@ export function Composer(props: ComposerProps) {
               onClick={() => setEmojiOpen((v) => !v)}
               aria-label={tt("表情")}
               aria-expanded={emojiOpen}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100"
+              className="min-h-11 min-w-11 flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100"
             >
               <ImEmojiIcon />
             </button>

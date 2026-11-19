@@ -296,7 +296,7 @@ export function MessageItem(props: MessageItemProps) {
             aria-checked={selected}
             aria-label={selected ? tt("取消选择") : tt("选择消息")}
             onClick={() => onToggleSelected?.(message)}
-            className="mb-1 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 text-xs"
+            className="min-h-11 min-w-11 mb-1 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 text-xs"
           >{selected ? "✓" : ""}</button>
         ) : null}
         {showHeader ? (

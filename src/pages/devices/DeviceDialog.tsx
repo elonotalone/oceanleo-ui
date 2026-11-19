@@ -47,7 +47,7 @@ export function DeviceDialog({ title, children, footer, onClose, compact = false
         <header className="flex shrink-0 items-center justify-between gap-4 border-b border-neutral-200/70 px-6 py-5 sm:px-9 sm:py-6">
           <h2 id={titleId} className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h2>
           <button type="button" onClick={onClose} aria-label={tt("关闭")}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-200/60 focus-visible:outline focus-visible:outline-2">
+            className="min-h-11 min-w-11 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-200/60 focus-visible:outline focus-visible:outline-2">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
           </button>
         </header>

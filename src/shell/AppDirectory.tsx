@@ -552,7 +552,7 @@ function DirectoryCard({
               }}
               title={c.label}
               aria-label={c.label}
-              className={`pointer-events-auto grid h-7 w-7 place-items-center rounded-md bg-white/90 text-stone-400 shadow-sm backdrop-blur-sm ${c.danger ? "hover:bg-rose-50 hover:text-rose-600" : "hover:text-stone-600"}`}
+              className={"min-h-11 min-w-11 " + (`pointer-events-auto grid h-7 w-7 place-items-center rounded-md bg-white/90 text-stone-400 shadow-sm backdrop-blur-sm ${c.danger ? "hover:bg-rose-50 hover:text-rose-600" : "hover:text-stone-600"}`)}
             >
               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d={c.path} strokeLinecap="round" strokeLinejoin="round" />
@@ -632,9 +632,9 @@ function DirectoryListRow({
             onClick={stop(onAdd ?? ((entry) => onDelete?.(entry)))}
             aria-pressed={starred}
             aria-label={starred ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
-            className={`grid h-7 w-7 place-items-center rounded-md ${
+            className={"min-h-11 min-w-11 " + (`grid h-7 w-7 place-items-center rounded-md ${
               starred ? "text-amber-500" : "text-stone-400 hover:text-amber-500"
-            }`}
+            }`)}
           >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill={starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
               <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" strokeLinejoin="round" />

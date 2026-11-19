@@ -795,9 +795,9 @@ export function ModelGroupManager({
                     menuAnchorRef.current = event.currentTarget;
                     setMenuKey((current) => (current === item.key ? "" : item.key));
                   }}
-                  className={`mr-1 inline-flex h-6 w-6 items-center justify-center rounded-md disabled:cursor-default ${
+                  className={"min-h-11 min-w-11 " + (`mr-1 inline-flex h-6 w-6 items-center justify-center rounded-md disabled:cursor-default ${
                     selected ? "text-white/80 hover:bg-white/10" : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-                  }`}
+                  }`)}
                 >
                   <KebabIcon />
                 </button>

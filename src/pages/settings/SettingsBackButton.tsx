@@ -29,7 +29,7 @@ export function SettingsBackButton({
       onClick={onClick}
       aria-label={tt("返回")}
       title={caption}
-      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-900 active:scale-95 ${className}`.trim()}
+      className={"min-h-11 min-w-11 " + (`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-900 active:scale-95 ${className}`.trim())}
     >
       <SettingsBackIcon />
     </button>

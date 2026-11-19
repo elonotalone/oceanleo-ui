@@ -191,7 +191,7 @@ export function LibraryMediaPreview({
     >
       <button
         type="button"
-        className={button}
+        className={"min-h-11 min-w-11 " + (button)}
         onClick={togglePlay}
         aria-label={player.playing ? tt("暂停") : tt("播放")}
       >
@@ -218,7 +218,7 @@ export function LibraryMediaPreview({
       <span className="w-9 shrink-0">{formatClock(player.duration)}</span>
       <button
         type="button"
-        className={button}
+        className={"min-h-11 min-w-11 " + (button)}
         onClick={toggleMute}
         aria-label={player.muted ? tt("取消静音") : tt("静音")}
       >
@@ -250,7 +250,7 @@ export function LibraryMediaPreview({
       {kind === "video" ? (
         <button
           type="button"
-          className={button}
+          className={"min-h-11 min-w-11 " + (button)}
           onClick={fullscreen}
           aria-label={tt("全屏")}
         >

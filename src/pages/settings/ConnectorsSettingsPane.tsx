@@ -219,7 +219,7 @@ export function ConnectorsSettingsPane({
               value={q}
               onChange={(event) => setQ(event.target.value)}
               placeholder={tt("搜索我的连接器")}
-              className="h-10 w-full max-w-xs rounded-lg border border-neutral-200 bg-transparent px-3 text-[13px] text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 dark:border-neutral-700 dark:text-neutral-100"
+              className="min-h-11 h-10 w-full max-w-xs rounded-lg border border-neutral-200 bg-transparent px-3 text-[13px] text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 dark:border-neutral-700 dark:text-neutral-100"
               data-connector-search
             />
           </label>
