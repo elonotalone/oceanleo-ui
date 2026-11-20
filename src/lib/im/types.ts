@@ -1,8 +1,10 @@
 // 站内消息 / 多人同改 / 工作回放的共享数据形状。
 // 唯一口径：oceandino docs/work-logs/2026-10/work-chat/01-interfaces.md §5；改这里先改契约。
 import type { CallHubEvent } from "./call-types";
+import type { TaskRoomChild } from "../task-rooms-api";
 
-export type ImConversationKind = "dm" | "group" | "team" | "project" | "talent";
+/** `task`: a task's people conversation (task rooms wave 2026-11-20; has a `task_rooms` row). */
+export type ImConversationKind = "dm" | "group" | "team" | "project" | "talent" | "task";
 export type ImRole = "owner" | "admin" | "member";
 export type ImNotifyLevel = "all" | "mentions" | "none";
 export type ImPresence = "online" | "away" | "offline";
@@ -10,7 +12,9 @@ export type ImRelation = "self" | "contact" | "teammate" | "project" | "member" 
 export type ImSenderKind = "user" | "leo" | "system";
 export type ImMessageKind =
   | "text" | "file" | "image" | "video" | "audio" | "voice"
-  | "artifact" | "replay" | "system" | "leo";
+  | "artifact" | "replay" | "system" | "leo"
+  /** A card for a child of a task (sub task or task); posted only by the server. */
+  | "task";
 export type ImEditorKind =
   | "richdoc" | "grid" | "deck" | "image" | "vector" | "chart"
   | "game" | "pdf" | "video";
@@ -119,6 +123,8 @@ export interface ImConversationSummary {
   in_contacts?: boolean;
   show_member_nicknames?: boolean;
   work?: { kind: "team" | "project" | "bay_listing" | "bay_order" | "expert" | "work"; id: string; label: string } | null;
+  /** Only on `kind: "task"` rows (older servers omit it). */
+  task_room?: { project_id: string | null; children_count: number } | null;
 }
 
 export interface ImConversationDetail extends ImConversationSummary {
@@ -150,7 +156,10 @@ export interface ImAttachment {
 }
 
 export interface ImCard {
-  type: "artifact" | "replay" | "talent_offer";
+  type: "artifact" | "replay" | "talent_offer" | "task";
+  /** `type: "task"` only: what the card opens. */
+  child_kind?: "agent_task" | "room";
+  child_id?: string;
   id: string;
   title: string;
   subtitle?: string;
@@ -393,6 +402,7 @@ export type ImEvent =
   | { type: "group.invite"; invite: ImGroupInvite }
   | { type: "join.request"; conversation_id: string; request: ImJoinRequest }
   | { type: "unread.changed"; unread: ImUnread }
+  | { type: "task.card.updated"; conversation_id: string; child: TaskRoomChild }
   | { type: "replay.consent"; replay_id: string; title: string; from: ImProfile }
   | { type: "meeting"; conversation_id: string; meeting: ImMeeting | null }
   // 通话 v2（calls-v2 合同 §3.3）：call / call_ring / call_ring_end / call_kicked / call_caption /
