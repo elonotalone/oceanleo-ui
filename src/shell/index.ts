@@ -713,3 +713,15 @@ export { useWebSectionBadges, badgeSectionForHref, type SectionBadgeCounts } fro
 export { WorkWorkbench } from "./works-workbench/WorkWorkbench"; export { WorkWorkbenchRoute } from "./works-workbench/WorkWorkbenchRoute"; export { CreateWebsiteEntry, CreateWorkEntry } from "./website-platform/create-website-entry"; export { createWebsiteFromDescription, createWorkFromDescription } from "./website-platform/create-website";
 
 export { LiveMaterialSearch } from "./bay/asset/LiveMaterialSearch";
+
+// Tasks and sub tasks (task rooms wave 2026-11-20): a task's people conversation, child cards, opening a child.
+export {
+  TaskRoomView, TaskCardView, openTaskChild, OPEN_TASK_CHILD_EVENT, useTaskRoom, SummonDialog,
+  type TaskRoomViewProps, type TaskCardViewProps, type OpenTaskChildDetail, type TaskRoomState,
+} from "./task-room";
+export { registerMessageSelectionAction, type MessageSelectionAction, type MessageSelectionContext } from "./messages/conversation/selection-actions";
+export {
+  taskRoomsApi, createTaskRoomsApi, TASK_ROOMS_UNAVAILABLE,
+  type TaskRoom, type TaskRoomChild, type TaskRoomSummary, type TaskRoomChainItem, type TaskHandoff,
+  type TaskRoomsResult, type TaskRoomsFailure, type SummonPreview, type SummonRequest, type SummonResult,
+} from "../lib/task-rooms-api";

@@ -95,7 +95,7 @@ export function MessageActions({
           <div role="menu" className="absolute right-0 top-8 z-30 min-w-[132px] overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
             {message.body ? item(tt("复制"), handlers.onCopyText) : null}
             {message.body ? item(tt("翻译"), handlers.onTranslate) : null}
-            {item(tt("转发"), handlers.onForward)}
+            {message.card?.type !== "task" && message.kind !== "task" ? item(tt("转发"), handlers.onForward) : null}
             {item(tt("多选"), handlers.onMultiSelect)}
             {permissions.canQuote ? item(tt("引用"), handlers.onQuote) : null}
             {permissions.canDelete ? item(tt("删除"), handlers.onRecall, true) : null}

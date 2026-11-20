@@ -2,7 +2,7 @@
 
 // 会话：消息流、输入框、置顶条、「正在输入」。导出名与 props 不变（契约 §8.2）。
 import { BackButton } from "../../../ui/BackButton";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ForwardMessagesDialog } from "./ForwardMessagesDialog";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ImApiError } from "../../../lib/im/client";
@@ -27,6 +27,8 @@ import { getConversationStore, unreadBoundary, type ConversationStore } from "./
 import { historyEventTargetsConversation, subscribeHistoryCleared } from "./history-events";
 import { WorkConversationHeader } from "./WorkConversationHeader";
 import { workSendPolicy } from "./work-policy";
+import { selectionActionsFor, useMessageSelectionActions, type MessageSelectionAction, type MessageSelectionContext } from "./selection-actions";
+import type { ComposerExtras } from "../../task-room/composer-extras";
 import {
   CallButton,
   CallChatProvider,
@@ -50,6 +52,21 @@ export interface ConversationViewProps {
    * 换了账号、被移出群之后那条记录就失效了：调用方据此退回列表，而不是停在一块空白上。
    */
   onUnavailable?: () => void;
+  // ── Task rooms (wave 2026-11-20, TU1): all optional; absent = the conversation exactly as before. ──
+  /** This conversation's own multi-select bar actions (shown whatever their `appliesTo` says). */
+  selectionActions?: MessageSelectionAction[];
+  /** Replaces the title + member count in the header (a task shows its breadcrumb). */
+  titleSlot?: ReactNode;
+  /** Extra header buttons, before search. */
+  headerActions?: ReactNode;
+  /** A strip under the header (a task's children). */
+  belowHeader?: ReactNode;
+  /** One short line under a message, by message id ("Given to …"). */
+  messageMarks?: Readonly<Record<string, string>>;
+  /** Enter select mode with exactly these ids (a new nonce each time). */
+  selectionRequest?: { ids: readonly string[]; nonce: number } | null;
+  /** Passed to the composer (see task-room/composer-extras.ts). */
+  composerExtras?: ComposerExtras;
 }
 
 // ── 我是谁（整个页面只问一次）─────────────────────────────────────────────
@@ -155,7 +172,8 @@ function useProfileMap(
   return useMemo(() => ({ ...extra, ...base }), [extra, base]);
 }
 
-export function ConversationView({ conversationId, active = true, layout, onBack, onOpenInfo, highlightSeq = null, onUnavailable }: ConversationViewProps) {
+export function ConversationView(props: ConversationViewProps) {
+  const { conversationId, active = true, layout, onBack, onOpenInfo, highlightSeq = null, onUnavailable } = props;
   const tt = useUI();
   const viewerId = useViewerId();
   const conversation = useConversationDetail(conversationId, onUnavailable);
@@ -173,6 +191,7 @@ export function ConversationView({ conversationId, active = true, layout, onBack
   }
   return (
     <ConversationBody
+      {...props}
       key={`${conversationId}:${viewerId}`}
       conversationId={conversationId}
       layout={layout}
@@ -193,6 +212,7 @@ function ConversationBody(props: ConversationViewProps & {
   store: ConversationStore;
 }) {
   const { conversationId, active = true, layout, onBack, onOpenInfo, highlightSeq = null, viewerId, conversation, store } = props;
+  const { selectionActions, titleSlot, headerActions, belowHeader, messageMarks, selectionRequest, composerExtras } = props;
   const tt = useUI();
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [quote, setQuote] = useState<ImMessage | null>(null);
@@ -341,6 +361,27 @@ function ConversationBody(props: ConversationViewProps & {
   const isAdmin = conversation?.my_role === "owner" || conversation?.my_role === "admin";
   const selectedMessages = snapshot.messages.filter((message) => selectedMessageIds.has(message.id));
   const canDeleteSelection = selectedMessages.length > 0 && (Boolean(isAdmin) || selectedMessages.every((message) => message.sender_kind === "user" && message.sender_id === viewerId));
+  const registeredSelectionActions = useMessageSelectionActions();
+  const slotActions = selectionActionsFor(registeredSelectionActions, selectionActions ?? [], conversation);
+  const selectionContext: MessageSelectionContext = {
+    conversationId,
+    conversation,
+    viewerId,
+    selectedMessages,
+    selectedMessageIds,
+    setSelectedMessageIds: (ids) => setSelectedMessageIds(new Set(ids)),
+    exitSelection: () => {
+      setSelectionMode(false);
+      setSelectedMessageIds(new Set());
+    },
+  };
+  const selectionRequestNonce = selectionRequest?.nonce;
+  useEffect(() => {
+    if (!selectionRequest) return;
+    setSelectionMode(true);
+    setSelectedMessageIds(new Set(selectionRequest.ids));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectionRequestNonce]);
   const nameOf = useCallback(
     (id: string | null) => {
       if (!id) return "leo";
@@ -446,7 +487,7 @@ function ConversationBody(props: ConversationViewProps & {
           {onBack ? (
             <BackButton onClick={onBack} label={tt("返回")} />
           ) : null}
-          <div className="min-w-0 flex-1 px-1">
+          {titleSlot !== undefined ? <div className="min-w-0 flex-1 px-1" data-conversation-title-slot="">{titleSlot}</div> : <div className="min-w-0 flex-1 px-1">
             <div className="flex items-center gap-1.5">
               {peerPresence ? (
                 <span
@@ -465,7 +506,8 @@ function ConversationBody(props: ConversationViewProps & {
             {conversation && conversation.kind !== "dm" ? (
               <div className="text-[12px] text-neutral-400">{tt(conversation.member_count === 1 ? "1 位成员" : "{n} 位成员", { n: conversation.member_count })}</div>
             ) : null}
-          </div>
+          </div>}
+          {headerActions}
           <button
             type="button"
             data-im-chrome-btn
@@ -486,6 +528,7 @@ function ConversationBody(props: ConversationViewProps & {
           ) : null}
         </header>
         <WorkConversationHeader conversation={conversation} onBlocked={() => setBlocked(true)} />
+        {belowHeader}
         <PinnedBar
           pins={snapshot.pins}
           nameOf={nameOf}
@@ -524,6 +567,7 @@ function ConversationBody(props: ConversationViewProps & {
               })}
               onReachBottom={reportRead}
               scrollToMessageId={scrollTarget}
+              messageMarks={messageMarks}
             />
             <TypingLine names={typing.map((id) => nameOf(id))} />
           </CallChatProvider>
@@ -547,13 +591,15 @@ function ConversationBody(props: ConversationViewProps & {
             disabled={Boolean(disabledReason)}
             disabledReason={disabledReason}
             workPolicy={policy}
+            {...composerExtras}
           />
         </div>
       </div>
       {selectionMode ? (
         <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t border-neutral-200 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900" data-message-selection-toolbar="">
           <span className="mr-auto text-sm">{tt("已选择 {n} 条", { n: selectedMessageIds.size })}</span>
-          <button type="button" disabled={!selectedMessageIds.size} onClick={() => setForwardMessages(snapshot.messages.filter((message) => selectedMessageIds.has(message.id)))}>{tt("转发")}</button>
+          {slotActions.map((action) => <action.Component key={action.id} ctx={selectionContext} />)}
+          <button type="button" disabled={!selectedMessageIds.size} onClick={() => setForwardMessages(snapshot.messages.filter((message) => selectedMessageIds.has(message.id) && message.card?.type !== "task"))}>{tt("转发")}</button>
           <button type="button" disabled={!canDeleteSelection} onClick={() => setBulkDeleteOpen(true)} className="text-neutral-600 disabled:opacity-40">{tt("删除")}</button>
           <button type="button" onClick={() => { setSelectionMode(false); setSelectedMessageIds(new Set()); }}>{tt("完成")}</button>
         </div>

@@ -21,6 +21,7 @@ import { ReplayCardView } from "./ReplayCardView";
 import { SystemLine } from "./SystemLine";
 import type { ConversationStore, LeoNoticeCode, PendingMessage } from "./conversation-store";
 import { plainTextOf } from "./message-format";
+import { TaskCardView } from "../../task-room/TaskCardView";
 
 export function formatClock(iso: string, locale: string): string {
   const date = new Date(iso);
@@ -100,6 +101,8 @@ export interface MessageItemProps {
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelected?: (message: ImMessage) => void;
+  /** One short line under the bubble (a task: "Given to …"). */
+  mark?: string;
 }
 
 export function MessageItem(props: MessageItemProps) {
@@ -119,6 +122,7 @@ export function MessageItem(props: MessageItemProps) {
     selectionMode = false,
     selected = false,
     onToggleSelected,
+    mark,
   } = props;
   const tt = useUI();
   const locale = useLocale();
@@ -129,6 +133,15 @@ export function MessageItem(props: MessageItemProps) {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enterRef = useRef<"" | "own" | "peer" | null>(null);
 
+  const taskCard = message.card?.type === "task" || message.kind === "task";
+  if (taskCard && message.sender_kind === "system" && !message.recalled_at) {
+    // A card the server posted on nobody's behalf: centered like a system line.
+    return (
+      <div data-seq={message.seq} data-message-id={message.id} className="flex justify-center px-4 py-2">
+        <TaskCardView message={message} conversationId={message.conversation_id} />
+      </div>
+    );
+  }
   if (message.kind === "system" || message.sender_kind === "system") {
     return <SystemLine message={message} />;
   }
@@ -243,6 +256,11 @@ export function MessageItem(props: MessageItemProps) {
             <ReplayCardView card={message.card} />
           </div>
         ) : null}
+        {taskCard ? (
+          <div className="mt-1">
+            <TaskCardView message={message} conversationId={message.conversation_id} />
+          </div>
+        ) : null}
         {(message.card as { type?: string; id?: string } | undefined)?.type === "talent_order" ? (
           <div className="mt-1">
             <BayOrderCard
@@ -319,6 +337,9 @@ export function MessageItem(props: MessageItemProps) {
         >
           {content}
         </div>
+        {mark && !isPlaceholder ? (
+          <span data-message-mark="" className="ml-1.5 mt-0.5 max-w-full truncate text-[11px] text-neutral-400">{mark}</span>
+        ) : null}
         {!isPlaceholder && message.edited_at ? (
           <span className="ml-1.5 text-[11px] text-neutral-400">{tt("已编辑")}</span>
         ) : null}

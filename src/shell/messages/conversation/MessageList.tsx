@@ -36,6 +36,8 @@ export interface MessageListProps {
   selectionMode?: boolean;
   selectedMessageIds?: ReadonlySet<string>;
   onToggleSelected?: (message: ImMessage) => void;
+  /** One short line under a message, by message id (a task: "Given to …"). */
+  messageMarks?: Readonly<Record<string, string>>;
 }
 
 export function MessageList(props: MessageListProps) {
@@ -55,6 +57,7 @@ export function MessageList(props: MessageListProps) {
     selectionMode = false,
     selectedMessageIds = new Set<string>(),
     onToggleSelected,
+    messageMarks,
   } = props;
   const tt = useUI();
   const locale = useLocale();
@@ -231,6 +234,7 @@ export function MessageList(props: MessageListProps) {
                 selectionMode={selectionMode}
                 selected={selectedMessageIds.has(message.id)}
                 onToggleSelected={onToggleSelected}
+                mark={messageMarks?.[message.id]}
               />
             </div>
           );

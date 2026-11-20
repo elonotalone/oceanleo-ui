@@ -5541,6 +5541,12 @@
         },
         {
           "kind": "named",
+          "name": "createTaskRoomsApi",
+          "importedName": "createTaskRoomsApi",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "named",
           "name": "CreateWebsiteEntry",
           "importedName": "CreateWebsiteEntry",
           "source": "./website-platform/create-website-entry"
@@ -6585,9 +6591,21 @@
         },
         {
           "kind": "named",
+          "name": "OPEN_TASK_CHILD_EVENT",
+          "importedName": "OPEN_TASK_CHILD_EVENT",
+          "source": "./task-room"
+        },
+        {
+          "kind": "named",
           "name": "openLeoAssistant",
           "importedName": "openLeoAssistant",
           "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "openTaskChild",
+          "importedName": "openTaskChild",
+          "source": "./task-room"
         },
         {
           "kind": "named",
@@ -6936,6 +6954,12 @@
           "name": "registerGamePreviewHost",
           "importedName": "registerGamePreviewHost",
           "source": "./game-preview-host"
+        },
+        {
+          "kind": "named",
+          "name": "registerMessageSelectionAction",
+          "importedName": "registerMessageSelectionAction",
+          "source": "./messages/conversation/selection-actions"
         },
         {
           "kind": "named",
@@ -7347,6 +7371,18 @@
         },
         {
           "kind": "named",
+          "name": "SummonDialog",
+          "importedName": "SummonDialog",
+          "source": "./task-room"
+        },
+        {
+          "kind": "named",
+          "name": "TASK_ROOMS_UNAVAILABLE",
+          "importedName": "TASK_ROOMS_UNAVAILABLE",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "named",
           "name": "TASK_WORKSPACE_PLAIN_CLOSED_CLASS",
           "importedName": "TASK_WORKSPACE_PLAIN_CLOSED_CLASS",
           "source": "./TaskWorkspaceShell"
@@ -7377,9 +7413,27 @@
         },
         {
           "kind": "named",
+          "name": "TaskCardView",
+          "importedName": "TaskCardView",
+          "source": "./task-room"
+        },
+        {
+          "kind": "named",
           "name": "taskQuoteHref",
           "importedName": "taskQuoteHref",
           "source": "./TaskActionsMenu"
+        },
+        {
+          "kind": "named",
+          "name": "taskRoomsApi",
+          "importedName": "taskRoomsApi",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "named",
+          "name": "TaskRoomView",
+          "importedName": "TaskRoomView",
+          "source": "./task-room"
         },
         {
           "kind": "named",
@@ -7656,6 +7710,12 @@
           "name": "useTaskPending",
           "importedName": "useTaskPending",
           "source": "./acp-task"
+        },
+        {
+          "kind": "named",
+          "name": "useTaskRoom",
+          "importedName": "useTaskRoom",
+          "source": "./task-room"
         },
         {
           "kind": "named",
@@ -8263,6 +8323,18 @@
         },
         {
           "kind": "type",
+          "name": "MessageSelectionAction",
+          "importedName": "MessageSelectionAction",
+          "source": "./messages/conversation/selection-actions"
+        },
+        {
+          "kind": "type",
+          "name": "MessageSelectionContext",
+          "importedName": "MessageSelectionContext",
+          "source": "./messages/conversation/selection-actions"
+        },
+        {
+          "kind": "type",
           "name": "MyDevicesActionConsoleProps",
           "importedName": "MyDevicesActionConsoleProps",
           "source": "./LocalActionConsole"
@@ -8278,6 +8350,12 @@
           "name": "OpenableAttachment",
           "importedName": "OpenableAttachment",
           "source": "./TaskWorkspaceShell"
+        },
+        {
+          "kind": "type",
+          "name": "OpenTaskChildDetail",
+          "importedName": "OpenTaskChildDetail",
+          "source": "./task-room"
         },
         {
           "kind": "type",
@@ -8422,6 +8500,84 @@
           "name": "StudioSectionProps",
           "importedName": "StudioSectionProps",
           "source": "./StudioSection"
+        },
+        {
+          "kind": "type",
+          "name": "SummonPreview",
+          "importedName": "SummonPreview",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "type",
+          "name": "SummonRequest",
+          "importedName": "SummonRequest",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "type",
+          "name": "SummonResult",
+          "importedName": "SummonResult",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "type",
+          "name": "TaskCardViewProps",
+          "importedName": "TaskCardViewProps",
+          "source": "./task-room"
+        },
+        {
+          "kind": "type",
+          "name": "TaskHandoff",
+          "importedName": "TaskHandoff",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "type",
+          "name": "TaskRoom",
+          "importedName": "TaskRoom",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "type",
+          "name": "TaskRoomChainItem",
+          "importedName": "TaskRoomChainItem",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "type",
+          "name": "TaskRoomChild",
+          "importedName": "TaskRoomChild",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "type",
+          "name": "TaskRoomsFailure",
+          "importedName": "TaskRoomsFailure",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "type",
+          "name": "TaskRoomsResult",
+          "importedName": "TaskRoomsResult",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "type",
+          "name": "TaskRoomState",
+          "importedName": "TaskRoomState",
+          "source": "./task-room"
+        },
+        {
+          "kind": "type",
+          "name": "TaskRoomSummary",
+          "importedName": "TaskRoomSummary",
+          "source": "../lib/task-rooms-api"
+        },
+        {
+          "kind": "type",
+          "name": "TaskRoomViewProps",
+          "importedName": "TaskRoomViewProps",
+          "source": "./task-room"
         },
         {
           "kind": "type",
