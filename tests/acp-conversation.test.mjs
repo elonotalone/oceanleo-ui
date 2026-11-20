@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
@@ -85,4 +86,42 @@ test("reopened session controls survive history paging and only newer announceme
   assert.deepEqual(state.capabilities, { fork: {} });
   assert.deepEqual(state.commands, [], "an explicit empty commands update clears the old menu");
   assert.deepEqual(state.usage, { used: 25, size: 100 });
+});
+
+// B6 replay: the turn of 2026-11-20 14:42-14:58 (methods and update names only, see the fixture's _source).
+const { reduceRows } = await import("../src/acp/reduce.ts");
+const b6 = JSON.parse(readFileSync(new URL("./fixtures/acp-turn-2026-11-20-b6.json", import.meta.url), "utf8"));
+function b6Rows() {
+  const out = [];
+  let id = b6.first_row - 1, tool = 0;
+  const update = (update) => ({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "s", update } });
+  const make = {
+    P: () => ["client", { jsonrpc: "2.0", id: b6.prompt_request_id, method: "session/prompt", params: { sessionId: "s", prompt: [{ type: "text", text: "x" }] } }],
+    E: () => ["agent", { jsonrpc: "2.0", id: b6.prompt_request_id, result: { stopReason: "end_turn" } }],
+    c: () => ["agent", update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "x" } })],
+    t: () => ["agent", update({ sessionUpdate: "tool_call", toolCallId: `t${++tool}`, title: "x", status: "pending" })],
+    u: () => ["agent", update({ sessionUpdate: "tool_call_update", toolCallId: `t${tool}`, status: "completed" })],
+    g: () => ["agent", update({ sessionUpdate: "usage_update", used: 1, size: 2 })],
+    i: () => ["agent", update({ sessionUpdate: "session_info_update" })],
+    a: () => ["agent", update({ sessionUpdate: "async_task_spawned", asyncTaskId: "bg", name: "x" })],
+    p: () => ["agent", update({ sessionUpdate: "async_task_progress", asyncTaskId: "bg" })],
+    s: () => ["agent", update({ sessionUpdate: "async_task_state_update", asyncTaskId: "bg", state: "completed" })],
+  };
+  for (const [, letter, count] of b6.sequence.matchAll(/([A-Za-z])(\d*)/g)) {
+    for (let n = 0; n < Number(count || 1); n++) {
+      const [direction, message] = make[letter]();
+      out.push({ id: ++id, direction, node_seq: null, raw: JSON.stringify(message), received_at: "2026-11-20T06:58:19Z" });
+    }
+  }
+  return out;
+}
+
+test("B6 replay: the page shows the turn working exactly while it lacks the stored end_turn row; catching up ends it", () => {
+  const rows = b6Rows();
+  assert.equal(rows.find((row) => row.raw.includes('"end_turn"')).id, b6.end_turn_row, "the fixture lines up with the stored ids");
+  const missed = rows.filter((row) => row.id < b6.end_turn_row);
+  assert.equal(reduceRows(missed).open, true, "the socket stopped before the end: the page kept showing 'working'");
+  const caughtUp = reduceRows([...missed, ...rows.filter((row) => row.id >= b6.end_turn_row)]);
+  assert.equal(caughtUp.open, false, "with every row after the last one the page had, the turn is over");
+  assert.equal(caughtUp.turns.at(-1).stopReason, "end_turn");
 });

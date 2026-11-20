@@ -1,0 +1,19 @@
+{
+ "_source": "oceanleo acp_frames, session cts_ec34b34f8f6b46cca4d3f37206bfb432, rows 290282..292543 (2026-11-20 14:42-14:58 CST). Methods and update names only; no text, ids or arguments.",
+ "first_row": 290282,
+ "end_turn_row": 292542,
+ "prompt_request_id": 7,
+ "legend": {
+  "P": "client session/prompt",
+  "E": "agent result stopReason end_turn",
+  "c": "agent_message_chunk",
+  "t": "tool_call",
+  "u": "tool_call_update",
+  "g": "usage_update",
+  "i": "session_info_update",
+  "a": "async_task_spawned",
+  "p": "async_task_progress",
+  "s": "async_task_state_update"
+ },
+ "sequence": "Pgtu2g2ugtu2gugtu2gugtu2gugtu2gugtu4tu3tutututututu3tu3tututututututut2u2tutututu3tu3t2utututu2tgtu2tututututututututututututu3tu3tutut3u2tut2u3tututututututut3u3tu3gut2u2tutut2u2tututututut3u3gc138gtutut4u4tut4u4tut2u2t2u2t2u2t2u2t2u2tut2u2tut2u2tututgututut2utut4u4tutut3u3tutut2u2tutututut3u3tutut2u2tut2u2tutut2u2t3u3t3u3t3u2tu2tutut3u3t2u2tut3u3tututut3u3tutut4u4t4u4tut2u2tututut4aupu4t4u4t2u2t4u4t2u2tutututut2u2t6u6t2u2tututut2u2tutut2u2tut6u6t6u6t5u5tut3u3t3gu3t5u5tut5su5t2u2tut2u2tutut2u2tutut2u2tututututututut2u2t3u3t2ututu2tut2u2tutututututututututututututututututututututut3u3tut2u2tutututututut2u2tutututut5u5t2u2tututut4u4tutut3u2t3u4t5u5tutututut2u2tutututututututut2u2tutgutututut3u3t3u3tutut2u2t2u2tutututututut3u2tu2tututututututututututu2tut2ututu2tututututututututut2u2tutututut2utu2t3u3tutututututut2u2tutututututututututut2u2tututut2ututu2tututututut2u2tututututututututut3u3tutututututgutututututututututututututututututututut2u2tutututututututututugc25tc9uc15tc12uc49g2itutututututututut2u2tututututututututututututugctuc12tc11uc25tc12uc24tc12utc12uc56g2tugigc153g2itututututututugc133g3tu2gugc347g2Ei"
+}
