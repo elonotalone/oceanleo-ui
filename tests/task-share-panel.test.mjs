@@ -18,6 +18,8 @@ const overrides = {
   "../../pages/AuthDialog": authDialogStub,
   "../../i18n/ui/useUI": dataModule("export function useUI(){return (text, params={}) => text.replace(/\\{(\\w+)\\}/g,(_,k)=>params[k] ?? k);}"),
   "../access/task-access-client": clientUrl,
+  // The shared people picker reads suggestions/follows; this suite does not exercise it (see rw-fn-people-picker).
+  "../../lib/im/client": dataModule("export async function imFetch(path){ return path.includes('follow-suggestions') ? {groups:[]} : {people:[], next_cursor:null}; }"),
 };
 const { TaskActionsMenu } = await import(await compileModule("src/shell/TaskActionsMenu.tsx", {
   "../i18n/ui/useUI": overrides["../../i18n/ui/useUI"],
@@ -49,7 +51,8 @@ test("two menu entries open separate pages without publishing the live task", as
     await click(button("共同协作"));
     assert.deepEqual(client.calls.map(c => c.action), ["members"]);
     assert.equal(document.querySelector('[data-access-popover]').style.width, "288px");
-    assert.ok(document.querySelector('input[type="email"]'));
+    assert.ok(document.querySelector('[data-collaborate-picker] input[type="search"]'), "people are found by name or full email");
+    assert.equal(document.querySelector('input[type="email"]'), null);
     assert.match(document.querySelector('[data-task-share-page]').textContent, /有权访问的人/);
     assert.equal(document.querySelector("select"), null);
     assert.equal(document.querySelector('[aria-haspopup="menu"][aria-label*="权限"]'), null);

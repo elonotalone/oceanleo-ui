@@ -315,6 +315,11 @@ export interface FollowSuggestionGroup { key: "team" | "project" | "bay"; title_
 export interface UsernameState { username: string | null }
 
 export function getUsername(): Promise<UsernameState> { return imFetch("/v1/im/username"); }
+/** A whole address: the server matches it exactly (never partly) and never returns it. */
+export function isCompleteEmail(query: string): boolean {
+  const value = query.trim();
+  return value.length >= 6 && value.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 export async function searchPeople(query: string): Promise<PersonCard[]> {
   const page = await imFetch<{ people: PersonCard[] }>(`/v1/im/users/search?q=${encodeURIComponent(query.trim())}&limit=20`);
   return page.people;

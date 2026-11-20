@@ -8,6 +8,7 @@ import { NoticeAvatar } from "./notice-icons";
 import { formatNoticeRowTime } from "./notice-present";
 import { unreadBadgeText } from "./notice-unread";
 import { useNoticeState } from "./use-notices";
+import { noticeText } from "./notice-text";
 
 export interface InboxNoticesRowProps {
   /** 通知视图正开着（放大 / 整页里右边就是它）。 */
@@ -22,7 +23,7 @@ export function InboxNoticesRow({ active, onOpen }: InboxNoticesRowProps): React
   const badge = unreadBadgeText(unread);
 
   let preview = "";
-  if (latest) preview = tt(latest.title);
+  if (latest) preview = noticeText(latest, "title", tt);
   else if (loaded) preview = tt("还没有通知");
   else if (error) preview = tt("通知正在自动恢复");
 

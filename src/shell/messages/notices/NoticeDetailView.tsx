@@ -11,6 +11,7 @@ import { browserNoticeActions, noticeActionable, noticeTargetOf, runNoticeTarget
 import { activeNoticeSection, useNoticeState } from "./use-notices";
 import { SERVER_NOTICE_KIND } from "./server-notice";
 import { ServerNoticeCounts, ServerNoticeMeta } from "./ServerNoticeMeta";
+import { noticeText } from "./notice-text";
 
 interface NoticeDetailViewProps {
   noticeId: string | null;
@@ -68,7 +69,7 @@ function NoticeDetailContent({ item, tt }: { item: NotificationItem; tt: ReturnT
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="break-words text-[15px] font-semibold leading-snug tracking-tight text-neutral-900 dark:text-white">
-            {item.kind === SERVER_NOTICE_KIND ? item.title : tt(item.title)}
+            {item.kind === SERVER_NOTICE_KIND ? item.title : noticeText(item, "title", tt)}
           </h3>
           <ServerNoticeMeta item={item} />
           {time ? <time className="mt-1 block text-[11px] text-black/40 dark:text-white/40">{time}</time> : null}
@@ -76,7 +77,7 @@ function NoticeDetailContent({ item, tt }: { item: NotificationItem; tt: ReturnT
       </div>
       {item.body ? (
         <p className="mt-5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-black/70 dark:text-white/70">
-          {item.kind === SERVER_NOTICE_KIND ? item.body : tt(item.body)}
+          {item.kind === SERVER_NOTICE_KIND ? item.body : noticeText(item, "body", tt)}
         </p>
       ) : null}
       <ServerNoticeCounts item={item} />

@@ -17,6 +17,7 @@ import { OfficialNoticeForm } from "./OfficialNoticeForm";
 import { useNoticeResource } from "./use-notice-resource";
 import { SERVER_NOTICE_KIND } from "./server-notice";
 import { ServerNoticeCounts, ServerNoticeMeta } from "./ServerNoticeMeta";
+import { noticeText } from "./notice-text";
 
 export interface NoticesViewProps {
   onBack: () => void;
@@ -128,7 +129,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                           unread ? "font-semibold" : "font-medium text-black/55 dark:text-white/55"
                         }`}
                       >
-                        {item.kind === SERVER_NOTICE_KIND ? item.title : tt(item.title)}
+                        {item.kind === SERVER_NOTICE_KIND ? item.title : noticeText(item, "title", tt)}
                       </span>
                       <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35">
                         {formatNoticeTime(item.created_at, now, yesterday)}
@@ -141,7 +142,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                           unread ? "text-black/60 dark:text-white/60" : "text-black/40 dark:text-white/40"
                         }`}
                       >
-                        {item.kind === SERVER_NOTICE_KIND ? item.body : tt(item.body)}
+                        {item.kind === SERVER_NOTICE_KIND ? item.body : noticeText(item, "body", tt)}
                       </span>
                     ) : null}
                     <ServerNoticeCounts item={item} />

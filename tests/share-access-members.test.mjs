@@ -14,6 +14,8 @@ const uiStub = dataModule('export function useUI(){ return (text, vars) => text.
 const { MemberPanel } = await import(await compileModule("src/shell/access/MemberPanel.tsx", {
   "../../i18n/ui/useUI": uiStub,
   "../anchored-popover": dataModule('export function AnchoredPopover(p){ return p.open ? globalThis.React.createElement("div", {role:p.role, "aria-label":p.ariaLabel, "aria-labelledby":p.ariaLabelledBy,"aria-modal":p.ariaModal}, p.children) : null; }'),
+  // The people picker has its own suite (rw-fn-people-picker); these rows-and-roles tests never open it.
+  "../messages/people/PeopleDiscovery": dataModule('export function PeopleSuggestions(){ return null; }'),
 }));
 const owner = { name: "Owner Name", initial: "O", email: "owner@example.test" };
 const member = { id: "m1", name: "Mira", initial: "M", email: "mira@example.test", role: "view", status: "invited" };

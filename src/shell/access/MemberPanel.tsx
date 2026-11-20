@@ -5,6 +5,9 @@ import { useUI } from "../../i18n/ui/useUI";
 import { SHARE_ACCESS_COPY_SOURCE as copy } from "../../i18n/ui/messages/share-access-copy-source";
 import { SW_TS_COPY as taskCopy } from "../../i18n/ui/messages/sw-ts-copy";
 import { AnchoredPopover } from "../anchored-popover";
+import { RW_FN_COPY as fn } from "../../i18n/ui/messages/rw-fn-copy";
+import { isCompleteEmail, type PersonCard } from "../../lib/im/people-api";
+import { PeopleSuggestions } from "../messages/people/PeopleDiscovery";
 import { RolePicker } from "./RolePicker";
 import type { AccessMember, AccessOwner, AccessRole } from "./access-types";
 
@@ -17,6 +20,8 @@ export interface MemberPanelProps {
   canManage: boolean;
   busy?: boolean;
   onInvite: (email: string, role: AccessRole) => Promise<AccessMember | void>;
+  /** Task Collaborate: a person found by name or exact email. Shows the shared people picker. */
+  onInviteUser?: (person: PersonCard) => Promise<AccessMember | void>;
   onChangeRole?: (id: string, role: AccessRole) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
 }
@@ -25,14 +30,15 @@ function Avatar({ name, initial }: { name: string; initial?: string | null }) {
   return <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-full bg-neutral-100 dark:bg-white/10 text-sm font-medium text-neutral-800 dark:text-neutral-100">{initial || [...name.trim()][0]?.toLocaleUpperCase() || "?"}</span>;
 }
 
-/** Invitations never send a notification. All mutations render immediately and restore the row on failure. */
-export function MemberPanel({ taskCollaboration = false, owner, members, canManage, busy = false, onInvite, onChangeRole, onRemove }: MemberPanelProps) {
+/** The invited person is told in OceanLeo by the server. All mutations render immediately and restore the row on failure. */
+export function MemberPanel({ taskCollaboration = false, owner, members, canManage, busy = false, onInvite, onInviteUser, onChangeRole, onRemove }: MemberPanelProps) {
   const tt = useUI();
   const [items, setItems] = useState(members);
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [removing, setRemoving] = useState<AccessMember | null>(null);
+  const [pickerKey, setPickerKey] = useState(0);
   const savingRef = useRef(false);
   const membersRef = useRef(members);
   membersRef.current = members;
@@ -48,23 +54,44 @@ export function MemberPanel({ taskCollaboration = false, owner, members, canMana
   const begin = () => { if (disabled || savingRef.current || !canManage) return false; savingRef.current = true; mutationSourceRef.current = membersRef.current; setSaving(true); setError(""); return true; };
   const end = () => { savingRef.current = false; setSaving(false); if (membersRef.current !== mutationSourceRef.current) setItems(membersRef.current); };
 
-  const invite = async (event: FormEvent) => {
-    event.preventDefault();
-    const normalized = email.trim().toLowerCase();
-    if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) { setError(tt(copy.invalidEmail)); inputRef.current?.focus(); return; }
-    if (!begin()) return;
+  const inviteAddress = async (normalized: string) => {
+    if (!begin()) return false;
     const previous = items;
     const existing = items.find((member) => member.email?.toLowerCase() === normalized && ["invited", "accepted"].includes(member.status));
     const optimistic: AccessMember = existing ?? { id: `pending:${normalized}`, email: normalized, role: taskCollaboration ? "collaborate" : "view", status: "invited" };
     setItems(existing ? items : [...items, optimistic]);
-    setEmail("");
     try {
       const saved = await onInvite(normalized, taskCollaboration ? "collaborate" : "view");
       if (saved) setItems((current) => current.map((member) => member.id === optimistic.id ? saved : member));
+      return true;
     } catch {
-      setItems(previous); setEmail(normalized); setError(tt(copy.saveFailed));
+      setItems(previous); setError(tt(copy.saveFailed)); return false;
     } finally { end(); }
   };
+  const invite = async (event: FormEvent) => {
+    event.preventDefault();
+    const normalized = email.trim().toLowerCase();
+    if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) { setError(tt(copy.invalidEmail)); inputRef.current?.focus(); return; }
+    setEmail("");
+    if (!await inviteAddress(normalized)) setEmail(normalized);
+  };
+  const inviteTyped = async (query: string) => {
+    if (await inviteAddress(query.trim().toLowerCase())) setPickerKey((key) => key + 1);
+  };
+  const invitePerson = async (person: PersonCard) => {
+    if (!onInviteUser || items.some((member) => member.user_id === person.user_id && ["invited", "accepted"].includes(member.status)) || !begin()) return;
+    const previous = items;
+    const optimistic: AccessMember = { id: `pending:${person.user_id}`, user_id: person.user_id, name: person.name, role: "collaborate", status: "invited" };
+    setItems([...items, optimistic]);
+    try {
+      const saved = await onInviteUser(person);
+      if (saved) setItems((current) => current.map((member) => member.id === optimistic.id ? saved : member));
+      setPickerKey((key) => key + 1);
+    } catch {
+      setItems(previous); setError(tt(copy.saveFailed));
+    } finally { end(); }
+  };
+  const invitedIds = items.filter((member) => member.user_id && ["invited", "accepted"].includes(member.status)).map((member) => String(member.user_id));
   const changeRole = async (id: string, role: AccessRole) => {
     if (!begin()) return;
     const previous = items;
@@ -81,7 +108,12 @@ export function MemberPanel({ taskCollaboration = false, owner, members, canMana
     try { await onRemove(member.id); inputRef.current?.focus(); } catch { setItems(previous); setError(tt(copy.saveFailed)); } finally { end(); }
   };
   return <section data-member-panel="" className="min-w-0 px-2.5 py-1.5 text-neutral-800 dark:text-neutral-100" aria-busy={disabled}>
-    {canManage && <form onSubmit={(event) => void invite(event)} className="mb-2 flex min-w-0 gap-2">
+    {canManage && taskCollaboration && onInviteUser ? <div data-collaborate-picker="" className="mb-2 max-h-72 overflow-y-auto" aria-busy={disabled}>
+      <PeopleSuggestions key={pickerKey} mode="select" existingIds={invitedIds} placeholder={tt(fn.findPlaceholder)}
+        onPick={(person) => { if (!disabled) void invitePerson(person); }}
+        action={(query) => isCompleteEmail(query) ? <button type="button" data-invite-email="" disabled={disabled} onClick={() => void inviteTyped(query)}
+          className="mt-1 min-h-8 w-full truncate rounded-lg border border-neutral-200/80 px-3 text-left text-[13px] disabled:opacity-50 dark:border-white/10">{tt(fn.inviteEmail, { email: query.toLowerCase() })}</button> : null} />
+    </div> : canManage && <form onSubmit={(event) => void invite(event)} className="mb-2 flex min-w-0 gap-2">
       <input ref={inputRef} type="email" required autoComplete="email" value={email} disabled={disabled}
         aria-label={tt(copy.email)} placeholder={tt(copy.email)} aria-describedby={error ? errorId : undefined}
         onChange={(event) => setEmail(event.target.value)}

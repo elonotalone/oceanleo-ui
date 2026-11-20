@@ -23,6 +23,8 @@ export interface TaskAccessClient {
   setAccess(id: string, value: "restricted"): Promise<unknown>;
   members(id: string): Promise<AccessMember[]>;
   invite(id: string, email: string, role: AccessRole): Promise<AccessMember>;
+  /** A person picked by name or exact email; the server never returns their address. */
+  inviteUser(id: string, userId: string): Promise<AccessMember>;
   changeRole(id: string, memberId: string, role: AccessRole): Promise<void>;
   remove(id: string, memberId: string): Promise<void>;
   accept(id: string): Promise<unknown>;
@@ -86,6 +88,10 @@ export function createTaskAccessClient(options: {
     },
     invite: async (id, email, role) => {
       const result = await request<AccessMember | { member: AccessMember }>(id, "/members", "POST", { email: email.trim().toLowerCase(), role });
+      return "member" in result ? result.member : result;
+    },
+    inviteUser: async (id, userId) => {
+      const result = await request<AccessMember | { member: AccessMember }>(id, "/members", "POST", { user_id: userId, role: "collaborate" });
       return "member" in result ? result.member : result;
     },
     changeRole: async (id, memberId, role) => { await request(id, `/members/${encodeURIComponent(memberId)}`, "PATCH", { role }); },

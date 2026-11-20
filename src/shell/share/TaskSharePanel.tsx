@@ -12,6 +12,10 @@ import type { AccessMember } from "../access/access-types";
 import { notifyTaskAccessChanged } from "../access/useTaskAccess";
 import { taskAccessClient, type TaskAccess, type TaskAccessClient } from "../access/task-access-client";
 import { writeClipboardText } from "./share-clipboard";
+import { ShareLinkError, sendShareLink } from "./share-client";
+import { RW_FN_COPY as fn } from "../../i18n/ui/messages/rw-fn-copy";
+import { PeopleSuggestions } from "../messages/people/PeopleDiscovery";
+import type { PersonCard } from "../../lib/im/people-api";
 import { ShareEntryButton } from "./ShareActionBar";
 import { FloatingMenuItem, FloatingMenuLabel, FloatingMenuSeparator } from "../../ui/menu/FloatingMenu";
 import type { ShareModeState } from "./useShareMode";
@@ -22,12 +26,15 @@ export interface TaskSharePanelProps {
   access: TaskAccess;
   share: ShareModeState;
   client?: TaskAccessClient;
+  /** Notify chosen people about the Share link; it grants nothing beyond the link. */
+  sendShare?: (shareId: string, userIds: string[]) => Promise<void>;
 }
 
-export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAccessClient }: TaskSharePanelProps) {
+export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAccessClient, sendShare = sendShareLink }: TaskSharePanelProps) {
   const tt = useUI();
   const [open, setOpen] = useState(false);
-  const [page, setPage] = useState<"actions" | "snapshot" | "collaborate">("actions");
+  const [page, setPage] = useState<"actions" | "snapshot" | "collaborate" | "send">("actions");
+  const [recipients, setRecipients] = useState<PersonCard[]>([]);
   const [members, setMembers] = useState<AccessMember[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -43,7 +50,7 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
   const canParticipate = access.role === "owner" || access.role === "collaborate" || access.state === "invited" && access.invite_role === "collaborate";
   useEffect(() => {
     ++generation.current;
-    setOpen(false); setPage("actions"); setLoaded(false); setMembers([]); setError(""); setReadError(null); setNotice(""); setHelp(false);
+    setOpen(false); setPage("actions"); setLoaded(false); setMembers([]); setError(""); setReadError(null); setNotice(""); setHelp(false); setRecipients([]);
     return () => { ++generation.current; };
   }, [taskId]);
 
@@ -78,12 +85,25 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
     return result;
   };
   const close = () => { setOpen(false); share.exit(); };
+  const toggleRecipient = (person: PersonCard) => setRecipients((current) => current.some((item) => item.user_id === person.user_id)
+    ? current.filter((item) => item.user_id !== person.user_id) : current.length >= 20 ? current : [...current, person]);
+  const send = async () => {
+    const link = share.snapshotLink;
+    if (operation.current || !canManage || !link || !recipients.length) return;
+    operation.current = true; setBusy(true); setError(""); setNotice("");
+    try {
+      await sendShare(link.shareId, recipients.map((person) => person.user_id));
+      setNotice(tt(fn.sent, { count: recipients.length })); setRecipients([]); setPage("snapshot");
+    } catch (failure) {
+      setError(tt(failure instanceof ShareLinkError && failure.status === 429 ? fn.sendTooOften : fn.sendFailed));
+    } finally { operation.current = false; setBusy(false); }
+  };
   const copyLink = async (url: string) => {
     const ok = await writeClipboardText(url);
     setNotice(ok ? tt("链接已复制。") : tt("复制失败，请手动复制链接。"));
   };
   const exportDisabled = !!share.busy || !share.selectedCount;
-  const title = tt(page === "snapshot" ? text.shareLink : page === "collaborate" ? text.collaborate : copy.share);
+  const title = tt(page === "snapshot" ? text.shareLink : page === "collaborate" ? text.collaborate : page === "send" ? fn.sendTo : copy.share);
   return <>
     <ShareEntryButton anchorRef={anchorRef} active={share.active} expanded={open} panelId={panelId}
       onClick={() => {
@@ -106,7 +126,7 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
         {share.notice && <p role="status" className={`px-2.5 py-1.5 text-xs ${share.notice.tone === "ok" ? "text-neutral-500 dark:text-neutral-400" : "text-rose-600 dark:text-rose-400"}`}>{share.notice.text}</p>}
       </div> : <div data-task-share-page={page}>
         <div className="flex min-w-0 items-center gap-2">
-          <div className="shrink-0"><BackButton label={tt(copy.back)} onClick={() => { setPage("actions"); setNotice(""); }} /></div>
+          <div className="shrink-0"><BackButton label={tt(copy.back)} onClick={() => { setPage(page === "send" ? "snapshot" : "actions"); setNotice(""); setError(""); }} /></div>
           <span className="min-w-0 flex-1 text-[13px] font-medium">{title}</span>
           {page === "collaborate" && <button type="button" aria-label={tt(text.help)} aria-expanded={help} onClick={() => setHelp(!help)} className="grid size-8 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-neutral-100 dark:hover:bg-white/10">?</button>}
         </div>
@@ -121,9 +141,20 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
           <p className="text-xs text-neutral-500 dark:text-neutral-400">{tt(text.snapshot)}</p>
           <button type="button" disabled={!loaded || !share.snapshotLink || busy} onClick={() => share.snapshotLink && void copyLink(share.snapshotLink.url)}
             className="min-h-8 w-full rounded-lg border border-neutral-200/80 px-3 disabled:opacity-50 dark:border-white/10">{tt(copy.copyLink)}</button>
+          {loaded && share.snapshotLink && <button type="button" data-share-send-entry="" disabled={busy} onClick={() => { setPage("send"); setNotice(""); setError(""); }}
+            className="min-h-8 w-full rounded-lg border border-neutral-200/80 px-3 disabled:opacity-50 dark:border-white/10">{tt(fn.sendTo)}</button>}
+        </div> : page === "send" ? <div data-share-send="" className="space-y-2 px-2.5 py-1.5 text-[13px]">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">{tt(fn.sendNote)}</p>
+          <div className="max-h-64 overflow-y-auto">
+            <PeopleSuggestions mode="select" selectedIds={recipients.map((person) => person.user_id)} placeholder={tt(fn.findPlaceholder)} onPick={toggleRecipient} />
+          </div>
+          {recipients.length > 0 && <p data-share-recipients="" className="truncate text-xs text-neutral-500 dark:text-neutral-400">{recipients.map((person) => person.name).join(", ")}</p>}
+          <button type="button" disabled={busy || !recipients.length || !share.snapshotLink} onClick={() => void send()}
+            className="min-h-8 w-full rounded-lg bg-neutral-900 px-3 text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900">{tt(fn.send, { count: recipients.length })}</button>
         </div> : <>
           {loaded && <MemberPanel taskCollaboration owner={access.owner} members={members} canManage={canManage} busy={busy}
             onInvite={email => mutate(() => client.invite(taskId, email, "collaborate"))}
+            onInviteUser={person => mutate(() => client.inviteUser(taskId, person.user_id))}
             onRemove={id => mutate(() => client.remove(taskId, id))} />}
           <FloatingMenuSeparator />
           <div className="space-y-2 px-2.5 py-1.5 text-[13px]">
@@ -131,7 +162,7 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
             <button type="button" onClick={() => void copyLink(taskUrl)} className="min-h-8 w-full rounded-lg border border-neutral-200/80 px-3 dark:border-white/10">{tt(text.copyTask)}</button>
           </div>
         </>}
-        {Boolean(readError) && <AutoRecovery identity={`task-share:${taskId}:${page}`} error={readError} recover={() => openPage(page)} />}
+        {Boolean(readError) && <AutoRecovery identity={`task-share:${taskId}:${page}`} error={readError} recover={() => openPage(page === "send" ? "snapshot" : page)} />}
         {error && <div role="alert" className="px-2.5 py-1.5 text-[13px] text-rose-600 dark:text-rose-400">{error}</div>}
         {busy && <span role="status" aria-label={tt("正在加载…")} className="v-spinner" />}
         {notice && <p role="status" className="px-2.5 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">{notice}</p>}

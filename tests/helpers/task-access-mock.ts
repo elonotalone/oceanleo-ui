@@ -22,6 +22,11 @@ export class TaskAccessMock implements TaskAccessClient {
     const row: AccessMember = { id: `m${this.rows.length + 1}`, email, role, status: "invited" };
     this.rows.push(row); return row;
   }
+  async inviteUser(_id: string, userId: string): Promise<AccessMember> {
+    this.check("inviteUser", { userId });
+    const row: AccessMember = { id: `m${this.rows.length + 1}`, user_id: userId, name: `Name ${userId}`, role: "collaborate", status: "invited" };
+    this.rows.push(row); return row;
+  }
   async changeRole(_id: string, id: string, role: AccessRole) { this.check("changeRole", { id, role }); this.rows = this.rows.map(row => row.id === id ? { ...row, role } : row); }
   async remove(_id: string, id: string) { this.check("remove", id); this.rows = this.rows.map(row => row.id === id ? { ...row, status: "removed" } : row); }
   async accept(_id: string) { this.check("accept"); this.access = { ...this.access, state: "member", role: this.access.invite_role ?? "view", can_send: this.access.invite_role === "collaborate", can_fork: true }; }

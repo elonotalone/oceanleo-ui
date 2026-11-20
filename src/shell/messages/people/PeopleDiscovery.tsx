@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { useAutoRecovery } from "../../../lib/auto-recovery";
 import {
-  copyText, followPerson, followSuggestions, getUsername, listFollows, openDm,
+  copyText, errorCodeOf, followPerson, followSuggestions, getUsername, isCompleteEmail, listFollows, openDm,
   peopleMessageError, profileLink, searchPeople, unfollowPerson,
   useLoader, type PersonCard,
 } from "../../../lib/im/people-api";
@@ -26,7 +26,7 @@ export function PeoplePage({ title, onBack, children }: { title: string; onBack:
 
 export function PeopleFailure({ error, action }: { error: unknown; action?: "follow" | "other" }) {
   const tt = useUI();
-  return <p role="alert" className="py-2 text-[12px] text-red-600">{action === "follow" ? tt("关注操作未完成，请稍后再试。") : action === "other" ? peopleMessageError(error, tt) : tt("找人功能暂不可用，正在自动恢复。")}</p>;
+  return <p role="alert" className="py-2 text-[12px] text-red-600">{action === "follow" ? tt("关注操作未完成，请稍后再试。") : action === "other" ? peopleMessageError(error, tt) : errorCodeOf(error) === "people_email_rate_limit" ? tt("通过邮箱找人的次数已用完，请稍后再试。") : tt("找人功能暂不可用，正在自动恢复。")}</p>;
 }
 
 /** Cursor pages are kept explicit so following lists never silently stop at page one. */
@@ -81,20 +81,23 @@ export function PersonRow({ person, mode, onPick, selected, disabled }: { person
   </li>;
 }
 
-export function PeopleSuggestions({ mode, onPick, initialQuery = "", selectedIds = [], existingIds = [] }: { selectedIds?: string[]; existingIds?: string[]; mode: "chat" | "follow" | "select"; onPick: (p: PersonCard) => void; initialQuery?: string }) {
+/** The one people picker (LeoChat, task Collaborate, Share "Send to"). `action` renders under search results. */
+export function PeopleSuggestions({ mode, onPick, initialQuery = "", selectedIds = [], existingIds = [], placeholder, action }: { selectedIds?: string[]; existingIds?: string[]; mode: "chat" | "follow" | "select"; onPick: (p: PersonCard) => void; initialQuery?: string; placeholder?: string; action?: (query: string) => ReactNode }) {
   const tt = useUI();
   const [query, setQuery] = useState(initialQuery);
   const [debounced, setDebounced] = useState(initialQuery);
-  useEffect(() => { const timer = setTimeout(() => setDebounced(query.trim()), 250); return () => clearTimeout(timer); }, [query]);
-  const search = useLoader(() => debounced ? searchPeople(debounced) : Promise.resolve([]), [debounced]);
+  // An address is looked up only when whole, after a longer pause: each lookup counts against a small hourly limit.
+  useEffect(() => { const timer = setTimeout(() => setDebounced(query.trim()), query.includes("@") ? 700 : 250); return () => clearTimeout(timer); }, [query]);
+  const search = useLoader(() => debounced && (!debounced.includes("@") || isCompleteEmail(debounced)) ? searchPeople(debounced) : Promise.resolve([]), [debounced]);
   const suggestions = useLoader(followSuggestions, []);
   const following = useFollowing();
   const titles = { team: "同团队的人", project: "同项目的人", bay: "在 LeoBay 聊过的人" };
   const rows = (people: PersonCard[]) => <ul>{people.map(p => <PersonRow key={p.user_id} person={p} mode={mode} selected={selectedIds.includes(p.user_id)} disabled={existingIds.includes(p.user_id)} onPick={onPick} />)}</ul>;
   return <div data-people-discovery>
-    <input type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label={tt("按名称搜索用户")} placeholder={tt("按名称搜索用户")} className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px]" />
+    <input type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label={placeholder ?? tt("按名称搜索用户")} placeholder={placeholder ?? tt("按名称搜索用户")} className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px]" />
     {query.trim() ? <section data-people-search>
       {search.loading || query.trim() !== debounced ? <p role="status">{tt("加载中…")}</p> : search.error ? <PeopleFailure error={search.error} /> : search.data?.length ? rows(search.data) : <p className="py-2 text-[12px] text-neutral-500">{tt("没有找到。")}</p>}
+      {action?.(query.trim())}
     </section> : <>
       <section data-people-suggestions>
         {suggestions.loading ? <p role="status">{tt("加载中…")}</p> : suggestions.error ? <PeopleFailure error={suggestions.error} /> : suggestions.data?.map(group => <section key={group.key}>

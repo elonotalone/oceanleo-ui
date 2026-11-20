@@ -177,3 +177,20 @@ export async function getTaskShareLink(taskId: string): Promise<ShareLink | null
 export async function revokeTaskShareLinks(taskId: string): Promise<void> {
   await snapshotRequest(`task/${encodeURIComponent(taskId)}`, "DELETE");
 }
+
+/** Tell chosen people about the caller's own snapshot (in-site notification only). */
+export async function sendShareLink(shareId: string, userIds: string[]): Promise<void> {
+  const token = await accessToken();
+  if (!token) throw new ShareLinkError(shareFailureMessage(401, ""), 401);
+  let response: Response;
+  try {
+    response = await fetch(`${GATEWAY_BASE}/v1/share/${encodeURIComponent(shareId)}/send`, {
+      method: "POST", cache: "no-store", credentials: "include",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ user_ids: userIds }),
+    });
+  } catch {
+    throw new ShareLinkError(shareFailureMessage(0, ""), 0);
+  }
+  if (!response.ok) throw new ShareLinkError(shareFailureMessage(response.status, ""), response.status);
+}
