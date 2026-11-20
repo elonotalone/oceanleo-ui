@@ -219,7 +219,7 @@ function MessagesOverlay() {
   }
 
   const listBody = (
-    <div key={tabOfView(state.view)} data-im-view-body className="flex min-h-0 flex-1 flex-col">
+    <div key={tabOfView(state.view)} data-im-view-body className="flex min-h-0 flex-1 flex-col transition-opacity duration-[var(--leo-dur-3)] ease-[var(--leo-ease-decelerate)] starting:opacity-0 motion-reduce:transition-none">
       {list}
     </div>
   );

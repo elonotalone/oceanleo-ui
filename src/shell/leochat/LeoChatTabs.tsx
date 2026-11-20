@@ -1,6 +1,7 @@
 "use client";
 
 import { useUI } from "../../i18n/ui/useUI";
+import { Segmented } from "../../ui";
 
 export type LeoChatTabId = "inbox" | "people";
 
@@ -15,33 +16,21 @@ const TABS: ReadonlyArray<{ id: LeoChatTabId; label: string }> = [
   { id: "people", label: "联系人" },
 ];
 
-/** 小窗顶栏中间的栏目切换：聊天 / 联系人，一条分段滑块，各带各的数字。 */
+/** 消息 / 联系人：任务页同一套分段控件（`ui` 的 Segmented），各带各的未读数。小窗顶栏里按下它不会拖动窗口。 */
 export function LeoChatTabs({ active, onSelect, badges }: LeoChatTabsProps) {
   const tt = useUI();
   return (
-    <div role="tablist" aria-label="LeoChat" data-im-tabs data-im-no-drag className="inline-flex items-center">
-      {TABS.map((tab) => {
-        const badge = badges?.[tab.id] ?? 0;
-        const label = tt(tab.label);
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            data-view={tab.id}
-            aria-selected={active === tab.id}
-            onClick={() => onSelect(tab.id)}
-            className="inline-flex items-center gap-1.5"
-          >
-            <span className="min-w-0 truncate">{label}</span>
-            {badge > 0 ? (
-              <span data-im-tab-badge aria-label={tt("{n} 条未读", { n: badge })}>
-                {badge > 99 ? "99+" : badge}
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
+    <div data-im-no-drag data-leochat-tabs className="inline-flex">
+      <Segmented
+        size="sm"
+        ariaLabel="LeoChat"
+        value={active}
+        onChange={onSelect}
+        options={TABS.map((tab) => {
+          const badge = badges?.[tab.id] ?? 0;
+          return { id: tab.id, label: tab.label, badge, badgeLabel: badge > 0 ? tt("{n} 条未读", { n: badge }) : undefined };
+        })}
+      />
     </div>
   );
 }

@@ -27,7 +27,7 @@ function localStore(): Storage | null {
 export function PrivacySummary() {
   const tt = useUI();
   return (
-    <ul className="list-disc space-y-1.5 pl-5 text-[13px] leading-6 text-black/55 dark:text-white/55">
+    <ul className="list-disc space-y-1.5 pl-5 text-[13px] leading-6 text-stone-600">
       <li>{tt("消息在传输和存储时都是加密的，但不是端到端加密。")}</li>
       <li>{tt("平台不会主动查看任何消息，Team 管理员也看不到成员之间的私聊。")}</li>
       <li>{tt("只有被举报的内容会进入人工审核；审核看到的是被举报的消息和举报人能看到的上下文。")}</li>
@@ -54,13 +54,14 @@ export function PrivacyNotice() {
       aria-label={tt("隐私说明")}
       data-testid="messages-privacy-notice"
       data-im-privacy-banner
+      className="mx-2.5 mt-2 flex items-start gap-2 rounded-lg bg-stone-100 px-2.5 py-2 text-[12px] leading-5 text-stone-600"
     >
       <p className="min-w-0 flex-1">{tt("消息在传输和存储时都是加密的，但不是端到端加密。")}</p>
       <button
         type="button"
         autoFocus
         onClick={acknowledge}
-        className="shrink-0 text-[12px] font-medium text-neutral-800 underline-offset-2 hover:underline dark:text-neutral-100"
+        className="shrink-0 text-[12px] font-medium text-stone-800 underline-offset-2 hover:underline"
       >
         {tt("知道了")}
       </button>

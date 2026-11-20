@@ -62,7 +62,7 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
           placeholder={tt("写点什么…")}
           aria-label={tt("消息内容")}
           data-composer-input
-          className="max-h-32 min-h-[36px] flex-1 resize-none rounded-xl bg-black/[0.04] px-3 py-2 text-[14px] text-neutral-900 focus:outline-none dark:bg-white/[0.06]"
+          className="max-h-32 min-h-[36px] flex-1 resize-none rounded-xl bg-stone-100 px-3 py-2 text-[14px] text-neutral-900 focus:outline-none"
         />
         <button
           type="button"

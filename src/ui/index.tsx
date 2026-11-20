@@ -241,11 +241,14 @@ export function Segmented<T extends string>({
   value,
   onChange,
   size = "md",
+  ariaLabel,
 }: {
-  options: { id: T; label: string }[];
+  /** `badge`: an optional count shown after the label (0 / absent = none); `badgeLabel` is its translated aria-label. */
+  options: { id: T; label: string; badge?: number; badgeLabel?: string }[];
   value: T;
   onChange: (v: T) => void;
   size?: "sm" | "md";
+  ariaLabel?: string;
 }) {
   const tt = useUI();
   return (
@@ -254,21 +257,32 @@ export function Segmented<T extends string>({
         size === "sm" ? "text-[12px]" : "text-[13px]"
       }`}
       role="tablist"
+      aria-label={ariaLabel}
     >
       {options.map((opt) => (
         <button
           key={opt.id}
           type="button"
           role="tab"
+          data-value={opt.id}
           aria-selected={value === opt.id}
           onClick={() => onChange(opt.id)}
-          className={`rounded-md px-2.5 py-1 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+          className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
             value === opt.id
               ? "bg-white font-medium text-neutral-900 shadow-sm"
               : "text-neutral-500 hover:text-neutral-700"
           }`}
         >
-          {tt(opt.label)}
+          <span className="min-w-0 truncate">{tt(opt.label)}</span>
+          {opt.badge && opt.badge > 0 ? (
+            <span
+              data-segmented-badge=""
+              aria-label={opt.badgeLabel}
+              className="min-w-4 rounded-full bg-neutral-900 px-1 text-center text-[10px] font-medium leading-4 text-white"
+            >
+              {opt.badge > 99 ? "99+" : opt.badge}
+            </span>
+          ) : null}
         </button>
       ))}
     </div>

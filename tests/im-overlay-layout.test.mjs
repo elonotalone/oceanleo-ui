@@ -31,7 +31,10 @@ test("MessagesLayout：层级用行内 zIndex，不靠 Tailwind 任意值（消�
 
 test("MessagesLayout：顶栏有标题和放大键，没有整页打开", () => {
   const layout = src("shell/messages/MessagesLayout.tsx");
-  assert.match(layout, /text-\[14px\] font-bold tracking-tight/);
+  // Session / sites wave (UL): the window title uses the task page's title type, not a bold private size.
+  assert.match(layout, /text-\[13px\] font-medium text-stone-800/);
+  assert.match(layout, /LEOCHAT_ICON_BUTTON/);
+  assert.doesNotMatch(layout, /data-im-chrome-btn/);
   assert.doesNotMatch(layout, /data-leochat-open-page/);
   assert.doesNotMatch(layout, /ImOpenPageIcon/);
   assert.match(layout, /ImExpandIcon/);
@@ -124,7 +127,17 @@ test("MessagesHost：切页关掉浮层；栏目顺序是消息、联系人；�
 
 test("MessagesLayout：开窗从左下长出来，进会话是推入，关掉会收走", () => {
   const layout = src("shell/messages/MessagesLayout.tsx");
-  assert.match(layout, /ensureMessagesSurfaceStyles/);
+  // No injected style sheet any more: the motion is Tailwind classes on the nodes themselves.
+  assert.doesNotMatch(layout, /ensureMessagesSurfaceStyles/);
+  assert.match(layout, /origin-bottom-left/);
+  assert.match(layout, /duration-\[var\(--leo-dur-4\)\]/);
+  assert.match(layout, /starting:opacity-0/);
+  assert.match(layout, /data-\[im-overlay-state=closed\]:opacity-0/);
+  assert.match(layout, /data-\[im-dragging=true\]:transition-none/);
+  assert.match(layout, /-translate-x-\[22%\]/);
+  assert.match(layout, /translate-x-full/);
+  assert.match(layout, /select-none/);
+  assert.doesNotMatch(layout, /transition-\[[^\]]*(top|left)/);
   assert.match(layout, /data-im-overlay-state/);
   assert.match(layout, /data-im-panes/);
   assert.match(layout, /data-im-pane="detail"/);
@@ -134,12 +147,7 @@ test("MessagesLayout：开窗从左下长出来，进会话是推入，关掉会
   assert.match(layout, /el\.style\.left/);
   assert.match(layout, /data-im-dragging/);
   const surface = src("shell/messages/messages-surface.tsx");
-  assert.match(surface, /--leo-dur-4/);
-  assert.match(surface, /transform-origin: 0% 100%/);
-  assert.match(surface, /im-msg-own/);
-  assert.match(surface, /user-select:\s*none/);
-  assert.doesNotMatch(surface, /top var\(--leo-dur/);
-  assert.doesNotMatch(surface, /left var\(--leo-dur/);
+  assert.doesNotMatch(surface, /MESSAGES_SURFACE_CSS|--im-accent|<style|createElement\("style"\)/);
 });
 
 test("海外有 LeoChat 时铃铛不渲染，境内才是通知列表", () => {

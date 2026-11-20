@@ -9,7 +9,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { ImMessage, ImProfile } from "../../../lib/im/types";
 import { useImConnection, useImEvent } from "../realtime/hooks";
-import { ImMoreIcon } from "../messages-surface";
+import { FloatingMenu, FloatingMenuItem } from "../../../ui/menu/FloatingMenu";
+import { ImMoreIcon, LEOCHAT_ICON_BUTTON } from "../messages-surface";
 import { ReportDialog } from "../report/ReportDialog";
 import { TalentComposer } from "./TalentComposer";
 import { WorkConversationHeader } from "../conversation/WorkConversationHeader";
@@ -164,6 +165,8 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
   const [busyOffer, setBusyOffer] = useState<string | null>(null);
   const [offerError, setOfferError] = useState<{ offerId: string; message: string } | null>(null);
   const [report, setReport] = useState<{ kind: "message" | "user" | "conversation"; id: string; label?: string } | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLButtonElement | null>(null);
 
   const wanted = threadId ? talentConversationId(threadId) : "";
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -265,35 +268,36 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
             {tt("在 LeoBay 打开")}
           </a>
         )}
-        <details className="relative">
-          <summary
-            aria-label={tt("更多")}
-            className="cursor-pointer list-none"
-            data-im-chrome-btn
-          >
-            <ImMoreIcon />
-          </summary>
-          <div className="absolute right-0 z-10 mt-1 w-40 rounded-lg border border-neutral-200 bg-white py-1 text-[13px] shadow-lg">
-            {peerId && (
-              <button
-                type="button"
-                data-action="report-user"
-                onClick={() => setReport({ kind: "user", id: peerId, label: title })}
-                className="block w-full px-3 py-1.5 text-left hover:bg-neutral-50"
-              >
-                {tt("举报对方")}
-              </button>
-            )}
-            <button
-              type="button"
-              data-action="report-conversation"
-              onClick={() => setReport({ kind: "conversation", id: wanted, label: title })}
-              className="block w-full px-3 py-1.5 text-left hover:bg-neutral-50"
-            >
-              {tt("举报这个会话")}
-            </button>
-          </div>
-        </details>
+        <button
+          ref={moreRef}
+          type="button"
+          aria-label={tt("更多")}
+          title={tt("更多")}
+          aria-haspopup="menu"
+          aria-expanded={moreOpen}
+          onClick={() => setMoreOpen((open) => !open)}
+          className={LEOCHAT_ICON_BUTTON}
+        >
+          <ImMoreIcon />
+        </button>
+        <FloatingMenu open={moreOpen} anchorRef={moreRef} onClose={() => setMoreOpen(false)} align="end" width={184} ariaLabel={tt("更多")}>
+          {peerId ? (
+            <FloatingMenuItem
+              label={tt("举报对方")}
+              onSelect={() => {
+                setMoreOpen(false);
+                setReport({ kind: "user", id: peerId, label: title });
+              }}
+            />
+          ) : null}
+          <FloatingMenuItem
+            label={tt("举报这个会话")}
+            onSelect={() => {
+              setMoreOpen(false);
+              setReport({ kind: "conversation", id: wanted, label: title });
+            }}
+          />
+        </FloatingMenu>
       </header>
       {state.info?.work && peerId ? <WorkConversationHeader conversation={{ id: wanted, work: state.info.work, peer: { user_id: peerId, display_name: title } } as ImConversationSummary} onBlocked={() => setSendError(tt("你们之间有拉黑关系，不能发送消息"))} /> : null}
 
