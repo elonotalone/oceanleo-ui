@@ -29,7 +29,7 @@ test("tr-chat copy: every locale has every key, with the same {variables}", asyn
   const { trChatCopy } = await import(await compileModule("src/i18n/ui/messages/tr-chat-copy.ts"));
   const zh = trChatCopy("zh");
   const keys = Object.keys(zh);
-  assert.ok(keys.length >= 20);
+  assert.ok(keys.length >= 4);
   const vars = (value) => [...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
   for (const locale of LOCALES) {
     const copy = trChatCopy(locale);
@@ -39,6 +39,8 @@ test("tr-chat copy: every locale has every key, with the same {variables}", asyn
       assert.deepEqual(vars(copy[key]), vars(key), `${locale}: ${key}`);
     }
   }
-  assert.equal(trChatCopy("en")["任务（列表筛选）"], "Tasks");
-  assert.equal(trChatCopy("zh")["任务（列表筛选）"], "任务");
+  assert.equal(trChatCopy("en")["问 leo"], "Ask leo");
+  assert.equal(trChatCopy("zh")["问 leo"], "问 leo");
+  // Copy of deleted features (Tasks filter, start-task, Send to people) is gone.
+  for (const key of ["任务（列表筛选）", "用选中的消息开任务", "发给人"]) assert.equal(key in zh, false, key);
 });

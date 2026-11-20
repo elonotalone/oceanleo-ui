@@ -26,7 +26,6 @@ import { deviceExperienceCopy } from "./device-experience-copy";
 import { swBrCopy } from "./sw-br-copy";
 import { swTsCopy } from "./sw-ts-copy";
 import { rwFnCopy } from "./rw-fn-copy";
-import { trPanelCopy } from "./tr-panel-copy";
 import { ssUlCopy } from "./ss-ul-copy";
 import { ssUcCopy } from "./ss-uc-copy";
 import { ssUtCopy } from "./ss-ut-copy";
@@ -232,7 +231,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...swBdCopy(locale),
     ...swTsCopy(locale),
     ...rwFnCopy(locale),
-    ...trPanelCopy(locale),
     ...ssUlCopy(locale),
     ...ssUcCopy(locale),
     ...ssUtCopy(locale),

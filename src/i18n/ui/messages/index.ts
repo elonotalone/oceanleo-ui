@@ -65,7 +65,6 @@ import { deviceExperienceCopy } from "./device-experience-copy";
 import { swBrCopy } from "./sw-br-copy";
 import { swTsCopy } from "./sw-ts-copy";
 import { rwFnCopy } from "./rw-fn-copy";
-import { trPanelCopy } from "./tr-panel-copy";
 import { ssUlCopy } from "./ss-ul-copy";
 import { ssUcCopy } from "./ss-uc-copy";
 import { ssUtCopy } from "./ss-ut-copy";
@@ -595,7 +594,6 @@ export const UI_MESSAGES = Object.fromEntries(
       ...swBdCopy(language),
       ...swTsCopy(language),
       ...rwFnCopy(language),
-      ...trPanelCopy(language),
       ...ssUlCopy(language),
       ...ssUcCopy(language),
       ...ssUtCopy(language),
