@@ -4,6 +4,7 @@
 // 录好的文件交给输入框走上传，再以 kind:"voice" 发出；转文字由服务端自动做。
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { MicGlyph } from "./icons";
 
 export const MAX_VOICE_MS = 5 * 60 * 1000;
 const HOLD_RELEASE_MS = 600;
@@ -120,18 +121,18 @@ export function VoiceRecorder({
 
   if (recording) {
     return (
-      <div className="flex items-center gap-2 px-1 py-1 text-[12px] text-neutral-500" data-recording="">
-        <span data-im-record-dot="" />
+      <div className="flex h-8 items-center gap-2 rounded-full bg-rose-50 pl-2.5 pr-1 text-[12px] text-rose-700" data-recording="">
+        <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-rose-500" aria-hidden="true" />
         <span className="tabular-nums">
           {formatClockMs(elapsed)} / {formatClockMs(MAX_VOICE_MS)}
         </span>
-        <button type="button" onClick={() => stop(true)} className="text-neutral-500 hover:text-neutral-800">
+        <button type="button" onClick={() => stop(true)} className="rounded-full px-2 py-1 text-rose-700 transition hover:bg-rose-100 active:scale-95">
           {tt("取消")}
         </button>
         <button
           type="button"
           onClick={() => stop(false)}
-          className="rounded-full bg-neutral-900 px-2.5 py-0.5 text-[12px] text-white"
+          className="h-6 rounded-full bg-neutral-900 px-2.5 text-[12px] text-white transition hover:bg-neutral-800 active:scale-95"
         >
           {tt("发送语音")}
         </button>
@@ -155,12 +156,9 @@ export function VoiceRecorder({
         document.addEventListener("pointerup", onUp);
         void start();
       }}
-      className="min-h-11 min-w-11 flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-40"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700 active:scale-95 active:duration-[var(--leo-dur-1)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
     >
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-        <rect x="9" y="3" width="6" height="12" rx="3" />
-        <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-      </svg>
+      <MicGlyph />
     </button>
   );
 }
