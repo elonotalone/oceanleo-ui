@@ -84,6 +84,7 @@ test("没头像的人画名字首字色块；非 https 头像地址一律当没�
   for (const letter of ["A", "鲍", "C", "D"]) assert.ok(h.includes(`>${letter}</span>`), "缺首字 " + letter);
   assert.ok(!h.includes("javascript:"), "危险协议不能出现在输出里");
   assert.ok(!h.includes("http://"), "http 头像不画");
+  assert.ok(!/hsl\(|background:/i.test(h), "首字格是灰底类，不是按人取的彩色");
 });
 
 test("<img> 带 no-referrer / lazy / 空 alt，地址是 https", () => {
@@ -130,7 +131,7 @@ const conv = (over = {}) => ({
   notify_level: "all", org_id: null, project_id: null, has_external: false, my_role: "member", dissolved: false, ...over,
 });
 
-test("收件箱行：群有成员头像就拼图；Team 群、项目群同；没有则保持原来的 2×2 首字块；私聊不受影响", () => {
+test("收件箱行：群有成员头像就拼图；Team 群、项目群同；没有则是灰底群名首字（不再是彩色 2×2）；私聊不受影响", () => {
   const members = [m("a", "甲"), m("b", "乙"), m("c", "丙")];
   for (const kind of ["group", "team", "project"]) {
     const h = html(React.createElement(Avatar, { item: conv({ kind, avatar_members: members }) }));
@@ -138,7 +139,11 @@ test("收件箱行：群有成员头像就拼图；Team 群、项目群同；没
   }
   const fallback = html(React.createElement(Avatar, { item: conv({ title: "设计组织" }) }));
   assert.ok(!fallback.includes("data-avatar-mosaic"), "没有 members 不拼图");
-  assert.ok(fallback.includes("grid-cols-2"), "沿用原来的 2×2 首字块");
+  // Session / sites wave (UL): one avatar look — grey initials like the thread and the task page; no hashed colours.
+  assert.ok(fallback.includes("data-avatar-initial"), "灰底首字");
+  assert.ok(fallback.includes(">设</span>"), "群名首字");
+  assert.ok(fallback.includes("bg-stone-200"), "灰底");
+  assert.ok(!/hsl\(|#[0-9a-f]{6}/i.test(fallback), "不按名字取彩色");
   const dm = html(React.createElement(Avatar, { item: conv({ kind: "dm", title: "", peer: { user_id: "p", display_name: "对方", avatar_url: null }, avatar_members: members }) }));
   assert.ok(!dm.includes("data-avatar-mosaic"), "私聊不拼图");
   const own = html(React.createElement(Avatar, { item: conv({ avatar_url: "https://img.example.com/own.png", avatar_members: members }) }));

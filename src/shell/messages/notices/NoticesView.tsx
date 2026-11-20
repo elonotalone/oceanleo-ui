@@ -70,18 +70,18 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
   let body: ReactElement;
   if (!state.loaded) {
     body = (
-      <div className="px-4 py-10 text-center text-sm text-black/45 dark:text-white/45" data-notices-loading="">
+      <div className="px-4 py-10 text-center text-sm text-stone-500" data-notices-loading="">
         {tt("正在加载…")}
       </div>
     );
   } else if (state.items.length === 0) {
     body = (
       <div className="flex flex-col items-center px-6 py-14 text-center" data-notices-empty="">
-        <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/[0.04] text-black/35 dark:bg-white/10 dark:text-white/40">
+        <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-stone-100 text-stone-400">
           <NoticeBellIcon className="h-6 w-6" />
         </span>
         <p className="mt-3 text-[14px] font-semibold tracking-tight">{tt("还没有通知")}</p>
-        <p className="mt-1 max-w-xs text-[12px] text-black/45 dark:text-white/45">
+        <p className="mt-1 max-w-xs text-[12px] text-stone-500">
           {tt("订单、任务、账单和内容处置等平台消息会出现在这里。")}
         </p>
       </div>
@@ -91,12 +91,12 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
       <>
         {state.error ? (
           <div
-            className="flex items-center justify-center gap-2 px-3 py-1.5 text-[12px] text-black/45 dark:text-white/45"
+            className="flex items-center justify-center gap-2 px-3 py-1.5 text-[12px] text-stone-500"
             role="status" data-notices-stale="">
             {tt("通知正在自动恢复")}
           </div>
         ) : null}
-        <ul role="list" aria-label={tt("通知")} data-notices-list="">
+        <ul role="list" aria-label={tt("通知")} data-notices-list="" className="px-2 py-1">
           {state.items.map((item) => {
             const unread = !item.read_at;
             const go = noticeActionable(item);
@@ -109,9 +109,9 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                   data-notice-kind={item.kind}
                   data-notice-unread={unread ? "true" : "false"}
                   onClick={() => openNoticeDetail(item, store)}
-                  className="flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                  className="flex w-full items-start gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50"
                 >
-                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-300">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-200 text-stone-600">
                     <NoticeBellIcon className="h-[18px] w-[18px]" />
                   </span>
                   <span className="min-w-0 flex-1">
@@ -126,12 +126,12 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                       ) : null}
                       <span
                         className={`min-w-0 flex-1 truncate text-[13px] tracking-tight ${
-                          unread ? "font-semibold" : "font-medium text-black/55 dark:text-white/55"
+                          unread ? "font-semibold" : "font-medium text-stone-500"
                         }`}
                       >
                         {item.kind === SERVER_NOTICE_KIND ? item.title : noticeText(item, "title", tt)}
                       </span>
-                      <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35">
+                      <span className="shrink-0 text-[11px] text-stone-400">
                         {formatNoticeTime(item.created_at, now, yesterday)}
                       </span>
                     </span>
@@ -139,7 +139,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                     {item.body ? (
                       <span
                         className={`mt-0.5 line-clamp-2 block whitespace-pre-line text-[12px] leading-snug ${
-                          unread ? "text-black/60 dark:text-white/60" : "text-black/40 dark:text-white/40"
+                          unread ? "text-stone-600" : "text-stone-400"
                         }`}
                       >
                         {item.kind === SERVER_NOTICE_KIND ? item.body : noticeText(item, "body", tt)}
@@ -148,7 +148,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                     <ServerNoticeCounts item={item} />
                   </span>
                   {go ? (
-                    <span className="mt-1 shrink-0 text-black/25 dark:text-white/25" data-notice-go="">
+                    <span className="mt-1 shrink-0 text-stone-400" data-notice-go="">
                       <NoticeChevronIcon />
                     </span>
                   ) : null}
@@ -161,7 +161,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
           <button
             type="button"
             onClick={() => void store.loadMore()}
-            className="block w-full px-3 py-2 text-center text-xs text-black/45 hover:bg-black/5 dark:text-white/45"
+            className="block w-full px-3 py-2 text-center text-xs text-stone-500 hover:bg-stone-100"
           >
             {state.loading ? tt("正在加载…") : tt("加载更多")}
           </button>
@@ -185,7 +185,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
         ) : null}
       </>} data-notices-view="" data-testid="notices-view">
       {ordered.length > 0 ? (
-        <div role="tablist" aria-label={tt("通知分类")} className="flex shrink-0 gap-2 overflow-x-auto border-b border-black/[0.06] px-3 py-2 dark:border-white/10">
+        <div role="tablist" aria-label={tt("通知分类")} className="flex shrink-0 gap-2 overflow-x-auto border-b border-stone-200 px-3 py-2">
           {ordered.map(item => <button key={item.key} type="button" role="tab" aria-selected={section === item.key}
             data-notice-section={item.key} className="shrink-0 rounded-lg px-3 py-2 text-sm"
             onClick={() => { selectNoticeSection(item.key); setSelected(item.key); }}>

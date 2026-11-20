@@ -9,6 +9,7 @@ import type {
   ImPresence,
   ImUnread,
 } from "../../../lib/im/types";
+import { previewLabelOf, type ImLastMessageWithLabel } from "../preview-label";
 import type { ImSocket, SocketOutput, SocketState } from "./socket";
 
 export type ImConnectionState = SocketState;
@@ -32,11 +33,15 @@ export const PREVIEW_FILE = "[文件]";
 export const PREVIEW_ARTIFACT = "[作品]";
 export const PREVIEW_REPLAY = "[工作回放]";
 export const PREVIEW_CARD = "[卡片]";
+export const PREVIEW_TASK = "[任务]";
+export const PREVIEW_QUOTE = "[聊天记录]";
 
 /** 一条消息在收件箱 / 通知里的一行摘要。撤回、隐藏、卡片、附件各有固定文案。 */
 export function messagePreview(message: ImMessage): string {
   if (message.recalled_at) return PREVIEW_RECALLED;
   if (message.hidden_reason === "moderation") return PREVIEW_HIDDEN;
+  // 引用卡片（合同 §2.2）：类型表里还没有 "quote" 时按字符串比。
+  if ((message.kind as string) === "quote") return PREVIEW_QUOTE;
   const body = (message.body || "").replace(/\s+/g, " ").trim();
   switch (message.kind) {
     case "image":
@@ -55,6 +60,9 @@ export function messagePreview(message: ImMessage): string {
       return message.card?.title ? `${PREVIEW_ARTIFACT} ${message.card.title}` : PREVIEW_ARTIFACT;
     case "replay":
       return message.card?.title ? `${PREVIEW_REPLAY} ${message.card.title}` : PREVIEW_REPLAY;
+    case "task":
+      return message.card?.title ? `${PREVIEW_TASK} ${message.card.title}` : PREVIEW_TASK;
+
     default:
       if (message.card) return message.card.title ? `${PREVIEW_CARD} ${message.card.title}` : PREVIEW_CARD;
       return body.slice(0, 120);
@@ -62,15 +70,18 @@ export function messagePreview(message: ImMessage): string {
 }
 
 export function lastMessageOf(message: ImMessage): ImLastMessage {
-  return {
+  const last: ImLastMessageWithLabel = {
     id: message.id,
     seq: message.seq,
     sender_id: message.sender_id,
     sender_kind: message.sender_kind,
     kind: message.kind,
     preview: messagePreview(message),
+    // 与服务端同形的 label（合同 §2.2）：收件箱据它按当前语言画「[图片] …」「[任务] …」。
+    preview_label: previewLabelOf(message),
     created_at: message.created_at,
   };
+  return last;
 }
 
 // ---------------------------------------------------------------------------

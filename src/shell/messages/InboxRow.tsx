@@ -10,93 +10,26 @@ import { avatarMembersOf } from "../../lib/im/types";
 import type { ImConversationSummary } from "../../lib/im/types";
 import { useUI } from "../../i18n/ui/useUI";
 import { formatBadge } from "./realtime/store";
-import { GroupAvatar } from "./groups/GroupAvatar";
-import { isTaskConversation } from "./inbox-view";
+import { GroupAvatar, PersonAvatar } from "./groups/GroupAvatar";
+import { inboxPreviewText } from "./preview-label";
 
 /** 通话装饰（`call/chat` 的 InboxCallDecor）：part=slot 画在行按钮右列里占位，part=badge 画在行外叠上去。 */
 export type InboxRowCallDecor = ComponentType<{ conversationId: string; activeCall: unknown; part: "slot" | "badge" }>;
-
-const TILE_COLORS = ["#38bdf8", "#818cf8", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#fb7185", "#2dd4bf"];
-
-function hashOf(text: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i += 1) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
 
 export function conversationTitle(item: ImConversationSummary): string {
   return conversationDisplayTitle(item) || item.title || item.peer?.display_name || "";
 }
 
-/** 没有头像图时：私聊 = 单个字母块；群 = 2×2 拼图（取标题前四个字符各占一格）。 */
-export function avatarTiles(item: ImConversationSummary): string[] {
-  const title = Array.from(conversationTitle(item).trim());
-  if (item.kind === "dm" || item.kind === "talent") return [title[0] ?? "?"];
-  const chars = title.length ? title.slice(0, 4) : ["?"];
-  return chars;
-}
-
+/**
+ * 一行的头像：与对话里、任务页同一种灰底首字（`groups/GroupAvatar.tsx` 那一个组件）。
+ * 私聊 / 交易 = 圆形人像；群 = 圆角方块，有成员头像时拼图。
+ */
 export function Avatar({ item, size = 40 }: { item: ImConversationSummary; size?: number }) {
-  const url = item.avatar_url || (item.kind === "dm" || item.kind === "talent" ? item.peer?.avatar_url : null);
-  const box = { width: size, height: size };
-  // 群 / Team 群 / 项目群：没有自己上传的头像、但服务端给了成员头像时，用同一个拼图组件。
-  const members = item.kind === "dm" || item.kind === "talent" ? [] : avatarMembersOf(item.avatar_members);
-  if (!url && members.length > 0) {
-    return <GroupAvatar name={conversationTitle(item)} seed={item.id} size={size} members={members} />;
+  const title = conversationTitle(item);
+  if (item.kind === "dm" || item.kind === "talent") {
+    return <PersonAvatar name={title} src={item.avatar_url || item.peer?.avatar_url} size={size} />;
   }
-  if (url) {
-    // 只用 <img> 指向服务端给的头像地址，不内联任何 HTML。
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={url} alt="" referrerPolicy="no-referrer" style={box} className="shrink-0 rounded-full object-cover" />
-    );
-  }
-  const tiles = avatarTiles(item);
-  const base = hashOf(item.id);
-  if (tiles.length === 1) {
-    return (
-      <span
-        style={{ ...box, background: TILE_COLORS[base % TILE_COLORS.length] }}
-        className="inline-flex shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
-        aria-hidden="true"
-      >
-        {tiles[0]}
-      </span>
-    );
-  }
-  return (
-    <span
-      style={box}
-      className="grid shrink-0 grid-cols-2 grid-rows-2 gap-px overflow-hidden rounded-xl bg-white/60"
-      aria-hidden="true"
-    >
-      {Array.from({ length: 4 }, (_, index) => (
-        <span
-          key={index}
-          style={{ background: tiles[index] ? TILE_COLORS[(base + index) % TILE_COLORS.length] : "transparent" }}
-          className="flex items-center justify-center text-[10px] font-semibold text-white"
-        >
-          {tiles[index] ?? ""}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-/** 任务（人的会话）的标记：一个小勾选框，跟在标题后面。 */
-function TaskMark({ label }: { label: string }) {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] text-black/45 dark:text-white/45" data-inbox-task-mark="" title={label}>
-      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <rect x="4" y="4" width="16" height="16" rx="4" />
-        <path d="M8.5 12.5l2.5 2.5 4.5-5" />
-      </svg>
-      {label}
-    </span>
-  );
+  return <GroupAvatar name={title} src={item.avatar_url} size={size} members={avatarMembersOf(item.avatar_members)} />;
 }
 
 function MutedIcon() {
@@ -104,6 +37,29 @@ function MutedIcon() {
     <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
       <path d="M18 8a6 6 0 0 0-9.3-5M6 6.2C6 12 3 14 3 17h14M10 21h4M3 3l18 18" />
     </svg>
+  );
+}
+
+/** 收件箱行、「通知」行共用：侧栏同一种圆角行，选中是 `bg-neutral-200/80` 的底色（没有左侧竖条）。 */
+export const INBOX_ROW =
+  "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300";
+export const INBOX_ROW_IDLE = "hover:bg-neutral-200/50";
+export const INBOX_ROW_SELECTED = "bg-neutral-200/80";
+
+/** 头像右上角的未读数：1 条是一个小圆点，多条是数字。 */
+export function UnreadBadge({ count, label, muted = false }: { count: string; label: string; muted?: boolean }) {
+  const dot = count === "1";
+  return (
+    <span
+      data-im-unread=""
+      data-im-unread-count={dot ? undefined : count}
+      aria-label={label}
+      className={`absolute -right-0.5 -top-0.5 flex items-center justify-center rounded-full bg-neutral-900 text-white ${
+        dot ? "h-2.5 w-2.5" : "h-4 min-w-4 px-1 text-[10px] font-medium leading-none"
+      } ${muted ? "opacity-40" : ""}`}
+    >
+      {dot ? "" : count}
+    </span>
   );
 }
 
@@ -142,69 +98,59 @@ export function InboxRow({
   const unread = formatBadge(item.unread_count);
   const mention = item.mention_count > 0;
   const last = item.last_message;
-  const task = isTaskConversation(item);
   let preview = "";
   if (item.dissolved) preview = tt("群已解散");
-  else if (last) preview = tt(last.preview);
+  else if (last) preview = inboxPreviewText(last, tt);
   return (
     <div className="relative" data-inbox-row-wrap="">
       <button
         type="button"
         data-testid="inbox-row"
         data-conversation-id={item.id}
-        data-conversation-kind={task ? "task" : undefined}
         data-pinned={item.pinned ? "true" : undefined}
         aria-current={active ? "true" : undefined}
         onClick={() => onOpen(item.id)}
         onContextMenu={onContextMenu ? (event) => onContextMenu(event, item) : undefined}
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+        className={`${INBOX_ROW} ${active ? INBOX_ROW_SELECTED : INBOX_ROW_IDLE}`}
       >
         <span className="relative shrink-0">
           <Avatar item={item} />
           {unread ? (
-            <span
-              data-im-unread=""
-              data-im-unread-count={unread === "1" ? undefined : unread}
-              aria-label={tt("未读 {count} 条", { count: unread })}
-              className={`absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-neutral-900 px-1 text-[10px] font-medium leading-none text-white ${item.muted ? "opacity-40" : ""}`}
-            >
-              {unread === "1" ? "" : unread}
-            </span>
+            <UnreadBadge count={unread} label={tt("未读 {count} 条", { count: unread })} muted={item.muted} />
           ) : null}
         </span>
         <span className="min-w-0 flex-1">
-          {item.work ? <span className="block truncate text-[11px] text-neutral-500" data-work-label="">{item.work.label}</span> : null}
+          {item.work ? <span className="block truncate text-[11px] text-stone-500" data-work-label="">{item.work.label}</span> : null}
           <span className="flex items-center gap-1.5">
-            <span className="truncate text-[13px] font-semibold tracking-tight">{title}</span>
-            {task ? <TaskMark label={tt("任务")} /> : null}
+            <span className="truncate text-[13px] font-medium text-stone-900">{title}</span>
             {mention ? (
-              <span className="shrink-0 text-[11px] font-semibold text-orange-500" aria-label={tt("有人@你")}>
+              <span className="shrink-0 text-[11px] font-semibold text-stone-900" aria-label={tt("有人@你")}>
                 @
               </span>
             ) : null}
             {item.pinned ? (
-              <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35" title={tt("已置顶")}>
+              <span className="shrink-0 text-[11px] text-stone-400" title={tt("已置顶")}>
                 {tt("已置顶")}
               </span>
             ) : null}
             {item.has_external ? (
-              <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35">
+              <span className="shrink-0 text-[11px] text-stone-400">
                 {tt("外部")}
               </span>
             ) : null}
             {item.muted ? (
-              <span className="shrink-0 text-black/35 dark:text-white/35" title={tt("消息免打扰")}>
+              <span className="shrink-0 text-stone-400" title={tt("消息免打扰")}>
                 <MutedIcon />
               </span>
             ) : null}
           </span>
-          <span className="mt-0.5 flex items-center gap-1 text-[12px] text-black/40 dark:text-white/40">
-            {hasDraft ? <span className="shrink-0 text-red-500">{tt("[草稿]")}</span> : null}
+          <span className="mt-0.5 flex items-center gap-1 text-[12px] text-stone-500">
+            {hasDraft ? <span className="shrink-0 text-rose-600">{tt("[草稿]")}</span> : null}
             <span className="truncate">{preview}</span>
           </span>
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1">
-          <span className="text-[12px] text-black/35 dark:text-white/35">
+          <span className="text-[11px] text-stone-400">
             {item.last_activity_at ? formatRowTime(item.last_activity_at, new Date(), tt("昨天")) : ""}
           </span>
           {Decor ? <Decor conversationId={item.id} activeCall={activeCall} part="slot" /> : null}

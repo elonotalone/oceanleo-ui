@@ -41,7 +41,7 @@ export function NoticeAvatar({ size = 40 }: { size?: number }): ReactElement {
     <span
       data-notices-avatar=""
       style={{ width: size, height: size }}
-      className="inline-flex shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white"
+      className="inline-flex shrink-0 items-center justify-center rounded-full bg-stone-200 text-stone-600"
       aria-hidden="true"
     >
       <NoticeBellIcon className={size >= 40 ? "h-5 w-5" : "h-[18px] w-[18px]"} />

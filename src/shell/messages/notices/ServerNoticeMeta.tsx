@@ -8,7 +8,7 @@ export function ServerNoticeMeta({ item }: { item: NotificationItem }) {
   const tt = useUI();
   if (item.kind !== SERVER_NOTICE_KIND) return null;
   return (
-    <span className="mt-1 block break-words text-[12px] text-black/60 dark:text-white/60" data-server-notice-meta="">
+    <span className="mt-1 block break-words text-[12px] text-stone-600" data-server-notice-meta="">
       <span>{serverNoticeIdentity(item)}</span>
       {item.meta?.level === "urgent" ? (
         <span className="ml-2 rounded-md bg-red-500 px-2 py-0.5 text-[11px] font-medium text-white" data-server-notice-urgent="">
@@ -31,7 +31,7 @@ export function ServerNoticeCounts({ item }: { item: NotificationItem }) {
     return n ? [tt(label, { n })] : [];
   });
   return parts.length ? (
-    <span className="mt-1 block text-[11px] text-black/40 dark:text-white/40" data-server-notice-counts="">
+    <span className="mt-1 block text-[11px] text-stone-400" data-server-notice-counts="">
       {parts.join(" · ")}
     </span>
   ) : null;
