@@ -1,9 +1,12 @@
 // 站内消息 / 多人同改 / 工作回放的共享数据形状。
 // 唯一口径：oceandino docs/work-logs/2026-10/work-chat/01-interfaces.md §5；改这里先改契约。
 import type { CallHubEvent } from "./call-types";
-import type { TaskRoomChild } from "../task-rooms-api";
 
-/** `task`: a task's people conversation (task rooms wave 2026-11-20; has a `task_rooms` row). */
+/**
+ * `project`: a project **session** (session / sites wave 2026-11-21): a people conversation that exists only inside a
+ * project (many per project, all project members; `GET /v1/projects/{id}/sessions`). Never listed in LeoChat.
+ * `task`: legacy people conversation of the previous wave (deleted by migration 0618); never listed in LeoChat.
+ */
 export type ImConversationKind = "dm" | "group" | "team" | "project" | "talent" | "task";
 export type ImRole = "owner" | "admin" | "member";
 export type ImNotifyLevel = "all" | "mentions" | "none";
@@ -13,8 +16,10 @@ export type ImSenderKind = "user" | "leo" | "system";
 export type ImMessageKind =
   | "text" | "file" | "image" | "video" | "audio" | "voice"
   | "artifact" | "replay" | "system" | "leo"
-  /** A card for a child of a task (sub task or task); posted only by the server. */
-  | "task";
+  /** A task card in a session (`card.type === "task"`); posted only by the server. */
+  | "task"
+  /** A quote card: a snapshot of chat / session messages (`card.type === "quote"`); posted only by the server. */
+  | "quote";
 export type ImEditorKind =
   | "richdoc" | "grid" | "deck" | "image" | "vector" | "chart"
   | "game" | "pdf" | "video";
@@ -52,6 +57,8 @@ export interface ImLastMessage {
   sender_kind: ImSenderKind;
   kind: ImMessageKind;
   preview: string;
+  /** Structured preview label (session / sites wave): i18n key (`image`, `file`, `task`, `quote`, …) + data text. */
+  preview_label?: { label_key: string; text: string } | null;
   created_at: string;
 }
 
@@ -123,8 +130,6 @@ export interface ImConversationSummary {
   in_contacts?: boolean;
   show_member_nicknames?: boolean;
   work?: { kind: "team" | "project" | "bay_listing" | "bay_order" | "expert" | "work"; id: string; label: string } | null;
-  /** Only on `kind: "task"` rows (older servers omit it). */
-  task_room?: { project_id: string | null; children_count: number } | null;
 }
 
 export interface ImConversationDetail extends ImConversationSummary {
@@ -155,11 +160,26 @@ export interface ImAttachment {
   duration_ms?: number;
 }
 
+/** One line of a quote card's snapshot (contract §2.2): attachments are named, never copied. */
+export interface ImQuoteItem {
+  sender_name: string;
+  sent_at: string;
+  kind: string;
+  text: string;
+  file_name?: string | null;
+}
+
 export interface ImCard {
-  type: "artifact" | "replay" | "talent_offer" | "task";
-  /** `type: "task"` only: what the card opens. */
-  child_kind?: "agent_task" | "room";
+  type: "artifact" | "replay" | "talent_offer" | "task" | "quote";
+  /** `type: "task"` only: the agent task the card opens (the reader's own access decides). */
+  child_kind?: "agent_task";
   child_id?: string;
+  /** `type: "quote"` only: name of the chat / session the messages came from. */
+  source_title?: string;
+  /** `type: "quote"` only: how many messages were quoted. */
+  count?: number;
+  /** `type: "quote"` only: the snapshot, oldest first. */
+  items?: ImQuoteItem[];
   id: string;
   title: string;
   subtitle?: string;
@@ -402,7 +422,6 @@ export type ImEvent =
   | { type: "group.invite"; invite: ImGroupInvite }
   | { type: "join.request"; conversation_id: string; request: ImJoinRequest }
   | { type: "unread.changed"; unread: ImUnread }
-  | { type: "task.card.updated"; conversation_id: string; child: TaskRoomChild }
   | { type: "replay.consent"; replay_id: string; title: string; from: ImProfile }
   | { type: "meeting"; conversation_id: string; meeting: ImMeeting | null }
   // 通话 v2（calls-v2 合同 §3.3）：call / call_ring / call_ring_end / call_kicked / call_caption /
