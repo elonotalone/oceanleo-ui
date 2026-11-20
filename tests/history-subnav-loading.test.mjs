@@ -83,6 +83,8 @@ function session(id, title) {
 globalThis.__historyItems = [session("s-1", "第一条任务")];
 
 const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
+  // Task rooms wave TU3: the My tasks list reads my tasks too; none here (= today's flat list).
+  "./history-task-rooms": dataModule(`export function useMyTaskRooms(){ return null; }`),
   "../i18n/ui/useUI": dataModule(`
     // 每次渲染都返回一个新函数，模拟词典对象换引用后 useUI 的 memo 失效。
     export function useUI(){ globalThis.__historyGate.ttSeq += 1; return (value) => value; }

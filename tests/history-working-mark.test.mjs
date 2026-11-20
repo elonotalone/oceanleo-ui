@@ -85,6 +85,8 @@ globalThis.__workingTasks = [
 ];
 
 const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
+  // Task rooms wave TU3: the My tasks list reads my tasks too; none here (= today's flat list).
+  "./history-task-rooms": dataModule(`export function useMyTaskRooms(){ return null; }`),
   "../i18n/ui/useUI": dataModule(
     `export function useUI(){ return (value) => value; }`,
   ),
