@@ -7419,6 +7419,12 @@
         },
         {
           "kind": "named",
+          "name": "TaskPageHost",
+          "importedName": "TaskPageHost",
+          "source": "./workspace-panels/TaskPageHost"
+        },
+        {
+          "kind": "named",
           "name": "taskQuoteHref",
           "importedName": "taskQuoteHref",
           "source": "./TaskActionsMenu"
