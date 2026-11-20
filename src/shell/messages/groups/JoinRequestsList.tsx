@@ -50,8 +50,8 @@ export function JoinRequestsList({ conversationId, onChanged }: JoinRequestsList
           <li key={r.id} data-join-request={r.id} className="flex items-center gap-3 px-3 py-2">
             <PersonAvatar name={r.user.display_name} src={r.user.avatar_url} seed={r.user.user_id} size={32} />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] text-neutral-900">{r.user.display_name}</span>
-              {r.message && <span className="block truncate text-[12px] text-neutral-500">{r.message}</span>}
+              <span className="block truncate text-[13px] text-stone-900">{r.user.display_name}</span>
+              {r.message && <span className="block truncate text-[12px] text-stone-500">{r.message}</span>}
             </span>
             <button type="button" disabled={busy === r.id} data-action="approve" onClick={() => decide(r.id, "approve")} className={PRIMARY}>
               {tt("同意")}

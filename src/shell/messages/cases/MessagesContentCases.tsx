@@ -93,21 +93,21 @@ export function MessagesContentCases({ caseId = null, onBack }: MessagesContentC
       ref={rootRef}
       data-messages-content-cases=""
       data-phase={phase}
-      className="flex h-full min-h-0 flex-1 flex-col text-neutral-900"
+      className="flex h-full min-h-0 flex-1 flex-col text-stone-900"
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="w-full space-y-4">
-          <p className="text-[12.5px] leading-5 text-neutral-500">
+          <p className="text-[13px] leading-5 text-stone-500">
             {tt("这里只列出针对你内容的案件。通知里不会出现权利人的邮箱、电话或地址。")}
           </p>
           {phase === "loading" ? (
-            <p role="status" data-cases-loading className="py-10 text-center text-[13px] text-neutral-500">
+            <p role="status" data-cases-loading className="py-10 text-center text-[13px] text-stone-500">
               {tt("加载中…")}
             </p>
           ) : null}
           {phase === "signed-out" ? (
             <div data-cases-signed-out className="py-10 text-center">
-              <p className="text-[14px] text-neutral-700">{tt("请先登录")}</p>
+              <p className="text-[14px] text-stone-700">{tt("请先登录")}</p>
               <button
                 type="button"
                 data-action="sign-in"
@@ -125,7 +125,7 @@ export function MessagesContentCases({ caseId = null, onBack }: MessagesContentC
             <p
               role="status"
               data-cases-unknown
-              className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] leading-5 text-amber-900"
+              className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] leading-5 text-amber-900"
             >
               {tt("找不到这一件处置记录。它可能已被撤销，或不属于当前账号。")}
             </p>
@@ -133,7 +133,7 @@ export function MessagesContentCases({ caseId = null, onBack }: MessagesContentC
           {phase === "ready" && cases.length === 0 ? (
             <p
               data-cases-empty
-              className="mt-4 rounded-xl border border-dashed border-neutral-300 px-4 py-8 text-center text-[13px] text-neutral-500"
+              className="mt-4 rounded-xl border border-dashed border-stone-300 px-4 py-8 text-center text-[13px] text-stone-500"
             >
               {tt("没有针对你内容的处置记录")}
             </p>

@@ -80,7 +80,7 @@ function BannerRow({ line, text, seconds }: { line: BannerLine; text: string; se
         ) : null}
       </span>
       {line.kind === "waiting" ? (
-        <button
+        <button className="transition active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-stone-500"
           type="button"
           style={buttonStyle}
           data-call-control-action="cancel"
@@ -89,7 +89,7 @@ function BannerRow({ line, text, seconds }: { line: BannerLine; text: string; se
           {tt("取消")}
         </button>
       ) : line.role === "controller" ? (
-        <button
+        <button className="transition active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-stone-500"
           type="button"
           style={dangerButtonStyle}
           data-call-control-action="stop"
@@ -99,7 +99,7 @@ function BannerRow({ line, text, seconds }: { line: BannerLine; text: string; se
           {tt("停止控制")}
         </button>
       ) : line.role === "target" ? (
-        <button
+        <button className="transition active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-stone-500"
           type="button"
           style={dangerButtonStyle}
           data-call-control-action="stop"

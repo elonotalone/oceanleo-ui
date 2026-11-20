@@ -29,10 +29,10 @@ export function QuoteCardView({ message, onOpenQuote }: QuoteCardViewProps) {
       data-quote-card=""
       className={
         "flex w-[300px] max-w-full flex-col gap-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left " +
-        "hover:border-stone-300 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:hover:bg-stone-800"
+        "hover:border-stone-300 hover:bg-stone-50   "
       }
     >
-      <span className="truncate text-[13px] font-medium text-stone-900 dark:text-stone-100" data-quote-card-title="">{heading}</span>
+      <span className="truncate text-[13px] font-medium text-stone-900" data-quote-card-title="">{heading}</span>
       {quotePreview(card).map((item, index) => (
         <span key={index} className="truncate text-[12px] text-stone-500" data-quote-card-line="">
           {item.sender_name ? `${item.sender_name}: ` : ""}{quoteLineText(item)}

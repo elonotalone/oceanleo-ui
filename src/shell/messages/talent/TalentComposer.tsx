@@ -44,8 +44,8 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
   }
 
   return (
-    <div data-talent-composer className="border-t border-neutral-200/80 px-3 py-2">
-      {workPolicy?.text_only ? <p data-await-reply="" className="pb-1 text-xs text-neutral-500">{tt(WORK_REPLY_NOTICE)}</p> : null}
+    <div data-talent-composer className="border-t border-stone-200/80 px-3 py-2">
+      {workPolicy?.text_only ? <p data-await-reply="" className="pb-1 text-xs text-stone-500">{tt(WORK_REPLY_NOTICE)}</p> : null}
       {error && (
         <p role="alert" data-composer-error className="pb-1 text-[12px] text-red-600">
           {error}
@@ -62,22 +62,22 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
           placeholder={tt("写点什么…")}
           aria-label={tt("消息内容")}
           data-composer-input
-          className="max-h-32 min-h-[36px] flex-1 resize-none rounded-xl bg-stone-100 px-3 py-2 text-[14px] text-neutral-900 focus:outline-none"
+          className="max-h-32 min-h-[36px] flex-1 resize-none rounded-xl bg-stone-100 px-3 py-2 text-[14px] text-stone-900 focus:outline-none"
         />
         <button
           type="button"
           disabled={disabled || busy || !value.trim() || refused}
           data-action="send"
           onClick={() => void submit()}
-          className="px-2 py-1.5 text-[13px] font-semibold text-neutral-900 disabled:opacity-30"
+          className="px-2 py-1.5 text-[13px] font-semibold text-stone-900 disabled:opacity-30"
         >
           {tt("发送")}
         </button>
       </div>
       {openUrl && (
-        <p className="pt-1.5 text-[12px] text-neutral-500">
+        <p className="pt-1.5 text-[12px] text-stone-500">
           {tt("发报价、传文件、签合同和付款，请")}
-          <a href={openUrl} target="_blank" rel="noopener noreferrer" data-composer-open className="font-medium text-neutral-800 underline-offset-2 hover:underline">
+          <a href={openUrl} target="_blank" rel="noopener noreferrer" data-composer-open className="font-medium text-stone-800 underline-offset-2 hover:underline">
             {tt("在 LeoBay 打开")}
           </a>
         </p>

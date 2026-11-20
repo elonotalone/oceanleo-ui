@@ -108,7 +108,7 @@ export function InviteAcceptDialog({ code, onClose, onDone }: InviteAcceptDialog
   return (
     <Modal onClose={onClose} title={dialogTitle} labelledBy="im-invite-accept-title">
       <div data-invite-accept data-stage={stage.name}>
-        {stage.name === "loading" && <p className="py-8 text-center text-[13px] text-neutral-400">{tt("加载中…")}</p>}
+        {stage.name === "loading" && <p className="py-8 text-center text-[13px] text-stone-400">{tt("加载中…")}</p>}
 
         {stage.name === "preview" && <PreviewBody
           preview={stage.preview}
@@ -124,7 +124,7 @@ export function InviteAcceptDialog({ code, onClose, onDone }: InviteAcceptDialog
         {stage.name === "result" && (
           <div data-invite-result={stage.outcome}>
 
-            <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
+            <p className="mt-2 text-[13px] leading-relaxed text-stone-600">
               {stage.outcome === "gone"
                 ? tt("这个邀请链接已经过期、被撤销，或者群已解散。请让对方重新发一个。")
                 : tt("已申请，等群管理员同意。同意后你会收到通知。")}
@@ -168,24 +168,24 @@ function PreviewBody({
         <GroupAvatar name={preview.conversation!.title} src={preview.conversation!.avatar_url} seed={preview.conversation!.id} size={48} />
         <div className="min-w-0">
 
-          <p className="text-[12px] text-neutral-500">
+          <p className="text-[12px] text-stone-500">
             {tt("{name} 邀请你加入 · {n} 人", { name: preview.inviter.display_name, n: preview.conversation!.member_count })}
           </p>
         </div>
       </div>
 
-      {already === "member" && <p className="mt-3 text-[13px] text-neutral-600" data-already="member">{tt("你已经在这个群里了。")}</p>}
-      {already === "pending" && <p className="mt-3 text-[13px] text-neutral-600" data-already="pending">{tt("已申请，等群管理员同意。")}</p>}
+      {already === "member" && <p className="mt-3 text-[13px] text-stone-600" data-already="member">{tt("你已经在这个群里了。")}</p>}
+      {already === "pending" && <p className="mt-3 text-[13px] text-stone-600" data-already="pending">{tt("已申请，等群管理员同意。")}</p>}
       {!already && preview.requires_approval && (
         <>
-          <p className="mt-3 text-[12px] text-neutral-500">{tt("进群需要管理员同意。可以留一句话告诉管理员你是谁。")}</p>
+          <p className="mt-3 text-[12px] text-stone-500">{tt("进群需要管理员同意。可以留一句话告诉管理员你是谁。")}</p>
           <input
             value={message}
             maxLength={200}
             onChange={(e) => setMessage(e.target.value)}
             aria-label={tt("给管理员留言")}
             placeholder={tt("给管理员留言（选填）")}
-            className="mt-2 w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+            className="mt-2 w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-stone-400"
           />
         </>
       )}

@@ -44,11 +44,11 @@ function render(sender, options = {}) {
   }));
 }
 
-test("own messages: neutral-100 bubble on the right with the task page's shape, no avatar, no inline layout style", () => {
+test("own messages: stone-100 bubble on the right with the task page's shape, no avatar, no inline layout style", () => {
   const html = render("me");
   assert.match(html, /data-message-row="own"[^>]*class="[^"]*\bw-full\b[^"]*\bmin-w-0\b/);
   assert.match(html, /items-end/);
-  assert.match(html, /data-message-bubble="own" class="[^"]*\bmax-w-\[85%\][^"]*\brounded-2xl\b[^"]*\brounded-br-md\b[^"]*\bbg-neutral-100\b[^"]*\bpx-4\b[^"]*\bpy-2\.5\b[^"]*\btext-\[15px\]/);
+  assert.match(html, /data-message-bubble="own" class="[^"]*\bmax-w-\[85%\][^"]*\brounded-2xl\b[^"]*\brounded-br-md\b[^"]*\bbg-stone-100\b[^"]*\bpx-4\b[^"]*\bpy-2\.5\b[^"]*\btext-\[15px\]/);
   assert.match(html, /data-read-receipt="read"/);
   assert.doesNotMatch(html, /aria-label="Me"/);
   assert.doesNotMatch(html, /data-sender-name/);

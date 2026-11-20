@@ -34,7 +34,7 @@ export function RequestsList({ query = "", onOpenConversation }: RequestsListPro
     {requests.loading ? <p role="status">{tt("加载中…")}</p> : requests.error ? <PeopleFailure error={requests.error} /> : <>
       {items.length ? <ul>{items.map(item => <li key={item.id}><button type="button" data-request-conversation={item.id} className="flex w-full items-center gap-3 py-2 text-left" onClick={() => onOpenConversation?.(item.id)}>
         <PersonAvatar name={conversationDisplayTitle(item)} src={item.peer?.avatar_url} seed={item.id} size={32} /><span className="truncate text-[13px]">{conversationDisplayTitle(item)}</span>
-      </button></li>)}</ul> : <p className="py-2 text-[12px] text-neutral-500">{tt("没有消息请求。")}</p>}
+      </button></li>)}</ul> : <p className="py-2 text-[12px] text-stone-500">{tt("没有消息请求。")}</p>}
       {error != null && <PeopleFailure error={error} />}
       {cursor && <button type="button" className={QUIET} disabled={busy} onClick={async () => {
         setBusy(true); setError(null);

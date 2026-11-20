@@ -91,15 +91,15 @@ export function InviteQrCode({ url, fileLabel, size = 160 }: InviteQrCodeProps) 
         width={size}
         height={size}
         data-invite-qr
-        className="rounded-lg border border-neutral-200 bg-white"
+        className="rounded-lg border border-stone-200 bg-white"
         style={{ width: size, height: size }}
       />
-      <p className="text-center text-[11px] text-neutral-500">{tt("用手机扫一扫，就能打开邀请页面。")}</p>
+      <p className="text-center text-[11px] text-stone-500">{tt("用手机扫一扫，就能打开邀请页面。")}</p>
       <a
         href={dataUrl.value}
         download={qrFileName(fileLabel)}
         data-action="download-qr"
-        className="inline-flex min-h-11 items-center justify-center rounded-lg border border-neutral-200 px-3 text-[12px] text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+        className="inline-flex min-h-11 items-center justify-center rounded-lg border border-stone-200 px-3 text-[12px] text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400"
       >
         {tt("下载二维码")}
       </a>

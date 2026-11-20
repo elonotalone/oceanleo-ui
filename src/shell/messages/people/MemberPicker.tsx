@@ -1,5 +1,6 @@
 "use client";
 
+import { CloseGlyph } from "../composer/icons";
 import { useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { getProfiles, type PersonCard } from "../../../lib/im/people-api";
@@ -33,7 +34,7 @@ export function MemberPicker({ selected, onChange, mode = "multi", existingIds =
     onChange(mode === "single" ? on ? [] : [person.user_id] : on ? selected.filter(id => id !== person.user_id) : [...selected, person.user_id]);
   }
   return <div data-member-picker>
-    <div data-picker-chips className="mb-2 flex flex-wrap gap-2">{selected.map(id => <button key={id} type="button" aria-label={tt("移除")} className={QUIET} onClick={() => onChange(selected.filter(value => value !== id))}>{names[id] ?? id} ×</button>)}</div>
+    <div data-picker-chips className="mb-2 flex flex-wrap gap-2">{selected.map(id => <button key={id} type="button" aria-label={tt("移除")} className={QUIET} onClick={() => onChange(selected.filter(value => value !== id))}>{names[id] ?? id} <CloseGlyph /></button>)}</div>
     {error != null && <PeopleFailure error={error} />}
     <PeopleSuggestions mode="select" selectedIds={selected} existingIds={existingIds} onPick={pick} />
   </div>;

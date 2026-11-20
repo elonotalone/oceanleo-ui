@@ -135,9 +135,9 @@ export function messageCardType(message: ImMessage): "task" | "quote" | null {
 }
 
 const OWN_BUBBLE =
-  "min-w-0 max-w-[85%] break-words rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-left text-[15px] leading-relaxed text-neutral-900 [overflow-wrap:anywhere]";
+  "min-w-0 max-w-[85%] break-words rounded-2xl rounded-br-md bg-stone-100 px-4 py-2.5 text-left text-[15px] leading-relaxed text-stone-900 [overflow-wrap:anywhere]";
 const OTHER_BUBBLE =
-  "min-w-0 max-w-[85%] break-words rounded-2xl rounded-bl-md border border-stone-200 bg-white px-4 py-2.5 text-left text-[15px] leading-relaxed text-neutral-900 [overflow-wrap:anywhere]";
+  "min-w-0 max-w-[85%] break-words rounded-2xl rounded-bl-md border border-stone-200 bg-white px-4 py-2.5 text-left text-[15px] leading-relaxed text-stone-900 [overflow-wrap:anywhere]";
 const META = "text-[11px] text-stone-400";
 
 export function MessageItem(props: MessageItemProps) {
@@ -286,7 +286,7 @@ export function MessageItem(props: MessageItemProps) {
     body = <div className={placeholderClass} data-placeholder="blocked">{tt("已屏蔽的消息")}</div>;
   } else if (isLeo) {
     // leo answers like the agent on the task page: no bubble.
-    body = <div className="min-w-0 max-w-full px-1 text-[15px] leading-relaxed text-neutral-900"><LeoMessageBody message={message} streamingText={streamingText} /></div>;
+    body = <div className="min-w-0 max-w-full px-1 text-[15px] leading-relaxed text-stone-900"><LeoMessageBody message={message} streamingText={streamingText} /></div>;
   } else if (cardNode) {
     // A card is its own frame: no bubble around it, no fallback text.
     body = <div className="min-w-0 max-w-[85%]" data-message-card={cardType ?? undefined}>{cardNode}</div>;

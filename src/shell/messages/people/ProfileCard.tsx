@@ -56,7 +56,7 @@ export function ProfileCard({ userId, onClose, onOpenConversation }: ProfileCard
           <button type="button" className={QUIET} data-action="report" onClick={() => setReporting(true)}>{tt("举报")}</button>
         </div>
         {p && <form className="mt-3" onSubmit={e => { e.preventDefault(); void run(async () => { await setUserRemark(userId, (remark ?? p.remark ?? "").trim()); profile.reload(); }); }}>
-          <label className="block text-[12px]">{tt("备注")}<input value={remark ?? p.remark ?? ""} maxLength={40} onChange={e => setRemark(e.target.value)} className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2" /></label>
+          <label className="block text-[12px]">{tt("备注")}<input value={remark ?? p.remark ?? ""} maxLength={40} onChange={e => setRemark(e.target.value)} className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" /></label>
           <button type="submit" disabled={busy} className={`${QUIET} mt-2`}>{tt("保存")}</button>
         </form>}
       </>}

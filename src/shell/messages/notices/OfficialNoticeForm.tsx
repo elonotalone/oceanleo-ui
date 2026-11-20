@@ -37,7 +37,7 @@ export function OfficialNoticeForm({ onSent }: { onSent: () => void }) {
         className="block w-full rounded-lg border border-stone-200 bg-transparent px-3 py-2" name="body" /></label>
       <label className="text-sm">{tt("链接（可选）")}<input maxLength={1024} value={link} onChange={event => setLink(event.target.value)} disabled={phase === "sending"}
         className="block w-full rounded-lg border border-stone-200 bg-transparent px-3 py-2" name="link" /></label>
-      <button type="submit" disabled={phase === "sending" || !title.trim() || !body.trim()} className="rounded-lg bg-neutral-900 px-3 py-2 text-sm text-white disabled:opacity-50">
+      <button type="submit" disabled={phase === "sending" || !title.trim() || !body.trim()} className="rounded-lg bg-stone-900 px-3 py-2 text-sm text-white disabled:opacity-50">
         {tt(phase === "sending" ? "正在发布…" : "发布通知")}
       </button>
       {phase === "error" ? <p role="alert" className="text-sm">{tt("通知未发布，草稿已保留")}</p> : null}

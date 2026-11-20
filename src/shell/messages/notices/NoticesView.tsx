@@ -109,7 +109,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                   data-notice-kind={item.kind}
                   data-notice-unread={unread ? "true" : "false"}
                   onClick={() => openNoticeDetail(item, store)}
-                  className="flex w-full items-start gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50"
+                  className="flex w-full items-start gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-200/50"
                 >
                   <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-200 text-stone-600">
                     <NoticeBellIcon className="h-[18px] w-[18px]" />
@@ -121,7 +121,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                           data-notice-dot=""
                           role="img"
                           aria-label={tt("未读")}
-                          className="mb-px h-2 w-2 shrink-0 translate-y-[-1px] rounded-full bg-neutral-900"
+                          className="mb-px h-2 w-2 shrink-0 translate-y-[-1px] rounded-full bg-stone-900"
                         />
                       ) : null}
                       <span

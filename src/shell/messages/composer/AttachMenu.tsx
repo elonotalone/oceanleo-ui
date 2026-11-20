@@ -69,10 +69,10 @@ export function AttachMenu({
         data-composer-attach=""
         className={`${ATTACH_BUTTON_CLASS} ${
           disabled
-            ? "cursor-not-allowed border-neutral-200 text-neutral-300"
+            ? "cursor-not-allowed border-stone-200 text-stone-300"
             : open
-              ? "border-neutral-300 bg-neutral-100 text-neutral-800 active:scale-95 active:duration-[var(--leo-dur-1)]"
-              : "border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700 active:scale-95 active:duration-[var(--leo-dur-1)]"
+              ? "border-stone-300 bg-stone-100 text-stone-800 active:scale-95 active:duration-[var(--leo-dur-1)]"
+              : "border-stone-200 text-stone-500 hover:border-stone-300 hover:bg-stone-50 hover:text-stone-700 active:scale-95 active:duration-[var(--leo-dur-1)]"
         }`}
       >
         <PlusGlyph />
@@ -168,9 +168,9 @@ function TaskPage({
         >
           <ChevronLeftGlyph />
         </button>
-        <span className="text-[13px] font-medium text-neutral-800">{tt("任务")}</span>
+        <span className="text-[13px] font-medium text-stone-800">{tt("任务")}</span>
       </div>
-      <label className="mx-1 mb-1 flex h-8 items-center gap-2 rounded-lg border border-neutral-200 px-2.5 text-neutral-400 focus-within:border-neutral-300">
+      <label className="mx-1 mb-1 flex h-8 items-center gap-2 rounded-lg border border-stone-200 px-2.5 text-stone-400 focus-within:border-stone-300">
         <SearchGlyph />
         <input
           type="search"
@@ -178,16 +178,16 @@ function TaskPage({
           onChange={(event) => setQuery(event.target.value)}
           placeholder={tt("搜索我的任务")}
           aria-label={tt("搜索我的任务")}
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-stone-900 placeholder:text-stone-400 focus:outline-none"
         />
       </label>
       <div className="max-h-64 overflow-y-auto" role="listbox" aria-label={tt("任务")}>
         {failed ? (
           <p className="px-2.5 py-2 text-[12px] text-rose-600" role="alert">{tt("没能加载任务列表")}</p>
         ) : choices === null ? (
-          <p className="px-2.5 py-2 text-[12px] text-neutral-400" role="status">{tt("加载中…")}</p>
+          <p className="px-2.5 py-2 text-[12px] text-stone-400" role="status">{tt("加载中…")}</p>
         ) : shown.length === 0 ? (
-          <p className="px-2.5 py-2 text-[12px] text-neutral-400" role="status">{tt("没有找到任务")}</p>
+          <p className="px-2.5 py-2 text-[12px] text-stone-400" role="status">{tt("没有找到任务")}</p>
         ) : (
           shown.map((choice) => (
             <FloatingMenuItem

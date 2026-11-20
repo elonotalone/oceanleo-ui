@@ -17,7 +17,7 @@ export function dmReadState(
 export function DmReadReceipt({ read }: { read: boolean }) {
   const tt = useUI();
   return (
-    <span className="text-[11px] text-neutral-400" data-read-receipt={read ? "read" : "sent"}>
+    <span className="text-[11px] text-stone-400" data-read-receipt={read ? "read" : "sent"}>
       {read ? tt("已读") : tt("已送达")}
     </span>
   );
@@ -40,7 +40,7 @@ export function MentionReadReceipt({
     (done.length && waiting.length ? "\n" : "") +
     (waiting.length ? `${tt("未读")}：${waiting.map(nameOf).join("、")}` : "");
   return (
-    <span className="cursor-default text-[11px] text-neutral-400" title={title} data-mention-reads="">
+    <span className="cursor-default text-[11px] text-stone-400" title={title} data-mention-reads="">
       {tt("{read}/{total} 人已读", { read: done.length, total: ids.length })}
     </span>
   );

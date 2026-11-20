@@ -132,8 +132,8 @@ export function PersonAvatar(props: AvatarProps) {
 
 const DOT: Record<ImPresence, string> = {
   online: "bg-emerald-500",
-  away: "bg-neutral-400",
-  offline: "bg-neutral-300",
+  away: "bg-stone-400",
+  offline: "bg-stone-300",
 };
 
 export function PresenceDot({ presence, label }: { presence: ImPresence | undefined; label?: string }) {

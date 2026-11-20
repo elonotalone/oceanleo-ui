@@ -293,7 +293,7 @@ function renderInline(nodes: InlineNode[], options: RenderOptions, keyPrefix: st
       case "code":
         return createElement(
           "code",
-          { key, className: "rounded bg-neutral-100 px-1 py-0.5 font-mono text-[0.9em] text-neutral-800" },
+          { key, className: "rounded bg-stone-100 px-1 py-0.5 font-mono text-[0.9em] text-stone-800" },
           node.text,
         );
       case "bold":
@@ -301,7 +301,7 @@ function renderInline(nodes: InlineNode[], options: RenderOptions, keyPrefix: st
       case "italic":
         return createElement("em", { key }, ...renderInline(node.children, options, key));
       case "strike":
-        return createElement("del", { key, className: "text-neutral-500" }, ...renderInline(node.children, options, key));
+        return createElement("del", { key, className: "text-stone-500" }, ...renderInline(node.children, options, key));
       case "link": {
         const origin = runtimePageOrigin();
         const internal = origin ? workspaceActionForHref(node.href, origin) : null;
@@ -315,7 +315,7 @@ function renderInline(nodes: InlineNode[], options: RenderOptions, keyPrefix: st
               if (openWorkspaceHref(node.href)) event.preventDefault();
             },
             rel: "noopener noreferrer",
-            className: "break-all text-neutral-800 underline underline-offset-2 hover:text-neutral-900",
+            className: "break-all text-stone-800 underline underline-offset-2 hover:text-stone-900",
           },
           node.text,
         );
@@ -334,8 +334,8 @@ function renderInline(nodes: InlineNode[], options: RenderOptions, keyPrefix: st
             "data-mention": mention.kind,
             className:
               "inline rounded px-1 font-medium " +
-              (self ? "bg-neutral-200 text-neutral-900" : "bg-neutral-100 text-neutral-700") +
-              (clickable ? " cursor-pointer hover:bg-neutral-200" : ""),
+              (self ? "bg-stone-200 text-stone-900" : "bg-stone-100 text-stone-700") +
+              (clickable ? " cursor-pointer hover:bg-stone-200" : ""),
           },
           `@${mention.label}`,
         );
@@ -362,14 +362,14 @@ function renderBlocks(blocks: BlockNode[], options: RenderOptions, keyPrefix: st
           {
             key,
             className:
-              "my-1 max-w-full overflow-x-auto rounded-lg bg-neutral-900 p-3 font-mono text-[12px] leading-relaxed text-neutral-100",
+              "my-1 max-w-full overflow-x-auto rounded-lg bg-stone-100 p-3 font-mono text-[12px] leading-relaxed text-stone-800",
           },
           createElement("code", null, block.text),
         );
       case "quote":
         return createElement(
           "blockquote",
-          { key, className: "my-1 border-l-2 border-neutral-300 pl-3 text-neutral-600" },
+          { key, className: "my-1 border-l-2 border-stone-300 pl-3 text-stone-600" },
           ...renderBlocks(block.children, options, key),
         );
       case "list":

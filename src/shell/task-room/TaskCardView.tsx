@@ -26,7 +26,7 @@ const STATUS_DOT: Record<TaskCardStatus, string> = {
 
 const FRAME =
   "flex w-[280px] max-w-full flex-col gap-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left " +
-  "dark:border-stone-700 dark:bg-stone-900";
+  " ";
 
 export function TaskCardView({ message, onOpenTask }: TaskCardViewProps) {
   const tt = useUI();
@@ -37,7 +37,7 @@ export function TaskCardView({ message, onOpenTask }: TaskCardViewProps) {
   if (access === "denied") {
     return (
       <div className={FRAME} aria-disabled="true" data-task-card="" data-task-card-access="denied">
-        <span className="truncate text-[13px] font-medium text-stone-900 dark:text-stone-100" title={title}>{title}</span>
+        <span className="truncate text-[13px] font-medium text-stone-900" title={title}>{title}</span>
         <span className="text-[12px] text-stone-500" data-task-card-no-access="">{tt("没有访问权限")}</span>
       </div>
     );
@@ -57,9 +57,9 @@ export function TaskCardView({ message, onOpenTask }: TaskCardViewProps) {
       data-task-card=""
       data-task-card-access={access}
       data-task-card-status={status ?? undefined}
-      className={`${FRAME} hover:border-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800`}
+      className={`${FRAME} hover:border-stone-300 hover:bg-stone-50 `}
     >
-      <span className="truncate text-[13px] font-medium text-stone-900 dark:text-stone-100" title={title}>{title}</span>
+      <span className="truncate text-[13px] font-medium text-stone-900" title={title}>{title}</span>
       {program || status ? (
         <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-stone-500" data-task-card-line="">
           {status ? <span aria-hidden="true" className={"h-1.5 w-1.5 shrink-0 rounded-full " + STATUS_DOT[status]} /> : null}

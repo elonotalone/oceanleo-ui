@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckGlyph } from "../composer/icons";
 import { BackButton } from "../../../ui/BackButton";
 import { useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -17,7 +18,7 @@ import { InviteQrCode } from "./InviteQrCode";
 export function PeoplePage({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
   const tt = useUI();
   return <section data-people-page className="flex min-h-0 flex-1 flex-col">
-    <header className="flex shrink-0 items-center gap-3 border-b border-neutral-100 px-3 py-2">
+    <header className="flex shrink-0 items-center gap-3 border-b border-stone-100 px-3 py-2">
       <BackButton onClick={onBack} label={tt("返回")} /><h2 className="text-[14px] font-semibold">{title}</h2>
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto p-3">{children}</div>
@@ -72,8 +73,8 @@ export function PersonRow({ person, mode, onPick, selected, disabled }: { person
     <div className="flex items-center gap-2">
       <PersonAvatar name={person.name} src={person.avatar_url} seed={person.user_id} size={32} />
       <button type="button" disabled={person.blocked || disabled} aria-pressed={mode === "select" ? !!selected : undefined} onClick={() => onPick?.({ ...person, following })} className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-[13px] font-medium">{person.name}{mode === "select" && selected ? " ✓" : ""}</span>
-        {following && person.follows_me && <span className="text-[11px] text-neutral-500">{tt("互相关注")}</span>}
+        <span className="block truncate text-[13px] font-medium">{person.name}{mode === "select" && selected ? <span className="inline-flex align-middle"><CheckGlyph /></span> : null}</span>
+        {following && person.follows_me && <span className="text-[11px] text-stone-500">{tt("互相关注")}</span>}
       </button>
       {mode === "follow" && <button type="button" disabled={busy || person.blocked} onClick={() => void toggle()} className={QUIET}>{tt(following ? "已关注" : "关注")}</button>}
     </div>
@@ -94,20 +95,20 @@ export function PeopleSuggestions({ mode, onPick, initialQuery = "", selectedIds
   const titles = { team: "同团队的人", project: "同项目的人", bay: "在 LeoBay 聊过的人" };
   const rows = (people: PersonCard[]) => <ul>{people.map(p => <PersonRow key={p.user_id} person={p} mode={mode} selected={selectedIds.includes(p.user_id)} disabled={existingIds.includes(p.user_id)} onPick={onPick} />)}</ul>;
   return <div data-people-discovery>
-    <input type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label={placeholder ?? tt("按名称搜索用户")} placeholder={placeholder ?? tt("按名称搜索用户")} className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px]" />
+    <input type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label={placeholder ?? tt("按名称搜索用户")} placeholder={placeholder ?? tt("按名称搜索用户")} className="w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px]" />
     {query.trim() ? <section data-people-search>
-      {search.loading || query.trim() !== debounced ? <p role="status">{tt("加载中…")}</p> : search.error ? <PeopleFailure error={search.error} /> : search.data?.length ? rows(search.data) : <p className="py-2 text-[12px] text-neutral-500">{tt("没有找到。")}</p>}
+      {search.loading || query.trim() !== debounced ? <p role="status">{tt("加载中…")}</p> : search.error ? <PeopleFailure error={search.error} /> : search.data?.length ? rows(search.data) : <p className="py-2 text-[12px] text-stone-500">{tt("没有找到。")}</p>}
       {action?.(query.trim())}
     </section> : <>
       <section data-people-suggestions>
         {suggestions.loading ? <p role="status">{tt("加载中…")}</p> : suggestions.error ? <PeopleFailure error={suggestions.error} /> : suggestions.data?.map(group => <section key={group.key}>
-          <h3 className="mt-3 text-[12px] font-medium text-neutral-500">{tt(titles[group.key])}</h3>
+          <h3 className="mt-3 text-[12px] font-medium text-stone-500">{tt(titles[group.key])}</h3>
           {rows(group.people)}
-          {!group.people.length && <p className="py-2 text-[12px] text-neutral-500">{tt("暂时没有推荐的人。")}</p>}
+          {!group.people.length && <p className="py-2 text-[12px] text-stone-500">{tt("暂时没有推荐的人。")}</p>}
         </section>)}
       </section>
-      <section data-people-following><h3 className="mt-3 text-[12px] font-medium text-neutral-500">{tt("正在关注")}</h3>
-        {following.loading ? <p role="status">{tt("加载中…")}</p> : following.error ? <PeopleFailure error={following.error} /> : following.people.length ? rows(following.people) : <p className="py-2 text-[12px] text-neutral-500">{tt("还没有关注任何人。")}</p>}
+      <section data-people-following><h3 className="mt-3 text-[12px] font-medium text-stone-500">{tt("正在关注")}</h3>
+        {following.loading ? <p role="status">{tt("加载中…")}</p> : following.error ? <PeopleFailure error={following.error} /> : following.people.length ? rows(following.people) : <p className="py-2 text-[12px] text-stone-500">{tt("还没有关注任何人。")}</p>}
         {following.moreError != null && <PeopleFailure error={following.moreError} />}
         {following.cursor && <button type="button" disabled={following.busy} className={QUIET} onClick={() => void following.more()}>{tt("加载更多")}</button>}
       </section>
@@ -120,7 +121,7 @@ export function MyProfileCard({ name, username }: { name: string | null; usernam
   const tt = useUI();
   const [copied, setCopied] = useState<boolean | null>(null);
   const [qr, setQr] = useState(false);
-  return <section data-my-profile-card className="mb-3 border-b border-neutral-100 pb-3">
+  return <section data-my-profile-card className="mb-3 border-b border-stone-100 pb-3">
     <h3 className="mb-2 text-[13px] font-medium">{tt("我的名片")}</h3>
     {name && <p data-my-profile-name className="text-[13px]">{name}</p>}
     {username && <>

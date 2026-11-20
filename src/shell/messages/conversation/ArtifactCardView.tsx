@@ -78,8 +78,8 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
   const kindLabel = card.editor_kind ? tt(EDITOR_KIND_LABEL[card.editor_kind]) : tt("作品");
 
   return (
-    <div data-card="artifact" className="flex max-w-[360px] gap-3 rounded-xl border border-neutral-200 bg-white p-3">
-      <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100 text-[11px] text-neutral-400">
+    <div data-card="artifact" className="flex max-w-[360px] gap-3 rounded-xl border border-stone-200 bg-white p-3">
+      <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-stone-100 text-[11px] text-stone-400">
         {thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={thumb} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -89,13 +89,13 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
       </span>
       <span className="flex min-w-0 flex-1 flex-col justify-between">
         <span>
-          <span className="block truncate text-[13px] font-medium text-neutral-900">{card.title}</span>
-          <span className="block truncate text-[12px] text-neutral-500">
+          <span className="block truncate text-[13px] font-medium text-stone-900">{card.title}</span>
+          <span className="block truncate text-[12px] text-stone-500">
             {kindLabel}
             {card.subtitle ? ` · ${card.subtitle}` : ""}
           </span>
         </span>
-        <span className="mt-1 flex items-center gap-2 text-[11px] text-neutral-400">
+        <span className="mt-1 flex items-center gap-2 text-[11px] text-stone-400">
           {card.coedit ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">{tt("可以一起改")}</span> : null}
           {coedit && coedit !== "no_access" && coedit.count > 0 ? (
             <span>{tt("{n} 人正在改", { n: coedit.count })}</span>
@@ -104,13 +104,13 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
       </span>
       <span className="flex shrink-0 items-center">
         {!origin ? null : coedit === "no_access" || !target ? (
-          <span className="text-[12px] text-neutral-400">{tt("没有权限")}</span>
+          <span className="text-[12px] text-stone-400">{tt("没有权限")}</span>
         ) : (
           <a
             href={target.href}
             onClick={(event) => { if (openWorkspaceHref(target.href)) event.preventDefault(); }}
             {...(inWorkspace ? {} : { target: "_blank", rel: "noopener noreferrer" })}
-            className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white hover:bg-neutral-700"
+            className="rounded-lg bg-stone-900 px-3 py-1.5 text-[12px] text-white hover:bg-stone-700"
           >
             {tt("打开")}
           </a>

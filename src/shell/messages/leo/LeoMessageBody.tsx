@@ -95,7 +95,7 @@ export function LeoMessageBody({ message, streamingText }: LeoMessageBodyProps) 
           <Markdown className="text-[15px] leading-relaxed">{text}</Markdown>
         )
       ) : streaming ? (
-        <div className="flex items-center gap-1.5 text-[13px] text-neutral-400" data-leo-thinking="">
+        <div className="flex items-center gap-1.5 text-[13px] text-stone-400" data-leo-thinking="">
           <span className="inline-flex gap-0.5" aria-hidden="true">
             <span className="v-typing-dot" />
             <span className="v-typing-dot" />
@@ -110,7 +110,7 @@ export function LeoMessageBody({ message, streamingText }: LeoMessageBodyProps) 
           onClick={stop}
           disabled={stopping}
           data-leo-stop=""
-          className="mt-1.5 rounded-md px-2 py-0.5 text-[12px] text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
+          className="mt-1.5 rounded-md px-2 py-0.5 text-[12px] text-stone-500 hover:bg-stone-100 disabled:opacity-50"
         >
           {tt("停止")}
         </button>
@@ -118,7 +118,7 @@ export function LeoMessageBody({ message, streamingText }: LeoMessageBodyProps) 
       {footer ? (
         <div
           className={
-            "mt-1 text-[12px] " + (status === "failed" ? "text-red-600" : "text-neutral-400")
+            "mt-1 text-[12px] " + (status === "failed" ? "text-red-600" : "text-stone-400")
           }
           data-leo-footer={status}
         >
@@ -126,7 +126,7 @@ export function LeoMessageBody({ message, streamingText }: LeoMessageBodyProps) 
         </div>
       ) : null}
       {status === "done" && message.leo?.payer === "team" ? (
-        <div className="mt-1 text-[11.5px] text-neutral-400" data-leo-payer-note="team">
+        <div className="mt-1 text-[12px] text-stone-400" data-leo-payer-note="team">
           {tt("由 Team 钱包付费")}
         </div>
       ) : null}
@@ -147,7 +147,7 @@ export function LeoNoticeLine({ code }: { code: LeoNoticeCode }) {
           : tt("leo 这次没能开始回复，请稍后再试。");
   return (
     <div
-      className="flex flex-wrap items-center gap-x-2 text-[12px] text-neutral-500"
+      className="flex flex-wrap items-center gap-x-2 text-[12px] text-stone-500"
       data-leo-notice={code}
       role="status"
     >
@@ -157,13 +157,13 @@ export function LeoNoticeLine({ code }: { code: LeoNoticeCode }) {
           href={leoTopUpHref()}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-medium text-neutral-800 underline"
+          className="font-medium text-stone-800 underline"
           data-leo-topup=""
         >
           {tt("去充值")}
         </a>
       ) : null}
-      <span className="text-neutral-400">{tt("仅你可见")}</span>
+      <span className="text-stone-400">{tt("仅你可见")}</span>
     </div>
   );
 }

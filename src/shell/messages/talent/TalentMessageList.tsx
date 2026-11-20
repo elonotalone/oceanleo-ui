@@ -66,7 +66,7 @@ function AttachmentView({ attachment }: { attachment: ImAttachment }) {
       rel="noopener noreferrer"
       download
       data-attachment={attachment.kind}
-      className="block max-w-full truncate text-[13px] text-neutral-700 underline-offset-2 hover:underline"
+      className="block max-w-full truncate text-[13px] text-stone-700 underline-offset-2 hover:underline"
     >
       {name}
     </a>
@@ -113,7 +113,7 @@ export function TalentMessageList(props: TalentMessageListProps) {
           const mine = Boolean(viewerId) && message.sender_id === viewerId;
           if (message.kind === "system") {
             return (
-              <li key={message.id} data-message-id={message.id} data-message-kind="system" className="text-center text-[12px] text-neutral-500">
+              <li key={message.id} data-message-id={message.id} data-message-kind="system" className="text-center text-[12px] text-stone-500">
                 {message.body}
               </li>
             );
@@ -127,9 +127,9 @@ export function TalentMessageList(props: TalentMessageListProps) {
               data-mine={mine ? "true" : "false"}
               className={"group flex flex-col gap-1 " + (mine ? "items-end" : "items-start")}
             >
-              {!mine && peerName ? <span className="px-1 text-[11px] text-neutral-500">{peerName}</span> : null}
+              {!mine && peerName ? <span className="px-1 text-[11px] text-stone-500">{peerName}</span> : null}
               {hidden ? (
-                <p data-message-hidden className="rounded-2xl bg-neutral-100 px-3 py-2 text-[13px] italic text-neutral-500">
+                <p data-message-hidden className="rounded-2xl bg-stone-100 px-3 py-2 text-[13px] italic text-stone-500">
                   {tt("该消息因违反规则已隐藏")}
                 </p>
               ) : (
@@ -139,7 +139,7 @@ export function TalentMessageList(props: TalentMessageListProps) {
                       data-message-body
                       className={
                         "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-[14px] " +
-                        (mine ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-900")
+                        (mine ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-900")
                       }
                     >
                       {message.body}
@@ -163,14 +163,14 @@ export function TalentMessageList(props: TalentMessageListProps) {
                   ) : null}
                 </>
               )}
-              <span className="flex items-center gap-2 px-1 text-[11px] text-neutral-400">
+              <span className="flex items-center gap-2 px-1 text-[11px] text-stone-400">
                 <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
                 {!mine && !hidden && onReport ? (
                   <button
                     type="button"
                     data-action="report-message"
                     onClick={() => onReport(message)}
-                    className="opacity-0 hover:text-neutral-700 focus:opacity-100 group-hover:opacity-100"
+                    className="opacity-0 hover:text-stone-700 focus:opacity-100 group-hover:opacity-100"
                   >
                     {tt("举报")}
                   </button>

@@ -89,7 +89,7 @@ export function ProjectSessionView({ sessionId, projectId, onBack, className = "
     <button
       type="button"
       onClick={() => setInfoOpen(true)}
-      className="flex items-center gap-1 rounded-lg p-1.5 hover:bg-stone-100 dark:hover:bg-stone-800"
+      className="flex items-center gap-1 rounded-lg p-1.5 hover:bg-stone-100"
       aria-label={tt("这个会话的成员")}
       title={tt("这个会话的成员")}
       data-session-members=""
@@ -120,7 +120,7 @@ export function ProjectSessionView({ sessionId, projectId, onBack, className = "
   return (
     <div className={`flex h-full min-h-0 min-w-0 flex-col ${className}`.trim()} data-project-session={sessionId}
       data-session-project-id={projectId}>
-      <div hidden={infoOpen} style={{ display: infoOpen ? "none" : "flex" }} className="min-h-0 min-w-0 flex-1 flex-col">
+      <div className={infoOpen ? "hidden" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
         <ConversationView
           conversationId={sessionId}
           layout="full"

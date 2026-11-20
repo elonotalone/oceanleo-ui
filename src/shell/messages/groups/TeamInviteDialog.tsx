@@ -75,8 +75,8 @@ export function TeamInviteDialog({ orgId, teamName = "", onClose }: TeamInviteDi
     <Modal onClose={onClose} title={tt("邀请同事加入 Team")} labelledBy="im-team-invite-title">
       <div data-team-invite-dialog>
 
-        {teamName && <p className="mt-0.5 truncate text-[12px] text-neutral-500">{teamName}</p>}
-        <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">{tt("把链接发给同事。对方点开、登录后就能加入这个 Team。")}</p>
+        {teamName && <p className="mt-0.5 truncate text-[12px] text-stone-500">{teamName}</p>}
+        <p className="mt-1 text-[12px] leading-relaxed text-stone-500">{tt("把链接发给同事。对方点开、登录后就能加入这个 Team。")}</p>
 
         <button
           type="button"
@@ -89,7 +89,7 @@ export function TeamInviteDialog({ orgId, teamName = "", onClose }: TeamInviteDi
         </button>
 
         {note && (
-          <p role={note.error ? "alert" : "status"} data-team-invite-note className={`mt-2 text-[12px] ${note.error ? "text-red-600" : "text-neutral-600"}`}>
+          <p role={note.error ? "alert" : "status"} data-team-invite-note className={`mt-2 text-[12px] ${note.error ? "text-red-600" : "text-stone-600"}`}>
             {note.text}
           </p>
         )}
@@ -103,7 +103,7 @@ export function TeamInviteDialog({ orgId, teamName = "", onClose }: TeamInviteDi
                 aria-label={tt("邀请链接")}
                 data-team-invite-url
                 onFocus={(e) => e.currentTarget.select()}
-                className="min-w-0 flex-1 truncate rounded border border-neutral-100 bg-neutral-50 px-2 py-1 text-[12px] text-neutral-700"
+                className="min-w-0 flex-1 truncate rounded border border-stone-100 bg-stone-50 px-2 py-1 text-[12px] text-stone-700"
               />
               <button
                 type="button"
@@ -114,7 +114,7 @@ export function TeamInviteDialog({ orgId, teamName = "", onClose }: TeamInviteDi
                 {copied ? tt("已复制") : tt("复制")}
               </button>
             </div>
-            {expires && <p className="mt-1 text-[11px] text-neutral-400">{tt("有效期至 {date}", { date: expires })}</p>}
+            {expires && <p className="mt-1 text-[11px] text-stone-400">{tt("有效期至 {date}", { date: expires })}</p>}
             <div className="mt-3" data-team-invite-qr>
               <InviteQrCode url={link.url} fileLabel={tt("邀请二维码-加入 Team")} />
             </div>

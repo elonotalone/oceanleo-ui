@@ -29,7 +29,7 @@ export interface ContactListProps {
 
 const PRESENCE_COPY: Record<ImPresence, string> = { online: "在线", away: "离开", offline: "离线" };
 /** 联系人、群组行：与收件箱同一种圆角行（侧栏的悬停底色）。 */
-const CONTACT_ROW = "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50";
+const CONTACT_ROW = "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-200/50";
 const SECTION_TITLE = "px-3 pb-1 pt-2 text-[11px] font-medium text-stone-400";
 
 export function ContactList({ query, onOpenConversation, onOpenProfile }: ContactListProps) {

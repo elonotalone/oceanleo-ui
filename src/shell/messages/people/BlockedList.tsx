@@ -39,17 +39,17 @@ export function BlockedList({ query, onBack }: { query?: string; onBack?: () => 
         </p>
       )}
       {blocks.error ? <PeopleFailure error={blocks.error} /> : items.length === 0 ? (
-        <p className="px-3 py-8 text-center text-[12px] text-neutral-400" data-blocked-empty>
+        <p className="px-3 py-8 text-center text-[12px] text-stone-400" data-blocked-empty>
           {blocks.loading ? tt("加载中…") : tt("你没有拉黑任何人。")}
         </p>
       ) : (
         <>
-          <p className="px-3 pb-2 text-[12px] text-neutral-500">{tt("被拉黑的人不能给你发消息或邀请你进群。")}</p>
+          <p className="px-3 pb-2 text-[12px] text-stone-500">{tt("被拉黑的人不能给你发消息或邀请你进群。")}</p>
           <ul>
             {items.map((p) => (
               <li key={p.user_id} data-blocked={p.user_id} className="flex items-center gap-3 px-3 py-2">
                 <PersonAvatar name={p.display_name} src={p.avatar_url} seed={p.user_id} size={36} />
-                <span className="min-w-0 flex-1 truncate text-[14px] text-neutral-900">{p.display_name}</span>
+                <span className="min-w-0 flex-1 truncate text-[14px] text-stone-900">{p.display_name}</span>
                 <button
                   type="button"
                   disabled={busy === p.user_id}

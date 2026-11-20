@@ -415,7 +415,7 @@ function ActiveControlSurface({
               ? tt("正在连接对方电脑…")
               : tt("正在控制{target}的电脑 · 连按 3 次 Esc 结束", { target: targetName })}
           </span>
-          <button
+          <button className="transition active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-stone-500"
             type="button"
             style={{ ...dangerButtonStyle, minHeight: 26 }}
             data-call-control-action="stop"

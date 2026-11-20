@@ -53,7 +53,7 @@ const CLICK_SWALLOW_MS = 500;
 /** 浮层本体：进出场、拖动时停掉过渡，全部是类（原先在注入的样式表里）。 */
 const OVERLAY = [
   "fixed flex origin-bottom-left flex-col overflow-hidden border border-stone-200 bg-white text-stone-900",
-  "shadow-[0_24px_64px_rgba(0,0,0,0.16)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-stone-300",
+  "shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-stone-300",
   "transition-[opacity,transform] duration-[var(--leo-dur-4)] ease-[var(--leo-ease-decelerate)]",
   "starting:translate-y-2 starting:scale-[0.96] starting:opacity-0",
   "data-[im-overlay-state=closed]:pointer-events-none data-[im-overlay-state=closed]:translate-y-2 data-[im-overlay-state=closed]:scale-[0.96]",
@@ -446,7 +446,7 @@ export function MessagesLayout(props: MessagesLayoutProps) {
           onPointerMove={onHandleMove}
           onPointerUp={onHandleUp}
           onPointerCancel={onHandleUp}
-          className="absolute left-0 top-0 z-10 h-full w-1.5 -translate-x-1/2 cursor-col-resize hover:bg-neutral-400/40"
+          className="absolute left-0 top-0 z-10 h-full w-1.5 -translate-x-1/2 cursor-col-resize hover:bg-stone-400/40"
         />
       ) : null}
       {header}

@@ -120,18 +120,18 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
   if (done) {
     return (
       <div data-report-done role="status" aria-labelledby={titleId} className="flex flex-col gap-3">
-        <h2 id={titleId} className="text-[16px] font-semibold text-neutral-900">
+        <h2 id={titleId} className="text-[16px] font-semibold text-stone-900">
           {tt("我们收到了你的举报")}
         </h2>
-        <p className="text-[13px] leading-relaxed text-neutral-600">
+        <p className="text-[13px] leading-relaxed text-stone-600">
           {tt("平台只会查看被举报的这部分内容，以及你能看到的前后几条消息，用来判断上下文。你们其他没被举报的聊天，平台看不到。")}
         </p>
         {done.blocked && (
-          <p data-report-blocked className="text-[13px] text-neutral-600">
+          <p data-report-blocked className="text-[13px] text-stone-600">
             {tt("对方已被你拉黑。")}
           </p>
         )}
-        <p className="text-[13px] text-neutral-600">{tt("处理有结果时，会通过通知告诉你。")}</p>
+        <p className="text-[13px] text-stone-600">{tt("处理有结果时，会通过通知告诉你。")}</p>
         <div className="flex justify-end">
           <button
             type="button"
@@ -148,18 +148,18 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
 
   return (
     <form onSubmit={onSubmit} data-report-form aria-label={hideTitle ? titleOf(tt, target.kind) : undefined} aria-labelledby={hideTitle ? undefined : titleId} className="flex flex-col gap-3">
-      {!hideTitle && <h2 id={titleId} className="text-[14px] font-medium text-neutral-900">
+      {!hideTitle && <h2 id={titleId} className="text-[14px] font-medium text-stone-900">
         {titleOf(tt, target.kind)}
       </h2>}
       {target.label ? (
-        <p data-report-target className="truncate rounded-lg bg-neutral-50 px-3 py-2 text-[13px] text-neutral-700">
+        <p data-report-target className="truncate rounded-lg bg-stone-50 px-3 py-2 text-[13px] text-stone-700">
           {target.label}
         </p>
       ) : null}
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="pb-1 text-[13px] font-medium text-neutral-800">{tt("举报原因")}</legend>
+        <legend className="pb-1 text-[13px] font-medium text-stone-800">{tt("举报原因")}</legend>
         {REPORT_REASONS.map((value) => (
-          <label key={value} className="flex cursor-pointer items-center gap-2 text-[13px] text-neutral-800">
+          <label key={value} className="flex cursor-pointer items-center gap-2 text-[13px] text-stone-800">
             <input
               type="radio"
               name="report-reason"
@@ -172,7 +172,7 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
           </label>
         ))}
       </fieldset>
-      <label className="flex flex-col gap-1 text-[13px] font-medium text-neutral-800">
+      <label className="flex flex-col gap-1 text-[13px] font-medium text-stone-800">
         {tt("补充说明（选填）")}
         <textarea
           value={note}
@@ -180,11 +180,11 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
           onChange={(event) => setNote(event.target.value)}
           rows={3}
           data-report-note
-          className="resize-none rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] font-normal text-neutral-800"
+          className="resize-none rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] font-normal text-stone-800"
         />
       </label>
       {canBlock && (
-        <label className="flex cursor-pointer items-center gap-2 text-[13px] text-neutral-800">
+        <label className="flex cursor-pointer items-center gap-2 text-[13px] text-stone-800">
           <input
             type="checkbox"
             checked={alsoBlock}
@@ -194,7 +194,7 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
           <span>{tt("同时拉黑对方")}</span>
         </label>
       )}
-      <p data-report-privacy className="text-[12px] leading-relaxed text-neutral-500">
+      <p data-report-privacy className="text-[12px] leading-relaxed text-stone-500">
         {tt("平台只会查看被举报的内容和你能看到的前后几条消息，不会查看你们其他的聊天。")}
       </p>
       {error && (
@@ -266,12 +266,12 @@ export function ReportDialog(props: ReportDialogProps) {
       aria-modal="true"
       data-report-dialog
       aria-label={titleOf(tt, props.target.kind)}
-      className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-[1200] flex items-center justify-center bg-stone-950/50 p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div ref={panelRef} className={`${MESSAGE_SETTINGS_WIDTH} ${MESSAGE_SETTINGS_HEIGHT} overflow-hidden rounded-2xl bg-white text-black shadow-2xl`}>
+      <div ref={panelRef} className={`${MESSAGE_SETTINGS_WIDTH} ${MESSAGE_SETTINGS_HEIGHT} overflow-hidden rounded-2xl bg-white text-stone-900 shadow-2xl`}>
         <MessageSettingsFrame title={titleOf(tt, props.target.kind)} onClose={onClose} className="h-full">
           <ReportForm {...props} hideTitle />
         </MessageSettingsFrame>

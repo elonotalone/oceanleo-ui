@@ -131,7 +131,7 @@ const hostStub = dataModule(`
 const leaf = dataModule(`import React from ${JSON.stringify(reactUrl)};
 export function Inbox(){return React.createElement('input',{'data-inbox-search':true});}
 export function PeopleView(){return React.createElement('input',{'data-people-search':true});}
-export function ConversationView({onBack}){return React.createElement('button',{'data-conversation':true,onClick:onBack},'Back');}
+export function LeoChatConversation({onBack}){return React.createElement('button',{'data-conversation':true,onClick:onBack},'Back');}
 export function DealConversationView({onBack}){return React.createElement('button',{onClick:onBack},'Back');}
 export function MessagesSubView(){return React.createElement('div',{'data-notices':true});}
 export function ConversationInfoPanel(){return null;}
@@ -150,7 +150,7 @@ const aliases={...OVERRIDES,
  './messages/notices/use-notices':dataModule('export function useLeoChatUnread(){return {chat:85,notices:0,requests:0,total:85};}'),
  './messages/call/incoming/deep-link':dataModule('export function consumeCallDeepLink(){}'),
  './messages/Inbox':leaf, './messages/people/PeopleView':leaf,
- './messages/conversation/ConversationView':leaf,'./bay/deal':leaf,
+ './messages/conversation/LeoChatConversation':leaf,'./bay/deal':leaf,
  './messages/notices/MessagesSubView':leaf,
  './messages/groups/ConversationInfoPanel':leaf,'./messages/groups/NewConversationDialog':leaf,
  './messages/invite/InviteAcceptDialog':leaf,
@@ -176,7 +176,7 @@ const bodyUrl=await compileModule('src/shell/leochat/leochat-body.tsx',{
  '../messages/host-state':hostStub,
  '../bay/deal':leaf,
  '../messages/Inbox':leaf,'../messages/people/PeopleView':leaf,
- '../messages/conversation/ConversationView':leaf,
+ '../messages/conversation/LeoChatConversation':leaf,
  '../messages/notices/MessagesSubView':leaf,
  '../messages/groups/ConversationInfoPanel':leaf,'../messages/groups/NewConversationDialog':leaf,
  '../messages/invite/InviteAcceptDialog':leaf,
@@ -211,7 +211,7 @@ test('LeoChat uses the full task board, list title/tabs, and a single chat side 
  const board=m.container.querySelector('[data-workspace-split]');assert.ok(board);
  assert.ok(board.className.includes('p-1.5'));assert.ok(board.className.includes('bg-[var(--bg,#faf8f5)]'));
  assert.equal(m.container.querySelector('[data-leochat-page] > header'),null);
- assert.ok(m.container.querySelector('[data-leochat-list] [data-leochat-list-header] h1'));
+ assert.ok(m.container.querySelector('[data-leochat-page-header] h1'));
  assert.ok(m.container.querySelector('[data-leochat-list-header]').textContent.includes('85'));
  const list=m.container.querySelector('[data-leochat-list]');assert.ok(list.querySelector('input'));
  assert.ok(list.querySelector('[data-leochat-list-header]').compareDocumentPosition(list.querySelector('input')) & window.Node.DOCUMENT_POSITION_FOLLOWING);

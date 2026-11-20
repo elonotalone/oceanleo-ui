@@ -132,7 +132,7 @@ export function VoiceRecorder({
         <button
           type="button"
           onClick={() => stop(false)}
-          className="h-6 rounded-full bg-neutral-900 px-2.5 text-[12px] text-white transition hover:bg-neutral-800 active:scale-95"
+          className="h-6 rounded-full bg-stone-900 px-2.5 text-[12px] text-white transition hover:bg-stone-800 active:scale-95"
         >
           {tt("发送语音")}
         </button>
@@ -156,7 +156,7 @@ export function VoiceRecorder({
         document.addEventListener("pointerup", onUp);
         void start();
       }}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700 active:scale-95 active:duration-[var(--leo-dur-1)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-400 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700 active:scale-95 active:duration-[var(--leo-dur-1)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
     >
       <MicGlyph />
     </button>

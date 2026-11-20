@@ -2,6 +2,7 @@
 
 // @ 候选：成员 +「所有人」（仅 owner/admin）+ leo（会话 `leo_enabled` 时）。
 // 规则写成纯函数（`mentionCandidates`、`activeMentionQuery`、`applyMention`、`collectMentions`），界面只管画。
+import { AtGlyph } from "./icons";
 import type { ImConversationDetail, ImRole } from "../../../lib/im/types";
 import { LEO_MENTION } from "../leo/leo-mention";
 
@@ -148,7 +149,7 @@ export function MentionPicker({
   return (
     <ul
       role="listbox"
-      className="absolute bottom-full left-3 z-30 mb-2 max-h-60 w-64 overflow-y-auto overscroll-contain rounded-xl border border-neutral-200/80 bg-white p-1 shadow-[0_8px_32px_rgba(0,0,0,0.14)] dark:border-white/10 dark:bg-neutral-950"
+      className="absolute bottom-full left-3 z-30 mb-2 max-h-60 w-64 overflow-y-auto overscroll-contain rounded-xl border border-stone-200/80 bg-white p-1 shadow-lg"
       data-mention-picker=""
     >
       {candidates.map((candidate, index) => {
@@ -165,14 +166,14 @@ export function MentionPicker({
               onMouseEnter={() => onHover(index)}
               className={
                 "flex min-h-8 w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] " +
-                (index === activeIndex ? "bg-neutral-100 dark:bg-white/10" : "hover:bg-neutral-100 dark:hover:bg-white/10")
+                (index === activeIndex ? "bg-stone-100 " : "hover:bg-stone-100 ")
               }
             >
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-stone-100 text-[11px] font-medium text-stone-600">
-                {candidate.kind === "all" ? "@" : Array.from(candidate.label)[0]?.toUpperCase()}
+                {candidate.kind === "all" ? <AtGlyph /> : Array.from(candidate.label)[0]?.toUpperCase()}
               </span>
-              <span className="min-w-0 flex-1 truncate text-neutral-800 dark:text-neutral-100">{candidate.label}</span>
-              {hint ? <span className="shrink-0 text-[11px] text-neutral-500">{hint}</span> : null}
+              <span className="min-w-0 flex-1 truncate text-stone-800">{candidate.label}</span>
+              {hint ? <span className="shrink-0 text-[11px] text-stone-500">{hint}</span> : null}
             </button>
           </li>
         );

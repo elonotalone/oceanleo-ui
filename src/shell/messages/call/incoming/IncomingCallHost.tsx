@@ -387,7 +387,7 @@ function IncomingCallCard({
                 <span aria-hidden="true" className="inline-block h-3.5 w-24 animate-pulse rounded bg-neutral-200 align-middle dark:bg-neutral-700" />
               )}
             </div>
-            <div className="text-[12.5px] text-neutral-500 dark:text-neutral-400">{tt("邀请你通话")}</div>
+            <div className="text-[13px] text-neutral-500 dark:text-neutral-400">{tt("邀请你通话")}</div>
           </div>
         </div>
         {switching ? (

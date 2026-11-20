@@ -43,7 +43,7 @@ export interface ConversationInfoPanelProps {
 const sectionTitle = CARD_TITLE;
 const pillBtn = `${PRIMARY} inline-flex min-h-11 items-center`;
 const linkBtn =
-  "inline-flex min-h-11 items-center text-[12px] text-neutral-800 underline underline-offset-2 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400";
+  "inline-flex min-h-11 items-center text-[12px] text-stone-800 underline underline-offset-2 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400";
 const rowBtn = `${QUIET} w-full text-left`;
 
 export function ConversationInfoPanel({ conversationId, onClose, onOpenConversation }: ConversationInfoPanelProps) {
@@ -90,7 +90,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
   if (!detail || !caps) {
     return (
       <MessageSettingsFrame title={tt("会话信息")} onClose={onClose} card={false} className="h-full" data-info-panel data-state="loading">
-        <p className="px-3 py-8 text-center text-[13px] text-neutral-400">
+        <p className="px-3 py-8 text-center text-[13px] text-stone-400">
           {detailLoader.error ? reasonOf(detailLoader.error, tt("加载失败，请稍后再试。")) : tt("加载中…")}
         </p>
       </MessageSettingsFrame>
@@ -146,11 +146,11 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
             size={56}
           />
           <div className="min-w-0">
-            <h3 className="truncate text-[16px] font-semibold text-neutral-900" data-info-title>
+            <h3 className="truncate text-[16px] font-semibold text-stone-900" data-info-title>
               {title}
             </h3>
             {!isDm && (
-              <p className="text-[12px] text-neutral-500" data-info-count>
+              <p className="text-[12px] text-stone-500" data-info-count>
                 {tt(detail.member_count === 1 ? "1 位成员" : "{n} 位成员", { n: detail.member_count })}
               </p>
             )}
@@ -185,7 +185,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
                   </button>
                 )}
                 {addNote && (
-                  <p role="status" data-add-note className="mt-2 text-[12px] text-neutral-600">
+                  <p role="status" data-add-note className="mt-2 text-[12px] text-stone-600">
                     {addNote}
                   </p>
                 )}
@@ -193,7 +193,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
             )}
             {!caps.isManual && (
               <div className="px-3 pt-2" data-synced-box>
-                <p className="text-[11px] text-neutral-400" data-synced-hint>
+                <p className="text-[11px] text-stone-400" data-synced-hint>
                   {detail.kind === "team" ? tt("成员跟 Team 自动同步。") : tt("成员跟项目自动同步。")}
                 </p>
                 {!detail.dissolved && detail.my_role !== null && detail.kind === "team" && teamOrgId && isTeamAdminOf(myOrgs.data, teamOrgId) && (
@@ -203,7 +203,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
                 )}
                 {!detail.dissolved && detail.my_role !== null && detail.kind === "team" && !myOrgs.loading && !isTeamAdminOf(myOrgs.data, teamOrgId) && (
                   <div className="mt-1 flex flex-wrap items-center gap-x-2" data-team-invite-hint>
-                    <span className="text-[12px] text-neutral-600">{tt("请 Team 管理员邀请")}</span>
+                    <span className="text-[12px] text-stone-600">{tt("请 Team 管理员邀请")}</span>
                     <a
                       href={portalHref(teamOrgId ? `/org?org=${encodeURIComponent(teamOrgId)}` : "/org")}
                       target="_blank"
@@ -239,7 +239,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
             {caps.canManageInviteLinks && (
               <>
                 <h4 className={sectionTitle}>{tt("邀请链接")}</h4>
-                <button type="button" onClick={() => setInviteOpen(true)} data-action="invite-link" className={`${rowBtn} text-neutral-700`}>
+                <button type="button" onClick={() => setInviteOpen(true)} data-action="invite-link" className={`${rowBtn} text-stone-700`}>
                   {tt("管理群邀请链接")}
                 </button>
               </>
@@ -284,7 +284,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
                 </>
               )}
             </div>
-            <div className={`${CARD} flex flex-col gap-3 text-[13px] text-neutral-600`}>
+            <div className={`${CARD} flex flex-col gap-3 text-[13px] text-stone-600`}>
               {caps.isGroupLike && <SettingTextRow label={tt("备注")} value={detail.remark ?? ""} placeholder={tt("群聊的备注仅自己可见")} field="remark" onEdit={() => { setRemark(detail.remark ?? ""); setEditing("remark"); }} />}
               {caps.isGroupLike && (
                 <SettingTextRow label={tt("我在本群的昵称")} value={detail.nickname ?? ""} placeholder={me.data?.display_name ?? ""} field="nickname" onEdit={() => { setNickname(detail.nickname ?? ""); setEditing("nickname"); }} />
@@ -295,7 +295,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
                   data-field="notify"
                   defaultValue={detail.notify_level}
                   disabled={busy}
-                  className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-[12px] text-neutral-800"
+                  className="rounded-lg border border-stone-200 bg-white px-2 py-1 text-[12px] text-stone-800"
                   onChange={(e) => run(() => patchMySettings(detail.id, { notify_level: e.target.value as ImNotifyLevel }))}
                 >
                   {NOTIFY_CHOICES.map((c) => (
@@ -311,7 +311,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
                 type="button"
                 disabled={busy}
                 data-action="hide"
-                className={`${rowBtn} mt-2 text-neutral-700`}
+                className={`${rowBtn} mt-2 text-stone-700`}
                 onClick={() => run(() => patchMySettings(detail.id, { hidden: true }), onClose)}
               >
                 {tt("隐藏会话")}
@@ -321,29 +321,29 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
         )}
 
         <div className={`${CARD} space-y-2`}>
-          <button type="button" disabled={busy} onClick={() => setConfirm("clear-history")} data-action="clear-history" className={`${rowBtn} text-neutral-600`}>{tt("清空聊天记录")}</button>
+          <button type="button" disabled={busy} onClick={() => setConfirm("clear-history")} data-action="clear-history" className={`${rowBtn} text-stone-600`}>{tt("清空聊天记录")}</button>
           {caps.canUpgradeToTeam && (
-            <button type="button" onClick={() => setUpgradeOpen(true)} data-action="upgrade-team" className={`${rowBtn} text-neutral-700`}>
+            <button type="button" onClick={() => setUpgradeOpen(true)} data-action="upgrade-team" className={`${rowBtn} text-stone-700`}>
               {tt("升级成 Team")}
             </button>
           )}
           {caps.canReport && (
-            <button type="button" onClick={() => setReportOpen(true)} data-action="report" className={`${rowBtn} text-neutral-600`}>
+            <button type="button" onClick={() => setReportOpen(true)} data-action="report" className={`${rowBtn} text-stone-600`}>
               {tt("举报这个群")}
             </button>
           )}
           {caps.leaveNeedsTransfer && (
-            <p className="px-3 py-2 text-[11px] text-neutral-400" data-leave-hint>
+            <p className="px-3 py-2 text-[11px] text-stone-400" data-leave-hint>
               {tt("你是群主。先把群主转让给别人，才能退出。")}
             </p>
           )}
           {caps.canLeave && (
-            <button type="button" onClick={() => setConfirm("leave")} data-action="leave" className={`${rowBtn} text-neutral-600`}>
+            <button type="button" onClick={() => setConfirm("leave")} data-action="leave" className={`${rowBtn} text-stone-600`}>
               {tt("退出群聊")}
             </button>
           )}
           {caps.canDissolve && (
-            <button type="button" onClick={() => setConfirm("dissolve")} data-action="dissolve" className={`${rowBtn} text-neutral-600`}>
+            <button type="button" onClick={() => setConfirm("dissolve")} data-action="dissolve" className={`${rowBtn} text-stone-600`}>
               {tt("解散群聊")}
             </button>
           )}
@@ -420,7 +420,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
           }}>
             <label className="flex flex-col gap-2 text-[13px]">
               {editing === "remark" ? tt("备注") : tt("我在本群的昵称")}
-              <input autoFocus data-field={editing} maxLength={editing === "remark" ? 80 : 32} value={editing === "remark" ? remark : nickname} disabled={busy} onChange={(event) => editing === "remark" ? setRemark(event.target.value) : setNickname(event.target.value)} className="w-full rounded-lg border border-neutral-200 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-neutral-400" />
+              <input autoFocus data-field={editing} maxLength={editing === "remark" ? 80 : 32} value={editing === "remark" ? remark : nickname} disabled={busy} onChange={(event) => editing === "remark" ? setRemark(event.target.value) : setNickname(event.target.value)} className="w-full rounded-lg border border-stone-200 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-stone-400" />
             </label>
             {note && <p role="alert" className="text-[12px] text-red-600">{note}</p>}
             <div className="flex justify-end gap-3">
@@ -435,9 +435,9 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
 }
 
 function SettingTextRow({ label, value, placeholder, field, onEdit }: { label: string; value: string; placeholder: string; field: string; onEdit: () => void }) {
-  return <button type="button" data-edit-setting={field} onClick={onEdit} className={`${MESSAGE_SETTINGS_ROW} group w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400`}>
+  return <button type="button" data-edit-setting={field} onClick={onEdit} className={`${MESSAGE_SETTINGS_ROW} group w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400`}>
     <span className={CARD_TITLE}>{label}</span>
-    <span className="flex items-center gap-1.5 text-[13px] leading-5 text-neutral-600 group-hover:text-neutral-900"><span className="whitespace-pre-wrap break-all">{value || placeholder}</span><svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 opacity-60" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M13 6l5 5" /></svg></span>
+    <span className="flex items-center gap-1.5 text-[13px] leading-5 text-stone-600 group-hover:text-stone-900"><span className="whitespace-pre-wrap break-all">{value || placeholder}</span><svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 opacity-60" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M13 6l5 5" /></svg></span>
   </button>;
 }
 
@@ -467,7 +467,7 @@ function PrefSwitch({
       <span>{label}</span>
       <span
         aria-hidden="true"
-        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors duration-[var(--leo-dur-2)] ${checked ? "bg-neutral-900" : "bg-neutral-300"}`}
+        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors duration-[var(--leo-dur-2)] ${checked ? "bg-stone-900" : "bg-stone-300"}`}
       >
         <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow ${checked ? "left-5" : "left-0.5"}`} />
       </span>

@@ -85,13 +85,13 @@ export function LeoChatButton({ className = "" }: { className?: string }) {
         title={label}
         data-leochat-open={surfaceOpen ? "true" : "false"}
         data-leochat-surface={surfaceOpen ? surface : "none"}
-        className={`leo-tap-target relative flex items-center justify-center rounded-lg transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800 active:scale-95 ${
-          surfaceOpen ? "bg-neutral-100 text-neutral-800" : "text-neutral-500"
+        className={`leo-tap-target relative flex items-center justify-center rounded-lg transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800 active:scale-95 ${
+          surfaceOpen ? "bg-stone-100 text-stone-800" : "text-stone-500"
         }`}
       >
         <NoticeBellIcon />
         {count > 0 ? (
-          <span data-leochat-badge className="absolute right-0.5 top-0.5 flex min-w-4 items-center justify-center rounded-full bg-neutral-900 px-1 text-[10px] font-medium leading-4 text-white">
+          <span data-leochat-badge className="absolute right-0.5 top-0.5 flex min-w-4 items-center justify-center rounded-full bg-stone-900 px-1 text-[10px] font-medium leading-4 text-white">
             {count > 99 ? "99+" : count}
           </span>
         ) : null}

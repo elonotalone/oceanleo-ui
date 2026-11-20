@@ -92,7 +92,7 @@ function Highlighted({ segments }: { segments: HighlightSegment[] }) {
     <>
       {segments.map((segment, index) =>
         segment.hit ? (
-          <mark key={index} data-search-hit="" className="bg-transparent font-semibold text-neutral-900">
+          <mark key={index} data-search-hit="" className="bg-transparent font-semibold text-stone-900">
             {segment.text}
           </mark>
         ) : (

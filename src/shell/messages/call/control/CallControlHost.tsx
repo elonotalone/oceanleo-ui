@@ -329,7 +329,7 @@ export function CallControlHost() {
                 <ControlIcon />
               </span>
               <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{noticeText(tt, notice.code, notice.vars)}</span>
-              <button
+              <button className="transition active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-stone-500"
                 type="button"
                 aria-label={tt("关闭")}
                 data-call-control-action="dismiss"

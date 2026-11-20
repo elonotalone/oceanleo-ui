@@ -145,7 +145,7 @@ function CallStartedCard({ message, meta }: { message: ImMessage; meta: CallCard
             <HeadphonesIcon size={18} />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-[13.5px] font-semibold" data-call-count={count}>
+            <div className="text-[14px] font-semibold" data-call-count={count}>
               {tt("通话进行中 · {n} 人", { n: count })}
             </div>
             <div className="truncate text-[12px] text-neutral-500 dark:text-neutral-400">{starter}</div>
@@ -157,7 +157,7 @@ function CallStartedCard({ message, meta }: { message: ImMessage; meta: CallCard
                 data-call-join={inThis ? "mine" : join.state}
                 disabled={join.pending || join.state === "busy" || join.state === "hidden"}
                 className={
-                  "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors duration-[var(--leo-dur-2)] disabled:opacity-60 " +
+                  "shrink-0 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-[var(--leo-dur-2)] disabled:opacity-60 " +
                   (inThis
                     ? "bg-neutral-50 text-neutral-700 hover:bg-neutral-100 dark:bg-neutral-900/15 dark:text-neutral-300"
                     : "bg-neutral-900 text-white hover:bg-neutral-900")
@@ -192,7 +192,7 @@ function CallStartedCard({ message, meta }: { message: ImMessage; meta: CallCard
             <HeadphonesIcon size={18} />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-[13.5px] font-semibold">
+            <div className="text-[14px] font-semibold">
               {durationText ? tt("通话已结束 · {duration}", { duration: durationText }) : tt("通话已结束")}
             </div>
             <div className="truncate text-[12px] text-neutral-500 dark:text-neutral-400">
@@ -216,7 +216,7 @@ function CallStartedCard({ message, meta }: { message: ImMessage; meta: CallCard
           <HeadphonesIcon size={18} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-semibold">{tt("通话")}</div>
+          <div className="text-[14px] font-semibold">{tt("通话")}</div>
           <div className="truncate text-[12px] text-neutral-500 dark:text-neutral-400">{starter}</div>
         </div>
       </div>
@@ -370,7 +370,7 @@ function CallRecordingCard({ message, meta }: { message: ImMessage; meta: CallCa
           <RecordDotIcon size={16} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-semibold">{tt("通话录像")}</div>
+          <div className="text-[14px] font-semibold">{tt("通话录像")}</div>
           <div className="truncate text-[12px] text-neutral-500 dark:text-neutral-400" data-recording-details="">
             {failed ? tt("录像生成失败") : !recordingId ? tt("录像暂不可用") : details}
           </div>
@@ -381,7 +381,7 @@ function CallRecordingCard({ message, meta }: { message: ImMessage; meta: CallCa
             data-recording-play=""
             disabled={play.kind === "loading"}
             onClick={() => void fetchUrl(false)}
-            className="shrink-0 rounded-lg bg-neutral-900 px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-neutral-700 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+            className="shrink-0 rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-neutral-700 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
           >
             {play.kind === "loading" ? tt("正在打开…") : tt("播放")}
           </button>
@@ -498,8 +498,8 @@ function CallMinutesCard({ message, meta }: { message: ImMessage; meta: CallCard
           <TranscriptIcon size={14} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-semibold">{tt("Leo 纪要")}</div>
-          {facts ? <div className="truncate text-[11.5px] text-neutral-500 dark:text-neutral-400">{facts}</div> : null}
+          <div className="text-[14px] font-semibold">{tt("Leo 纪要")}</div>
+          {facts ? <div className="truncate text-[12px] text-neutral-500 dark:text-neutral-400">{facts}</div> : null}
         </div>
       </div>
       {body ? (
@@ -513,7 +513,7 @@ function CallMinutesCard({ message, meta }: { message: ImMessage; meta: CallCard
         aria-expanded={transcript.kind === "open"}
         disabled={transcript.kind === "loading"}
         onClick={() => void toggle()}
-        className="mt-2 text-[12.5px] font-medium text-neutral-600 hover:underline disabled:opacity-60 dark:text-neutral-300"
+        className="mt-2 text-[13px] font-medium text-neutral-600 hover:underline disabled:opacity-60 dark:text-neutral-300"
       >
         {transcript.kind === "open"
           ? tt("收起转写全文")
@@ -530,7 +530,7 @@ function CallMinutesCard({ message, meta }: { message: ImMessage; meta: CallCard
         transcript.rows.length === 0 ? (
           <p className="mt-1 text-[12px] text-neutral-500">{tt("这通通话没有转写内容")}</p>
         ) : (
-          <ol className="mt-2 max-h-72 space-y-1.5 overflow-y-auto rounded-lg bg-neutral-50 p-2 text-[12.5px] dark:bg-neutral-800/60" data-call-transcript="">
+          <ol className="mt-2 max-h-72 space-y-1.5 overflow-y-auto rounded-lg bg-neutral-50 p-2 text-[13px] dark:bg-neutral-800/60" data-call-transcript="">
             {transcript.rows.map((row) => (
               <li key={row.key} className="leading-5">
                 {row.offset ? <span className="mr-1.5 tabular-nums text-neutral-400">{row.offset}</span> : null}

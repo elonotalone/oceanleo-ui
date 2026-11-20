@@ -244,13 +244,13 @@ export function CallStage({ narrow, onCollapse, focusTick }: CallStageProps) {
 
       {pages > 1 ? (
         <nav aria-label={tt("翻页")} data-call-pager={`${current + 1}/${pages}`} className="flex items-center justify-center gap-3 pb-1">
-          <button type="button" aria-label={tt("上一页")} disabled={current === 0} onClick={() => setPage(current - 1)} className={"min-h-11 min-w-11 " + (PAGER_BUTTON)}>
+          <button type="button" aria-label={tt("上一页")} disabled={current === 0} onClick={() => setPage(current - 1)} className={PAGER_BUTTON}>
             <IconChevronLeft size={16} />
           </button>
           <span aria-live="polite" className="text-[12px] tabular-nums text-neutral-600 dark:text-neutral-300">
             {tt("第 {page} / {total} 页", { page: current + 1, total: pages })}
           </span>
-          <button type="button" aria-label={tt("下一页")} disabled={current >= pages - 1} onClick={() => setPage(current + 1)} className={"min-h-11 min-w-11 " + (PAGER_BUTTON)}>
+          <button type="button" aria-label={tt("下一页")} disabled={current >= pages - 1} onClick={() => setPage(current + 1)} className={PAGER_BUTTON}>
             <IconChevronRight size={16} />
           </button>
         </nav>

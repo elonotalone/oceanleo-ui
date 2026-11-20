@@ -72,10 +72,10 @@ export function MemberList({ detail, myUserId, onOpenProfile, onChanged }: Membe
     <div data-member-list>
       {detail.leo_enabled && detail.kind !== "dm" && (
         <div className="flex items-center gap-3 px-3 py-1.5" data-leo-row>
-          <span aria-hidden="true" className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-[12px] font-semibold text-neutral-700">
+          <span aria-hidden="true" className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-[12px] font-semibold text-stone-700">
             L
           </span>
-          <span className="text-[13px] text-neutral-700">{tt("leo（AI）")}</span>
+          <span className="text-[13px] text-stone-700">{tt("leo（AI）")}</span>
         </div>
       )}
       <ul>
@@ -92,47 +92,47 @@ export function MemberList({ detail, myUserId, onOpenProfile, onChanged }: Membe
             { showNickname: detail.show_member_nicknames !== false },
           );
           return (
-            <li key={m.user_id} data-member={m.user_id} data-role={m.role} className="flex items-center gap-2 px-3 py-1.5 hover:bg-neutral-50">
+            <li key={m.user_id} data-member={m.user_id} data-role={m.role} className="flex items-center gap-2 px-3 py-1.5 hover:bg-stone-50">
               <button type="button" onClick={() => onOpenProfile(m.user_id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                 <PersonAvatar name={shown} src={m.profile.avatar_url} seed={m.user_id} size={32} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
-                    <span className="truncate text-[13px] text-neutral-900">{shown}</span>
-                    {m.user_id === myUserId && <span className="text-[11px] text-neutral-400">{tt("我")}</span>}
+                    <span className="truncate text-[13px] text-stone-900">{shown}</span>
+                    {m.user_id === myUserId && <span className="text-[11px] text-stone-400">{tt("我")}</span>}
                     {roleText && (
-                      <span data-role-badge className="rounded bg-neutral-100 px-1.5 text-[10px] leading-4 text-neutral-600">
+                      <span data-role-badge className="rounded bg-stone-100 px-1.5 text-[10px] leading-4 text-stone-600">
                         {tt(roleText)}
                       </span>
                     )}
                     {m.external && (
-                      <span data-external-badge className="text-[11px] leading-4 text-neutral-400">
+                      <span data-external-badge className="text-[11px] leading-4 text-stone-400">
                         {tt("外部")}
                       </span>
                     )}
                   </span>
-                  <span data-presence={state} className="flex items-center gap-1 text-[11px] text-neutral-400">
+                  <span data-presence={state} className="flex items-center gap-1 text-[11px] text-stone-400">
                     <PresenceDot presence={state} />
                     {state === "online" ? tt("在线") : state === "away" ? tt("离开") : tt("离线")}
                   </span>
                 </span>
               </button>
               {actions.canSetAdmin && (
-                <button type="button" disabled={busy} data-action="set-admin" className={`${small} text-neutral-600`} onClick={() => run(() => setMemberRole(detail.id, m.user_id, "admin"))}>
+                <button type="button" disabled={busy} data-action="set-admin" className={`${small} text-stone-600`} onClick={() => run(() => setMemberRole(detail.id, m.user_id, "admin"))}>
                   {tt("设为管理员")}
                 </button>
               )}
               {actions.canRevokeAdmin && (
-                <button type="button" disabled={busy} data-action="revoke-admin" className={`${small} text-neutral-600`} onClick={() => run(() => setMemberRole(detail.id, m.user_id, "member"))}>
+                <button type="button" disabled={busy} data-action="revoke-admin" className={`${small} text-stone-600`} onClick={() => run(() => setMemberRole(detail.id, m.user_id, "member"))}>
                   {tt("取消管理员")}
                 </button>
               )}
               {actions.canTransfer && (
-                <button type="button" disabled={busy} data-action="transfer" className={`${small} text-neutral-600`} onClick={() => setPending({ kind: "transfer", member: m })}>
+                <button type="button" disabled={busy} data-action="transfer" className={`${small} text-stone-600`} onClick={() => setPending({ kind: "transfer", member: m })}>
                   {tt("转让群主")}
                 </button>
               )}
               {actions.canRemove && (
-                <button type="button" disabled={busy} data-action="remove" className={`${small} text-neutral-600`} onClick={() => setPending({ kind: "remove", member: m })}>
+                <button type="button" disabled={busy} data-action="remove" className={`${small} text-stone-600`} onClick={() => setPending({ kind: "remove", member: m })}>
                   {tt("移出")}
                 </button>
               )}
@@ -141,7 +141,7 @@ export function MemberList({ detail, myUserId, onOpenProfile, onChanged }: Membe
         })}
       </ul>
       {members.length > shown.length && (
-        <button type="button" onClick={() => setShowAll(true)} className="px-3 py-2 text-[12px] text-neutral-500 hover:text-neutral-800">
+        <button type="button" onClick={() => setShowAll(true)} className="px-3 py-2 text-[12px] text-stone-500 hover:text-stone-800">
           {tt("显示全部 {n} 人", { n: members.length })}
         </button>
       )}

@@ -239,15 +239,15 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
 
   if (!threadId) {
     return (
-      <div data-talent-view="invalid" className="flex h-full items-center justify-center p-6 text-[13px] text-neutral-500">
+      <div data-talent-view="invalid" className="flex h-full items-center justify-center p-6 text-[13px] text-stone-500">
         {tt("这个会话打不开。")}
       </div>
     );
   }
 
   return (
-    <div data-talent-view={layout} className="flex h-full min-h-0 flex-col text-neutral-900">
-      <header className="flex items-center gap-1 border-b border-neutral-200/80 px-2 py-2">
+    <div data-talent-view={layout} className="flex h-full min-h-0 flex-col text-stone-900">
+      <header className="flex items-center gap-1 border-b border-stone-200/80 px-2 py-2">
         {onBack && layout !== "full" && (
           <BackButton data-action="back" onClick={onBack} label={tt("返回")} />
         )}
@@ -255,7 +255,7 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
           <p data-talent-title className="truncate text-[13px] font-medium text-stone-900">
             {title}
           </p>
-          <p className="text-[12px] text-neutral-400">{tt("交易会话")}</p>
+          <p className="text-[12px] text-stone-400">{tt("交易会话")}</p>
         </div>
         {openUrl && (
           <a
@@ -263,7 +263,7 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
             target="_blank"
             rel="noopener noreferrer"
             data-talent-open
-            className="text-[12px] text-neutral-600 underline-offset-2 hover:underline"
+            className="text-[12px] text-stone-600 underline-offset-2 hover:underline"
           >
             {tt("在 LeoBay 打开")}
           </a>
@@ -302,27 +302,27 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
       {state.info?.work && peerId ? <WorkConversationHeader conversation={{ id: wanted, work: state.info.work, peer: { user_id: peerId, display_name: title } } as ImConversationSummary} onBlocked={() => setSendError(tt("你们之间有拉黑关系，不能发送消息"))} /> : null}
 
       {state.contactHint && (
-        <p data-contact-hint className="px-3 py-1.5 text-[12px] text-neutral-500">
+        <p data-contact-hint className="px-3 py-1.5 text-[12px] text-stone-500">
           {tt("对话里出现了联系方式。站外成交平台不担保，请尽量在平台内完成交易。")}
         </p>
       )}
 
       {state.error ? (
-        <div data-talent-error={state.error} className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-[13px] text-neutral-500">
+        <div data-talent-error={state.error} className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-[13px] text-stone-500">
           <p>{state.error === "gone" ? tt("这个会话不存在，或你不在其中。") : tt("没能加载这个会话。")}</p>
           {state.error === "load" && (
             <button
               type="button"
               data-action="retry"
               onClick={() => void reload(false)}
-              className="rounded-lg border border-neutral-200 px-3 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
+              className="rounded-lg border border-stone-200 px-3 py-1 text-[12px] text-stone-700 hover:bg-stone-50"
             >
               {tt("重试")}
             </button>
           )}
         </div>
       ) : state.loading ? (
-        <p data-talent-loading className="flex-1 p-6 text-center text-[13px] text-neutral-400">
+        <p data-talent-loading className="flex-1 p-6 text-center text-[13px] text-stone-400">
           {tt("加载中…")}
         </p>
       ) : (

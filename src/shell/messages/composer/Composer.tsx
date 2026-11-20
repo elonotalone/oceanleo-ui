@@ -46,14 +46,14 @@ const LINE_PX = 24;
 
 /** The frame, defined once (same classes as the task composer's frame). */
 export const COMPOSER_FRAME_CLASS =
-  "relative shrink-0 rounded-2xl border bg-white shadow-sm transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] focus-within:border-neutral-300 focus-within:shadow-md";
+  "relative shrink-0 rounded-2xl border bg-white shadow-sm transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] focus-within:border-stone-300 focus-within:shadow-md";
 /** Round icon button of the toolbar (emoji, @leo, voice): 32 px, press motion. */
 export const COMPOSER_ICON_BUTTON_CLASS =
-  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700 active:scale-95 active:duration-[var(--leo-dur-1)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100";
+  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-400 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700 active:scale-95 active:duration-[var(--leo-dur-1)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100";
 /** 36 px send circle with the up arrow; grey when there is nothing to send. */
 export function composerSendButtonClass(enabled: boolean): string {
   return `flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] ${
-    enabled ? "bg-neutral-900 hover:scale-105 hover:bg-neutral-800 active:scale-95" : "cursor-not-allowed bg-neutral-300"
+    enabled ? "bg-stone-900 hover:scale-105 hover:bg-stone-800 active:scale-95" : "cursor-not-allowed bg-stone-300"
   }`;
 }
 
@@ -527,7 +527,7 @@ export function Composer(props: ComposerProps) {
 
   if (disabled && disabledReason) {
     return (
-      <div className="border-t border-neutral-200/80 px-4 py-3 text-center text-[13px] text-neutral-500" data-composer-disabled="">
+      <div className="border-t border-stone-200/80 px-4 py-3 text-center text-[13px] text-stone-500" data-composer-disabled="">
         {disabledReason}
       </div>
     );
@@ -537,7 +537,7 @@ export function Composer(props: ComposerProps) {
   const sendEnabled = canSend;
   return (
     <div
-      className={`${COMPOSER_FRAME_CLASS} mx-3 mb-3 mt-2 ${dragging ? "border-neutral-300 ring-2 ring-neutral-200" : "border-neutral-200"}`}
+      className={`${COMPOSER_FRAME_CLASS} mx-3 mb-3 mt-2 ${dragging ? "border-stone-300 ring-2 ring-stone-200" : "border-stone-200"}`}
       onDragOver={(event) => {
         if (event.dataTransfer?.types?.includes("Files")) {
           event.preventDefault();
@@ -560,37 +560,37 @@ export function Composer(props: ComposerProps) {
           <p
             role="alert"
             data-composer-notice=""
-            className="pointer-events-auto flex max-w-full items-center gap-1.5 rounded-full border border-neutral-200/80 bg-white py-1 pl-3 pr-1 text-[12px] text-rose-600 shadow-sm dark:border-white/10 dark:bg-neutral-950"
+            className="pointer-events-auto flex max-w-full items-center gap-1.5 rounded-full border border-stone-200/80 bg-white py-1 pl-3 pr-1 text-[12px] text-rose-600 shadow-sm"
           >
             <span className="min-w-0 truncate">{notice}</span>
             <button
               type="button"
               onClick={() => setNotice(null)}
               aria-label={tt("关闭")}
-              className="rounded-full p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 active:scale-95"
+              className="rounded-full p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700 active:scale-95"
             >
               <CloseGlyph />
             </button>
           </p>
         </div>
       ) : null}
-      {textOnly ? <p className="px-4 pt-3 text-[12px] text-neutral-500" data-await-reply="">{tt(WORK_REPLY_NOTICE)}</p> : null}
+      {textOnly ? <p className="px-4 pt-3 text-[12px] text-stone-500" data-await-reply="">{tt(WORK_REPLY_NOTICE)}</p> : null}
       {editing ? (
-        <div className="flex items-center justify-between gap-2 px-4 pt-2.5 text-[12px] text-neutral-500">
+        <div className="flex items-center justify-between gap-2 px-4 pt-2.5 text-[12px] text-stone-500">
           <span>{tt("正在编辑消息")}</span>
           <button
             type="button"
             onClick={onCancelEdit}
-            className="rounded-full px-2 py-0.5 text-neutral-600 transition hover:bg-neutral-100 hover:text-neutral-900 active:scale-95"
+            className="rounded-full px-2 py-0.5 text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:scale-95"
           >
             {tt("取消")}
           </button>
         </div>
       ) : null}
       {quote && !editing ? (
-        <div className="mx-3 mt-2.5 flex items-center justify-between gap-2 rounded-lg bg-stone-50 py-1 pl-2.5 pr-1 text-[12px] text-neutral-500" data-composer-quote="">
+        <div className="mx-3 mt-2.5 flex items-center justify-between gap-2 rounded-lg bg-stone-50 py-1 pl-2.5 pr-1 text-[12px] text-stone-500" data-composer-quote="">
           <span className="min-w-0 truncate">
-            {tt("回复")} <b className="font-medium text-neutral-700">{quoteName}</b>
+            {tt("回复")} <b className="font-medium text-stone-700">{quoteName}</b>
             {"："}
             {plainTextOf(quote.body).replace(/\s+/g, " ").slice(0, 60) || quote.card?.title || quote.attachments[0]?.name || ""}
           </span>
@@ -628,7 +628,7 @@ export function Composer(props: ComposerProps) {
           onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          className="block max-h-48 min-h-[48px] w-full resize-none bg-transparent px-4 pb-1 pt-3 text-[15px] leading-6 text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+          className="block max-h-48 min-h-[48px] w-full resize-none bg-transparent px-4 pb-1 pt-3 text-[15px] leading-6 text-stone-900 placeholder:text-stone-400 focus:outline-none"
         />
       </div>
       <div className="flex items-center gap-1.5 px-4 pb-3 pt-1" data-composer-actions="">
@@ -662,7 +662,7 @@ export function Composer(props: ComposerProps) {
             aria-label={tt("表情")}
             aria-expanded={emojiOpen}
             title={tt("表情")}
-            className={`${COMPOSER_ICON_BUTTON_CLASS} ${emojiOpen ? "bg-neutral-100 text-neutral-700" : ""}`}
+            className={`${COMPOSER_ICON_BUTTON_CLASS} ${emojiOpen ? "bg-stone-100 text-stone-700" : ""}`}
           >
             <EmojiGlyph />
           </button>
@@ -700,7 +700,7 @@ export function Composer(props: ComposerProps) {
         ) : null}
         <span className="flex-1" />
         {text.length > MAX_BODY_CHARS - 500 ? (
-          <span className={"text-[12px] tabular-nums " + (text.length >= MAX_BODY_CHARS ? "text-rose-600" : "text-neutral-400")}>
+          <span className={"text-[12px] tabular-nums " + (text.length >= MAX_BODY_CHARS ? "text-rose-600" : "text-stone-400")}>
             {text.length}/{MAX_BODY_CHARS}
           </span>
         ) : null}

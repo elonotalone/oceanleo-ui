@@ -29,7 +29,7 @@ export interface InviteLinkDialogProps {
   conversationId?: string | null;
 }
 
-const field = "rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] text-neutral-800";
+const field = "rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] text-stone-800";
 
 export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkDialogProps) {
   return conversationId ? <GroupInviteLink onClose={onClose} conversationId={conversationId} /> : <FindPeople onBack={onClose} onOpenConversation={(id) => { hostState().showConversation(id); onClose(); }} />;
@@ -90,10 +90,10 @@ function GroupInviteLink({ onClose, conversationId }: { onClose: () => void; con
     <Modal onClose={onClose} title={tt("群邀请链接")} labelledBy="im-invite-title">
       <div data-invite-link-dialog data-kind={kind}>
 
-        {kind === "group" && <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">{tt("拿到链接的人点开、登录后就能进群。")}</p>}
+        {kind === "group" && <p className="mt-1 text-[12px] leading-relaxed text-stone-500">{tt("拿到链接的人点开、登录后就能进群。")}</p>}
 
 
-        <div className="mt-4 grid grid-cols-2 gap-3 text-[12px] text-neutral-600">
+        <div className="mt-4 grid grid-cols-2 gap-3 text-[12px] text-stone-600">
           <label className="flex flex-col gap-1">
             {tt("有效期")}
             <select className={field} value={expiryIdx} onChange={(e) => setExpiryIdx(Number(e.target.value))} data-field="expiry">
@@ -116,7 +116,7 @@ function GroupInviteLink({ onClose, conversationId }: { onClose: () => void; con
           </label>
         </div>
         {kind === "group" && (
-          <div className="mt-3 flex items-center justify-between text-[13px] text-neutral-700">
+          <div className="mt-3 flex items-center justify-between text-[13px] text-stone-700">
             <span>{tt("通过链接进群需要管理员同意")}</span>
             <Switch checked={needApproval} onChange={setNeedApproval} label={tt("通过链接进群需要管理员同意")} />
           </div>
@@ -132,15 +132,15 @@ function GroupInviteLink({ onClose, conversationId }: { onClose: () => void; con
           {tt("生成并复制链接")}
         </button>
         {note && (
-          <p role="status" className="mt-2 text-[12px] text-neutral-600" data-invite-note>
+          <p role="status" className="mt-2 text-[12px] text-stone-600" data-invite-note>
             {note}
           </p>
         )}
 
         {mine.length > 0 && (
           <div className="mt-4" data-invite-existing>
-            <h4 className="text-[12px] font-medium text-neutral-500">{tt("已有的链接")}</h4>
-            <ul className="mt-1 max-h-48 divide-y divide-neutral-100 overflow-y-auto">
+            <h4 className="text-[12px] font-medium text-stone-500">{tt("已有的链接")}</h4>
+            <ul className="mt-1 max-h-48 divide-y divide-stone-100 overflow-y-auto">
               {mine.map((l) => (
                 <li key={l.code} data-invite-code={l.code} className="flex items-center gap-2 py-2">
                   <div className="min-w-0 flex-1">
@@ -149,9 +149,9 @@ function GroupInviteLink({ onClose, conversationId }: { onClose: () => void; con
                       value={l.url}
                       aria-label={tt("邀请链接")}
                       onFocus={(e) => e.currentTarget.select()}
-                      className="w-full truncate rounded border border-neutral-100 bg-neutral-50 px-2 py-1 text-[12px] text-neutral-700"
+                      className="w-full truncate rounded border border-stone-100 bg-stone-50 px-2 py-1 text-[12px] text-stone-700"
                     />
-                    <p className="mt-0.5 text-[11px] text-neutral-400">{describe(l, tt)}</p>
+                    <p className="mt-0.5 text-[11px] text-stone-400">{describe(l, tt)}</p>
                     {qrFor === l.code && (
                       <div className="mt-2" data-invite-qr-slot={l.code}>
                         <InviteQrCode url={l.url} fileLabel={tt("邀请二维码-加入群聊")} />

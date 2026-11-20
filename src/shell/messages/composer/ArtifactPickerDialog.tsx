@@ -115,13 +115,13 @@ export function ArtifactPickerDialog({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={tt("搜索我的作品")}
-        className="mb-2 w-full rounded-lg bg-neutral-100/80 px-3 py-2 text-[13px] focus:outline-none"
+        className="mb-2 w-full rounded-lg bg-stone-100/80 px-3 py-2 text-[13px] focus:outline-none"
           autoFocus
         />
         <div className="min-h-[160px] flex-1 overflow-y-auto">
-          {items === null && !error ? <p className="py-8 text-center text-[13px] text-neutral-400">{tt("正在加载…")}</p> : null}
+          {items === null && !error ? <p className="py-8 text-center text-[13px] text-stone-400">{tt("正在加载…")}</p> : null}
           {error ? <p className="py-8 text-center text-[13px] text-red-600">{tt("作品加载失败，请稍后重试。")}</p> : null}
-          {items && shown.length === 0 ? <p className="py-8 text-center text-[13px] text-neutral-400">{tt("没有找到作品")}</p> : null}
+          {items && shown.length === 0 ? <p className="py-8 text-center text-[13px] text-stone-400">{tt("没有找到作品")}</p> : null}
           <ul className="space-y-1">
             {shown.map((item) => {
               const thumb = safeMediaUrl(item.posterUrl ?? item.thumbUrl ?? null);
@@ -134,16 +134,16 @@ export function ArtifactPickerDialog({
                     aria-pressed={active}
                     className={
                       "flex w-full items-center gap-3 rounded-lg border px-2 py-1.5 text-left " +
-                      (active ? "border-neutral-300 bg-neutral-100" : "border-transparent hover:bg-neutral-50")
+                      (active ? "border-stone-300 bg-stone-100" : "border-transparent hover:bg-stone-50")
                     }
                   >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-neutral-100 text-[10px] text-neutral-400">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-stone-100 text-[10px] text-stone-400">
                       {thumb ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" />
                       ) : null}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-neutral-800">{item.title}</span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-stone-800">{item.title}</span>
                   </button>
                 </li>
               );
@@ -151,7 +151,7 @@ export function ArtifactPickerDialog({
           </ul>
         </div>
         {selected ? (
-          <label className={"mt-3 flex items-start gap-2 text-[12.5px] " + (selectedKind ? "text-neutral-700" : "text-neutral-400")}>
+          <label className={"mt-3 flex items-start gap-2 text-[13px] " + (selectedKind ? "text-stone-700" : "text-stone-400")}>
             <input
               type="checkbox"
               checked={coedit && Boolean(selectedKind)}
@@ -161,11 +161,11 @@ export function ArtifactPickerDialog({
             />
             <span>
               {tt("让这个会话的人一起改")}
-              {!selectedKind ? <span className="block text-[11.5px]">{tt("这个作品暂时不支持一起改")}</span> : null}
+              {!selectedKind ? <span className="block text-[12px]">{tt("这个作品暂时不支持一起改")}</span> : null}
             </span>
           </label>
         ) : null}
-        {grantFailed ? <p className="mt-2 text-[12.5px] text-red-600">{tt("没能授权一起改，请重试，或取消勾选后只分享。")}</p> : null}
+        {grantFailed ? <p className="mt-2 text-[13px] text-red-600">{tt("没能授权一起改，请重试，或取消勾选后只分享。")}</p> : null}
         <div className="mt-3 flex justify-end gap-2">
           <button type="button" onClick={onClose} className={QUIET}>
             {tt("取消")}

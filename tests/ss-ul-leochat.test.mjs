@@ -36,15 +36,15 @@ const conv = (over = {}) => ({
 const row = (item, active) => renderToStaticMarkup(React.createElement(InboxRow, { item, active, hasDraft: false, onOpen() {} }));
 const classOf = (html) => /data-testid="inbox-row"[^>]*class="([^"]+)"/.exec(html)?.[1] ?? /class="([^"]+)"[^>]*data-testid="inbox-row"/.exec(html)?.[1] ?? "";
 
-test("selected inbox row = the sidebar's selected look: rounded bg-neutral-200/80, no left bar, no private accent", () => {
+test("selected inbox row = the sidebar's selected look: rounded bg-stone-200/80, no left bar, no private accent", () => {
   const selected = row(conv(), true);
   const idle = row(conv(), false);
   assert.match(selected, /aria-current="true"/);
   assert.ok(classOf(selected).split(/\s+/).includes(INBOX_ROW_SELECTED), "selected background");
-  assert.equal(INBOX_ROW_SELECTED, "bg-neutral-200/80");
+  assert.equal(INBOX_ROW_SELECTED, "bg-stone-200/80");
   assert.ok(classOf(selected).includes("rounded-lg"));
-  assert.ok(!classOf(idle).includes("bg-neutral-200/80"), "idle row is not tinted");
-  assert.ok(classOf(idle).includes("hover:bg-neutral-200/50"));
+  assert.ok(!classOf(idle).includes("bg-stone-200/80"), "idle row is not tinted");
+  assert.ok(classOf(idle).includes("hover:bg-stone-200/50"));
   for (const html of [selected, idle]) {
     assert.doesNotMatch(html, /inset|box-shadow|border-l-|--im-accent|black\/|hsl\(/, "no bar, no private colours");
   }

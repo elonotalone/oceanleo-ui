@@ -42,11 +42,11 @@ function SwitchButton({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-            className="inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 disabled:opacity-50"
+            className="inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-400 disabled:opacity-50"
     >
       <span
         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-[var(--leo-dur-1)] ease-[var(--leo-ease-standard)] ${
-          checked ? "bg-neutral-900" : "bg-neutral-300"
+          checked ? "bg-stone-900" : "bg-stone-300"
         }`}
       >
         <span
@@ -178,7 +178,7 @@ export function NotifySettingsPanel() {
   }
   if (!settings) {
     return (
-      <section data-im-notify-settings="" className={`${CARD} text-[13px] text-neutral-500`}>
+      <section data-im-notify-settings="" className={`${CARD} text-[13px] text-stone-500`}>
         {tt("正在加载…")}
       </section>
     );
@@ -227,19 +227,19 @@ export function NotifySettingsPanel() {
         </Row>
         {onPortal ? (
           pushConfig && !pushConfig.enabled ? (
-            <p className="py-2 text-[12px] text-neutral-500">{tt("推送功能还没有开通。")}</p>
+            <p className="py-2 text-[12px] text-stone-500">{tt("推送功能还没有开通。")}</p>
           ) : !supported ? (
-            <p className="py-2 text-[12px] text-neutral-500">{tt("这个浏览器不支持推送。")}</p>
+            <p className="py-2 text-[12px] text-stone-500">{tt("这个浏览器不支持推送。")}</p>
           ) : null
         ) : (
-          <p className="py-2 text-[12px] leading-5 text-neutral-500">
+          <p className="py-2 text-[12px] leading-5 text-stone-500">
             {tt("推送只能在 oceanleo.com 上开启一次，之后这台电脑关着页面也能收到。")}{" "}
             {pushConfig ? (
               <a
                 href={`${pushConfig.portal_origin}/?im=inbox`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-neutral-900 underline underline-offset-2"
+                className="font-medium text-stone-900 underline underline-offset-2"
               >
                 {tt("去 oceanleo.com 开启")}
               </a>

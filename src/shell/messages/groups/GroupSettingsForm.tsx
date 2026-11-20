@@ -76,9 +76,9 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
     return (
       <div className="px-3 py-2" data-group-settings="readonly">
         {detail.description ? (
-          <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-neutral-600">{detail.description}</p>
+          <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-stone-600">{detail.description}</p>
         ) : (
-          <p className="text-[12px] text-neutral-400">{tt("还没有群简介。")}</p>
+          <p className="text-[12px] text-stone-400">{tt("还没有群简介。")}</p>
         )}
       </div>
     );
@@ -114,17 +114,17 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
           {tt("更换头像")}
         </button>
       </div>
-      <label className="flex flex-col gap-1 text-[12px] text-neutral-600">
+      <label className="flex flex-col gap-1 text-[12px] text-stone-600">
         {tt("群名称")}
         <input
           value={title}
           maxLength={80}
           onChange={(e) => setTitle(e.target.value)}
           data-field="title"
-          className="rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+          className="rounded-lg border border-stone-200 px-3 py-2 text-[13px] text-stone-900 outline-none focus-visible:ring-2 focus-visible:ring-stone-400"
         />
       </label>
-      <label className="flex flex-col gap-1 text-[12px] text-neutral-600">
+      <label className="flex flex-col gap-1 text-[12px] text-stone-600">
         {tt("群简介")}
         <textarea
           value={description}
@@ -132,7 +132,7 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
           rows={3}
           onChange={(e) => setDescription(e.target.value)}
           data-field="description"
-          className="resize-none rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+          className="resize-none rounded-lg border border-stone-200 px-3 py-2 text-[13px] text-stone-900 outline-none focus-visible:ring-2 focus-visible:ring-stone-400"
         />
       </label>
       <div className="flex justify-end">
@@ -165,7 +165,7 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className={`${MESSAGE_SETTINGS_ROW} text-[14px] text-neutral-700`}>
+    <div className={`${MESSAGE_SETTINGS_ROW} text-[14px] text-stone-700`}>
       <span>{label}</span>
       {children}
     </div>

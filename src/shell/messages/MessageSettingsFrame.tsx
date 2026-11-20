@@ -16,7 +16,7 @@ export const MESSAGE_SETTINGS_HEIGHT = "h-[min(760px,88vh)]";
 /** Destructive confirm (delete, remove, leave): same shape as PRIMARY, rose like the FloatingMenu danger item. */
 export const DANGER =
   "rounded-lg bg-rose-600 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-700 active:scale-[0.99] disabled:opacity-60";
-export const MESSAGE_SETTINGS_ROW = "flex items-center justify-between gap-4 rounded-xl border border-neutral-200 bg-white px-4 py-3.5";
+export const MESSAGE_SETTINGS_ROW = "flex items-center justify-between gap-4 rounded-xl border border-stone-200 bg-white px-4 py-3.5";
 
 export function MessageSettingsHeader({ title, titleId, onClose, onBack, backButtonProps, children }: {
   title: ReactNode;
@@ -27,7 +27,7 @@ export function MessageSettingsHeader({ title, titleId, onClose, onBack, backBut
   children?: ReactNode;
 }) {
   const tt = useUI();
-  return <header data-message-settings-header className="shrink-0 border-b border-neutral-200 px-5 py-4">
+  return <header data-message-settings-header className="shrink-0 border-b border-stone-200 px-5 py-4">
     <div className="mx-auto flex w-full max-w-[800px] items-center gap-3">
       {onBack && <BackButton {...backButtonProps} data-action="back" onClick={onBack} label={tt("返回")} />}
       <h2 id={titleId} className={`min-w-0 flex-1 truncate ${CARD_TITLE}`}>{title}</h2>
@@ -48,7 +48,7 @@ export function MessageSettingsFrame({ title, titleId, onClose, onBack, children
     ref?: Ref<HTMLDivElement>;
     backButtonProps?: ButtonHTMLAttributes<HTMLButtonElement>;
   }) {
-  return <div {...props} ref={ref} data-message-settings-frame className={`mx-auto flex min-h-0 w-full max-w-[1040px] flex-1 flex-col overflow-hidden bg-white text-neutral-900 ${className}`}>
+  return <div {...props} ref={ref} data-message-settings-frame className={`mx-auto flex min-h-0 w-full max-w-[1040px] flex-1 flex-col overflow-hidden bg-white text-stone-900 ${className}`}>
     {title != null && <MessageSettingsHeader title={title} titleId={titleId} onClose={onClose} onBack={onBack} backButtonProps={backButtonProps}>{headerActions}</MessageSettingsHeader>}
     <div data-message-settings-body className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
       <div data-message-settings-content className="mx-auto w-full max-w-[800px]">

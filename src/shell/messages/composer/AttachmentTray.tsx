@@ -37,16 +37,16 @@ export function AttachmentTray({
       {jobs.map((job) => (
         <li
           key={job.id}
-          className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-[13px]"
+          className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1.5 text-[13px]"
           data-upload-status={job.status}
         >
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-neutral-800">{job.file.name}</span>
-            <span className="block text-[12px] text-neutral-400">
+            <span className="block truncate text-stone-800">{job.file.name}</span>
+            <span className="block text-[12px] text-stone-400">
               {job.status === "uploading" ? (
                 <>
-                  <span className="mr-2 inline-block h-1 w-24 overflow-hidden rounded-full bg-neutral-200 align-middle">
-                    <span className="block h-full bg-neutral-900" style={{ width: `${Math.round(job.ratio * 100)}%` }} />
+                  <span className="mr-2 inline-block h-1 w-24 overflow-hidden rounded-full bg-stone-200 align-middle">
+                    <span className="block h-full bg-stone-900" style={{ width: `${Math.round(job.ratio * 100)}%` }} />
                   </span>
                   {Math.round(job.ratio * 100)}% · {formatBytes(job.file.size)}
                 </>
@@ -56,17 +56,17 @@ export function AttachmentTray({
             </span>
           </span>
           {job.status === "uploading" ? (
-            <button type="button" onClick={() => onCancel(job.id)} className="shrink-0 text-neutral-500 hover:text-neutral-800">
+            <button type="button" onClick={() => onCancel(job.id)} className="shrink-0 text-stone-500 hover:text-stone-800">
               {tt("取消")}
             </button>
           ) : null}
           {job.status === "failed" && job.error !== "too_large" && job.error !== "empty" ? (
-            <button type="button" onClick={() => onRetry(job.id)} className="shrink-0 text-neutral-700 hover:underline">
+            <button type="button" onClick={() => onRetry(job.id)} className="shrink-0 text-stone-700 hover:underline">
               {tt("重试")}
             </button>
           ) : null}
           {job.status !== "uploading" ? (
-            <button type="button" onClick={() => onRemove(job.id)} aria-label={tt("移除")} className="shrink-0 text-neutral-400 hover:text-neutral-700">
+            <button type="button" onClick={() => onRemove(job.id)} aria-label={tt("移除")} className="shrink-0 text-stone-400 hover:text-stone-700">
               <ImCloseIcon />
             </button>
           ) : null}

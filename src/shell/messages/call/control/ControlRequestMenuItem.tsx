@@ -55,7 +55,7 @@ export function ControlRequestMenuItem({ participantId }: ControlRequestMenuItem
 
   if (model.kind === "controlling") {
     return (
-      <button
+      <button className="transition active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-stone-500"
         type="button"
         role="menuitem"
         style={{ ...itemStyle, color: CONTROL_ACCENT, fontWeight: 600 }}
@@ -71,7 +71,7 @@ export function ControlRequestMenuItem({ participantId }: ControlRequestMenuItem
   if (model.kind === "waiting") {
     const seconds = secondsLeft(model.deadlineMs, now);
     return (
-      <button
+      <button className="transition active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-stone-500"
         type="button"
         role="menuitem"
         style={itemStyle}
@@ -93,7 +93,7 @@ export function ControlRequestMenuItem({ participantId }: ControlRequestMenuItem
 
   if (model.kind === "busy") {
     return (
-      <button
+      <button className="transition active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-stone-500"
         type="button"
         role="menuitem"
         style={{ ...itemStyle, cursor: "not-allowed", opacity: 0.55 }}
@@ -120,7 +120,7 @@ export function ControlRequestMenuItem({ participantId }: ControlRequestMenuItem
   };
 
   return (
-    <button
+    <button className="transition active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-stone-500"
       type="button"
       role="menuitem"
       style={{ ...itemStyle, opacity: busy ? 0.6 : 1 }}

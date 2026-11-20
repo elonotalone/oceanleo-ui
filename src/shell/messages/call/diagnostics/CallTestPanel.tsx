@@ -533,7 +533,7 @@ function DeviceSelect({
       aria-label={label}
       value={known ? value : ""}
       onChange={(event) => onChange(event.target.value)}
-      className="min-h-11 h-8 w-full truncate rounded-lg border border-neutral-200 bg-white px-2 text-[13px] text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:border-white/15 dark:bg-neutral-800 dark:text-neutral-100"
+      className="h-8 w-full truncate rounded-lg border border-neutral-200 bg-white px-2 text-[13px] text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:border-white/15 dark:bg-neutral-800 dark:text-neutral-100"
     >
       <option value="">{tt("系统默认")}</option>
       {devices.map((device, index) => (

@@ -7,7 +7,7 @@ import { conversationDisplayTitle, listContactGroups, openDm, useLoader, type Pe
 import { PRIMARY, QUIET } from "../MessageSettingsFrame";
 import { ImCloseIcon } from "../messages-surface";
 
-const LIST_ROW = "flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-[13px] text-stone-800 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50";
+const LIST_ROW = "flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-[13px] text-stone-800 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-200/50";
 import { PeopleFailure, PeoplePage, PeopleSuggestions } from "../people/PeopleDiscovery";
 
 export interface NewConversationDialogProps {

@@ -400,6 +400,8 @@ html.dark .bg-slate-200 {
 /* 再深一档的槽（bg-neutral-300）。浅色页是看得见的灰井；夜间不能停在卡片色，
    否则输入槽和底板糊成一块。映到 well，字仍走 --leo-d-fg。 */
 html.dark .bg-neutral-300,
+html.dark .bg-stone-300,
+html.dark .disabled\:bg-stone-300:disabled,
 html.dark .disabled\:bg-neutral-300:disabled {
   background-color: var(--leo-d-well) !important;
 }

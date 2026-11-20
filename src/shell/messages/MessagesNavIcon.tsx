@@ -36,7 +36,7 @@ export function MessagesNavIcon({ className }: { className?: string }) {
         <span
           data-testid="messages-nav-badge"
           data-mentions={mentions > 0 ? "true" : "false"}
-          className="absolute -right-2 -top-1.5 min-w-4 rounded-full bg-neutral-900 px-1 text-center text-[10px] font-medium leading-4 text-white"
+          className="absolute -right-2 -top-1.5 min-w-4 rounded-full bg-stone-900 px-1 text-center text-[10px] font-medium leading-4 text-white"
         >
           {label}
         </span>

@@ -32,14 +32,14 @@ export function PinnedBar({
   const latest = pins[pins.length - 1];
   const fallback = tt("[消息]");
   return (
-    <div className="relative border-b border-neutral-200/80" data-pinned-bar="">
+    <div className="relative border-b border-stone-200/80" data-pinned-bar="">
       <div className="flex items-center gap-2 px-3 py-1.5 text-[12px]">
         <button
           type="button"
           onClick={() => onJump(latest)}
-          className="min-w-0 flex-1 truncate text-left text-neutral-700 hover:text-neutral-900"
+          className="min-w-0 flex-1 truncate text-left text-stone-700 hover:text-stone-900"
         >
-          <span className="mr-1.5 font-medium text-neutral-500">{tt("已置顶")}</span>
+          <span className="mr-1.5 font-medium text-stone-500">{tt("已置顶")}</span>
           {previewOf(latest, fallback)}
         </button>
         {pins.length > 1 ? (
@@ -47,32 +47,32 @@ export function PinnedBar({
             type="button"
             onClick={() => setOpen((value) => !value)}
             aria-expanded={open}
-            className="shrink-0 rounded px-1.5 py-0.5 text-[12px] text-neutral-400 hover:bg-neutral-100"
+            className="shrink-0 rounded px-1.5 py-0.5 text-[12px] text-stone-400 hover:bg-stone-100"
           >
             {tt("共 {n} 条", { n: pins.length })}
           </button>
         ) : null}
       </div>
       {open ? (
-        <ul className="max-h-56 overflow-y-auto border-t border-neutral-100 bg-white dark:border-white/10 dark:bg-neutral-900">
+        <ul className="max-h-56 overflow-y-auto border-t border-stone-100 bg-white">
           {[...pins].reverse().map((pin) => (
-            <li key={pin.id} className="flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-neutral-50">
+            <li key={pin.id} className="flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-stone-50">
               <button
                 type="button"
                 onClick={() => {
                   setOpen(false);
                   onJump(pin);
                 }}
-                className="min-w-0 flex-1 truncate text-left text-neutral-700"
+                className="min-w-0 flex-1 truncate text-left text-stone-700"
               >
-                <span className="mr-1.5 text-neutral-400">{nameOf(pin.sender_id)}</span>
+                <span className="mr-1.5 text-stone-400">{nameOf(pin.sender_id)}</span>
                 {previewOf(pin, fallback)}
               </button>
               {onUnpin ? (
                 <button
                   type="button"
                   onClick={() => onUnpin(pin)}
-                  className="shrink-0 text-[11px] text-neutral-400 hover:text-neutral-700"
+                  className="shrink-0 text-[11px] text-stone-400 hover:text-stone-700"
                 >
                   {tt("取消置顶")}
                 </button>

@@ -44,7 +44,7 @@ export function UpgradeToTeamDialog({ conversationId, defaultName = "", onClose,
 
         {orgId ? (
           <>
-            <p className="mt-2 text-[13px] leading-relaxed text-neutral-600" data-upgrade-result>
+            <p className="mt-2 text-[13px] leading-relaxed text-stone-600" data-upgrade-result>
               {tt("已升级成 Team。群里的其他人会收到 Team 邀请；之后要加人，请到 Team 页面邀请。")}
             </p>
             <a
@@ -52,7 +52,7 @@ export function UpgradeToTeamDialog({ conversationId, defaultName = "", onClose,
               target="_blank"
               rel="noopener noreferrer"
               data-action="open-team-page"
-              className="mt-2 inline-flex min-h-11 items-center text-[13px] text-neutral-800 underline underline-offset-2 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+              className="mt-2 inline-flex min-h-11 items-center text-[13px] text-stone-800 underline underline-offset-2 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400"
             >
               {tt("打开 Team 页面")}
             </a>
@@ -64,7 +64,7 @@ export function UpgradeToTeamDialog({ conversationId, defaultName = "", onClose,
           </>
         ) : (
           <>
-            <p className="mt-2 text-[12px] leading-relaxed text-neutral-500">
+            <p className="mt-2 text-[12px] leading-relaxed text-stone-500">
               {tt("升级后，这个群变成 Team 群，成员跟 Team 成员自动同步。群里的其他人会收到 Team 邀请；没加入 Team 的人会显示「外部」。")}
             </p>
             <input
@@ -74,7 +74,7 @@ export function UpgradeToTeamDialog({ conversationId, defaultName = "", onClose,
               data-field="team-name"
               aria-label={tt("Team 名称")}
               placeholder={tt("Team 名称")}
-              className="mt-3 w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+              className="mt-3 w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-stone-400"
             />
             {note && (
               <p role="alert" className="mt-2 text-[12px] text-red-600">

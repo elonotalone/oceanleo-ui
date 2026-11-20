@@ -259,7 +259,7 @@ export function MessageList(props: MessageListProps) {
             if (snapshot.hasMoreAfter) void store.loadLatest().then(scrollToBottom);
             else scrollToBottom();
           }}
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-neutral-900 px-3 py-1 text-[12px] text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 active:scale-95"
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-stone-900 px-3 py-1 text-[12px] text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-800 active:scale-95"
           data-new-messages=""
         >
           {newCount > 0 ? tt("{n} 条新消息", { n: newCount }) : tt("回到最新消息")}

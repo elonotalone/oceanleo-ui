@@ -194,7 +194,7 @@ function IssueRow({ item, onDismiss }: { item: IssueDescriptor; onDismiss(id: st
   return (
     <li
       data-issue={item.kind}
-      className="rounded-lg bg-neutral-50 px-2.5 py-2 text-[12.5px] leading-[18px] text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
+      className="rounded-lg bg-neutral-50 px-2.5 py-2 text-[13px] leading-[18px] text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
     >
       <p>{tt(item.text, item.vars)}</p>
       <button

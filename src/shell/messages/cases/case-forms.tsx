@@ -25,8 +25,8 @@ import { classifyModerationError, submitAppeal, submitCounterNotice } from "../.
 import { failureMessage } from "./case-labels";
 
 const FIELD_CLASS =
-  "mt-1 block w-full rounded-lg border bg-white px-2.5 py-1.5 text-[13px] font-normal text-neutral-800";
-const FIELD_OK = "border-neutral-200";
+  "mt-1 block w-full rounded-lg border bg-white px-2.5 py-1.5 text-[13px] font-normal text-stone-800";
+const FIELD_OK = "border-stone-200";
 const FIELD_BAD = "border-red-300";
 const SUBMIT_CLASS = PRIMARY;
 
@@ -89,13 +89,13 @@ export function CounterNoticeForm({ caseId, onDone, submit = submitCounterNotice
       noValidate
       data-case-form="counter"
       onSubmit={onSubmit}
-      className="space-y-3 border-t border-neutral-100 pt-4"
+      className="space-y-3 border-t border-stone-100 pt-4"
     >
-      <p className="text-[13px] font-medium text-neutral-800">{tt("提交反通知")}</p>
-      <p className="text-[12px] leading-5 text-neutral-500">
+      <p className="text-[13px] font-medium text-stone-800">{tt("提交反通知")}</p>
+      <p className="text-[12px] leading-5 text-stone-500">
         {tt("提交后内容进入「反通知中」。15 个自然日内平台没有进一步维持下架，内容会自动恢复。")}
       </p>
-      <label className="block text-[13px] text-neutral-800">
+      <label className="block text-[13px] text-stone-800">
         {tt("陈述")}
         <textarea
           name="statement"
@@ -107,7 +107,7 @@ export function CounterNoticeForm({ caseId, onDone, submit = submitCounterNotice
           onChange={(event) => set("statement", event.target.value)}
         />
       </label>
-      <label className="block text-[13px] text-neutral-800">
+      <label className="block text-[13px] text-stone-800">
         {tt("联系邮箱")}
         <input
           name="contact_email"
@@ -120,7 +120,7 @@ export function CounterNoticeForm({ caseId, onDone, submit = submitCounterNotice
           onChange={(event) => set("contact_email", event.target.value)}
         />
       </label>
-      <label className="flex items-start gap-2 text-[13px] text-neutral-800">
+      <label className="flex items-start gap-2 text-[13px] text-stone-800">
         <input
           name="good_faith"
           type="checkbox"
@@ -131,7 +131,7 @@ export function CounterNoticeForm({ caseId, onDone, submit = submitCounterNotice
         />
         <span className={bad("good_faith") ? "text-red-600" : undefined}>{tt("我善意相信这次下架不成立。")}</span>
       </label>
-      <label className="flex items-start gap-2 text-[13px] text-neutral-800">
+      <label className="flex items-start gap-2 text-[13px] text-stone-800">
         <input
           name="consent_jurisdiction"
           type="checkbox"
@@ -144,7 +144,7 @@ export function CounterNoticeForm({ caseId, onDone, submit = submitCounterNotice
           {tt("我同意由本平台所在地处理与本次反通知有关的争议。")}
         </span>
       </label>
-      <label className="block text-[13px] text-neutral-800">
+      <label className="block text-[13px] text-stone-800">
         {tt("签名")}
         <input
           name="signature"
@@ -156,7 +156,7 @@ export function CounterNoticeForm({ caseId, onDone, submit = submitCounterNotice
         />
       </label>
       {shown ? (
-        <p role="alert" data-case-error className="text-[12.5px] text-red-600">
+        <p role="alert" data-case-error className="text-[13px] text-red-600">
           {shown}
         </p>
       ) : null}
@@ -202,11 +202,11 @@ export function AppealForm({ caseId, onDone, submit = submitAppeal }: CaseFormPr
       noValidate
       data-case-form="appeal"
       onSubmit={onSubmit}
-      className="space-y-3 border-t border-neutral-100 pt-4"
+      className="space-y-3 border-t border-stone-100 pt-4"
     >
-      <p className="text-[13px] font-medium text-neutral-800">{tt("提交申诉")}</p>
-      <p className="text-[12px] leading-5 text-neutral-500">{tt("写清为什么你认为这次处置不对，平台会重新复核。")}</p>
-      <label className="block text-[13px] text-neutral-800">
+      <p className="text-[13px] font-medium text-stone-800">{tt("提交申诉")}</p>
+      <p className="text-[12px] leading-5 text-stone-500">{tt("写清为什么你认为这次处置不对，平台会重新复核。")}</p>
+      <label className="block text-[13px] text-stone-800">
         {tt("陈述")}
         <textarea
           name="statement"
@@ -219,7 +219,7 @@ export function AppealForm({ caseId, onDone, submit = submitAppeal }: CaseFormPr
         />
       </label>
       {shown ? (
-        <p role="alert" data-case-error className="text-[12.5px] text-red-600">
+        <p role="alert" data-case-error className="text-[13px] text-red-600">
           {shown}
         </p>
       ) : null}

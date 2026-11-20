@@ -64,7 +64,7 @@ export function AttachmentView({
   const url = safeMediaUrl(attachment.url);
   if (!url) {
     return (
-      <div className="rounded-lg border border-neutral-200 px-3 py-2 text-[12px] text-neutral-400">
+      <div className="rounded-lg border border-stone-200 px-3 py-2 text-[12px] text-stone-400">
         {tt("附件不可用")}
       </div>
     );
@@ -72,7 +72,7 @@ export function AttachmentView({
   if (attachment.kind === "image") {
     return (
       <>
-        <button type="button" onClick={() => setZoom(true)} className="block max-w-[320px] overflow-hidden rounded-lg border border-neutral-200">
+        <button type="button" onClick={() => setZoom(true)} className="block max-w-[320px] overflow-hidden rounded-lg border border-stone-200">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={url}
@@ -94,7 +94,7 @@ export function AttachmentView({
         controls
         preload="metadata"
         playsInline
-        className="max-h-72 max-w-[360px] rounded-lg border border-neutral-200 bg-black"
+        className="max-h-72 max-w-[360px] rounded-lg border border-stone-200 bg-black"
       />
     );
   }
@@ -105,11 +105,11 @@ export function AttachmentView({
         <div className="flex items-center gap-2">
           <audio src={url} controls preload="metadata" className="h-9 w-full min-w-[200px]" />
           {isVoice && attachment.duration_ms ? (
-            <span className="shrink-0 text-[11px] tabular-nums text-neutral-400">{formatDuration(attachment.duration_ms)}</span>
+            <span className="shrink-0 text-[11px] tabular-nums text-stone-400">{formatDuration(attachment.duration_ms)}</span>
           ) : null}
         </div>
         {isVoice && transcript ? (
-          <div className="rounded-md bg-neutral-50 px-2 py-1 text-[12px] text-neutral-600" data-transcript={transcript.status}>
+          <div className="rounded-md bg-stone-50 px-2 py-1 text-[12px] text-stone-600" data-transcript={transcript.status}>
             {transcript.status === "pending" ? tt("正在转成文字…") : null}
             {transcript.status === "done" ? <span className="whitespace-pre-wrap break-words">{transcript.text}</span> : null}
             {transcript.status === "failed" ? tt("没能转成文字") : null}
@@ -125,14 +125,14 @@ export function AttachmentView({
       target="_blank"
       rel="noopener noreferrer"
       download={attachment.name}
-      className="flex max-w-[320px] items-center gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-2 hover:bg-neutral-50"
+      className="flex max-w-[320px] items-center gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 hover:bg-stone-50"
     >
-      <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-neutral-100 text-[11px] font-semibold uppercase text-neutral-500">
+      <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-stone-100 text-[11px] font-semibold uppercase text-stone-500">
         {(attachment.name.split(".").pop() ?? "file").slice(0, 4)}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[13px] text-neutral-800">{attachment.name}</span>
-        <span className="block text-[11px] text-neutral-400">{formatBytes(attachment.size)} · {tt("下载")}</span>
+        <span className="block truncate text-[13px] text-stone-800">{attachment.name}</span>
+        <span className="block text-[11px] text-stone-400">{formatBytes(attachment.size)} · {tt("下载")}</span>
       </span>
     </a>
   );

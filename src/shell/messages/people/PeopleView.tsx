@@ -47,10 +47,10 @@ export function PeopleView({ onOpenConversation }: PeopleViewProps) {
         actions={[{ id: "find-people", label: tt("找人"), onSelect: () => setInviting(true) }]}
       />
       <div className="shrink-0 px-2 pt-1">
-        <button type="button" data-new-friends-entry onClick={() => setTab(tab === "requests" ? "contacts" : "requests")} aria-expanded={tab === "requests"} className={`${ENTRY_ROW} ${tab === "requests" ? "bg-neutral-200/80" : "hover:bg-neutral-200/50"}`}>
+        <button type="button" data-new-friends-entry onClick={() => setTab(tab === "requests" ? "contacts" : "requests")} aria-expanded={tab === "requests"} className={`${ENTRY_ROW} ${tab === "requests" ? "bg-stone-200/80" : "hover:bg-stone-200/50"}`}>
           <Chevron open={tab === "requests"} />{tt("新的朋友")}
         </button>
-        <button type="button" data-blocked-entry aria-expanded={showBlocked} onClick={() => setShowBlocked(!showBlocked)} className={`${ENTRY_ROW} ${showBlocked ? "bg-neutral-200/80" : "hover:bg-neutral-200/50"}`}>
+        <button type="button" data-blocked-entry aria-expanded={showBlocked} onClick={() => setShowBlocked(!showBlocked)} className={`${ENTRY_ROW} ${showBlocked ? "bg-stone-200/80" : "hover:bg-stone-200/50"}`}>
           <Chevron open={showBlocked} />{tt("已拉黑")}
         </button>
       </div>

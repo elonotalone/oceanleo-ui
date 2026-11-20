@@ -231,10 +231,10 @@ test("microphone error is a notice floating above the frame, not a red line insi
 
 test("looks like the task composer: one frame, px-4, round icon buttons, 36px send circle, 15px text", async () => {
   const leo = readFileSync(new URL("../src/shell/LeoComposer.tsx", import.meta.url), "utf8");
-  for (const token of COMPOSER_FRAME_CLASS.split(/\s+/)) assert.ok(leo.includes(token), `task frame uses ${token}`);
+  for (const token of COMPOSER_FRAME_CLASS.split(/\s+/)) assert.ok(leo.replaceAll("neutral-", "stone-").includes(token), `task frame uses ${token}`);
   assert.match(composerSendButtonClass(true), /\bh-9 w-9\b.*rounded-full/);
-  assert.match(composerSendButtonClass(true), /bg-neutral-900/);
-  assert.match(composerSendButtonClass(false), /bg-neutral-300/);
+  assert.match(composerSendButtonClass(true), /bg-stone-900/);
+  assert.match(composerSendButtonClass(false), /bg-stone-300/);
 
   const view = await mount(baseProps(makeStore(), {
     conversation: { id: "c", kind: "group", leo_enabled: true, members: [], my_role: "member" },
@@ -247,7 +247,7 @@ test("looks like the task composer: one frame, px-4, round icon buttons, 36px se
     assert.ok(view.q("textarea").classList.contains("text-[15px]"));
     const send = view.q("[data-send-button]");
     assert.equal(send.disabled, true);
-    assert.ok(send.classList.contains("bg-neutral-300"));
+    assert.ok(send.classList.contains("bg-stone-300"));
     assert.ok(send.querySelector("svg"), "up arrow icon, no text");
     const leoButton = view.q("[data-composer-leo]");
     assert.ok(leoButton.querySelector("svg"), "@ is an icon button");

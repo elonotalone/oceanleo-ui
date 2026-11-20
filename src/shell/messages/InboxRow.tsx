@@ -4,6 +4,7 @@
 // 会话里正在通话：右列时间下方是耳机 + 人数的标记（calls-v2 W08），点标记直接加入。整行是 <button>，
 // 标记也是按钮，不能套在里面——画在行外、叠在右列预留的位置上。标记组件由 Inbox 注入（`callDecor`），
 // 行组件本身不静态依赖通话引擎（只为头像加载本文件的地方不会把整条通话链路拖进来）。
+import { AtGlyph } from "./composer/icons";
 import type { ComponentType, MouseEvent } from "react";
 import { conversationDisplayTitle } from "../../lib/im/people-api";
 import { avatarMembersOf } from "../../lib/im/types";
@@ -105,7 +106,7 @@ export function InboxRow({
             <span className="truncate text-[13px] font-medium text-stone-900">{title}</span>
             {mention ? (
               <span className="shrink-0 text-[11px] font-semibold text-stone-900" aria-label={tt("有人@你")}>
-                @
+                <AtGlyph />
               </span>
             ) : null}
             {item.pinned ? (

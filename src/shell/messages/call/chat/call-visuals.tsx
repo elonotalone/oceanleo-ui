@@ -135,7 +135,7 @@ export function AvatarStack({
         </span>
       ))}
       {extra > 0 ? (
-        <span className="ml-1 text-[11.5px] text-neutral-500 dark:text-neutral-400" data-call-avatars-more={extra}>
+        <span className="ml-1 text-[12px] text-neutral-500 dark:text-neutral-400" data-call-avatars-more={extra}>
           +{extra}
         </span>
       ) : null}
