@@ -1,8 +1,9 @@
 "use client";
 
-import { QUIET, MessageSettingsHeader } from "../MessageSettingsFrame";
+import { MessageSettingsHeader } from "../MessageSettingsFrame";
 
 // 消息搜索：输入 ≥2 字；按会话、发送人、类型、时间筛选；结果高亮；点结果跳到那条；分页。
+// 会话内搜索（不传 onBack）没有自己的标题行：会话顶栏本身显示「<会话名> / 搜索消息」面包屑（ConversationView）。
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -16,6 +17,7 @@ import { EMPTY_FILTERS, SearchFilters, filtersToParams, type SearchFilterState }
 
 export interface SearchViewProps {
   initialQuery?: string;
+  /** Given → this view draws its own "‹ Search messages" title row (LeoChat's list search). */
   onBack?: () => void;
   /** 受控查询；传入时内部不再自管输入。 */
   query?: string;
@@ -224,8 +226,8 @@ export function SearchView({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" data-search-view="">
-      <MessageSettingsHeader onBack={onBack} title={tt("搜索消息")} />
-      <div className="shrink-0 space-y-2 border-b border-neutral-200/80 px-3 py-3" data-search-controls>
+      {onBack ? <MessageSettingsHeader onBack={onBack} title={tt("搜索消息")} /> : null}
+      <div className="shrink-0 space-y-2 px-3 pb-2 pt-1" data-search-controls>
       {hideInput ? null : (
         <input
           type="search"
@@ -234,7 +236,7 @@ export function SearchView({
           onChange={(event) => setQuery(event.target.value)}
           placeholder={tt("搜索消息")}
           aria-label={tt("搜索消息")}
-          className="block w-full rounded-xl border-0 bg-neutral-100/80 px-3 py-2 text-[14px] focus:outline-none"
+          className="block w-full min-w-0 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] text-stone-700 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] placeholder:text-stone-400 focus:border-stone-400 focus-visible:ring-2 focus-visible:ring-stone-300/70"
         />
       )}
       <SearchFilters
@@ -246,11 +248,11 @@ export function SearchView({
       />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto" data-search-results>
-        {!ready ? <p className="py-10 text-center text-[12.5px] text-neutral-400">{tt("至少输入 2 个字")}</p> : null}
-        {ready && state === "loading" ? <p className="py-10 text-center text-[12.5px] text-neutral-400">{tt("正在搜索…")}</p> : null}
-        {ready && state === "error" ? <p className="py-10 text-center text-[12.5px] text-red-600">{tt("搜索失败，请稍后重试。")}</p> : null}
-        {ready && state === "done" && hits.length === 0 ? <p className="py-10 text-center text-[12.5px] text-neutral-400">{tt("没有找到相关消息")}</p> : null}
-        <ul className="divide-y divide-neutral-100">
+        {!ready ? <p className="py-10 text-center text-[12px] text-stone-400">{tt("至少输入 2 个字")}</p> : null}
+        {ready && state === "loading" ? <p className="py-10 text-center text-[12px] text-stone-400">{tt("正在搜索…")}</p> : null}
+        {ready && state === "error" ? <p className="py-10 text-center text-[12px] text-rose-600">{tt("搜索失败，请稍后重试。")}</p> : null}
+        {ready && state === "done" && hits.length === 0 ? <p className="py-10 text-center text-[12px] text-stone-400">{tt("没有找到相关消息")}</p> : null}
+        <ul className="space-y-0.5 px-1.5">
           {hits.map((hit) => {
             const preview = previewText(hit, fallbacks);
             const ranges = hit.message.body ? hit.highlights : [];
@@ -262,19 +264,19 @@ export function SearchView({
                 <button
                   type="button"
                   onClick={() => onOpenResult(hit.conversation.id, hit.message.seq)}
-                  className="block w-full px-2 py-2.5 text-left hover:bg-neutral-50"
+                  className="block w-full rounded-lg px-2 py-2 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
                   data-search-result=""
                 >
-                  <div className="flex items-baseline justify-between gap-2 text-[11.5px] text-neutral-400">
+                  <div className="flex items-baseline justify-between gap-2 text-[11px] text-stone-400">
                     <span className="min-w-0 truncate">
-                      <span className="font-medium text-neutral-600">{hit.conversation.title}</span>
+                      <span className="font-medium text-stone-600">{hit.conversation.title}</span>
                       {sender ? ` · ${sender}` : ""}
                     </span>
                     <time dateTime={hit.message.created_at} className="shrink-0">
                       {formatTime(hit.message.created_at)}
                     </time>
                   </div>
-                  <div className="mt-0.5 line-clamp-2 break-words text-[13px] text-neutral-800">
+                  <div className="mt-0.5 line-clamp-2 break-words text-[13px] text-stone-800">
                     <Highlighted segments={segments} />
                   </div>
                 </button>
@@ -288,7 +290,7 @@ export function SearchView({
               type="button"
               disabled={loadingMore}
               onClick={() => void run(cursor)}
-              className={QUIET}
+              className="rounded-lg px-2 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 disabled:opacity-40"
             >
               {loadingMore ? tt("正在加载…") : tt("加载更多")}
             </button>

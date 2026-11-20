@@ -3,6 +3,7 @@
 // 搜索筛选：会话、发送人、类型、时间。把界面状态翻成接口参数的规则写成纯函数。
 import { useUI } from "../../../i18n/ui/useUI";
 import type { SearchParams } from "../../../lib/im/search-api";
+import { CollectionFilterSelect } from "../../collection-chrome";
 import type { ImMessageKind } from "../../../lib/im/types";
 
 export type TimeRange = "any" | "day" | "week" | "month" | "custom";
@@ -76,9 +77,10 @@ export function filtersActive(filters: SearchFilterState): boolean {
   return Object.entries(filters).some(([key, value]) => (key === "range" ? value !== "any" : Boolean(value)));
 }
 
-const selectClass =
-  "min-w-0 rounded-lg border-0 bg-neutral-100/80 px-2 py-1.5 text-[12px] text-neutral-700 focus:outline-none";
+const dateClass =
+  "min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-1 text-[12px] text-stone-700 outline-none focus:border-stone-400";
 
+/** Sender, type and time (and the conversation in LeoChat's list search): the shared filter select, not bare `<select>`. */
 export function SearchFilters({
   value,
   onChange,
@@ -94,69 +96,63 @@ export function SearchFilters({
 }) {
   const tt = useUI();
   const set = (patch: Partial<SearchFilterState>) => onChange({ ...value, ...patch });
+  const ranges: Array<{ value: TimeRange; label: string }> = [
+    { value: "any", label: tt("不限时间") },
+    { value: "day", label: tt("最近一天") },
+    { value: "week", label: tt("最近 7 天") },
+    { value: "month", label: tt("最近 30 天") },
+    { value: "custom", label: tt("自定义范围") },
+  ];
   return (
-    <div className="flex items-center gap-2 overflow-x-auto" data-search-filters="">
+    <div className="flex items-center gap-1.5 overflow-x-auto" data-search-filters="">
       {conversationLocked ? null : (
-        <select
-          aria-label={tt("会话")}
+        <CollectionFilterSelect
+          name="conversation"
+          size="compact"
+          searchable
+          label={tt("会话")}
+          allLabel={tt("全部会话")}
           value={value.conversationId}
-          onChange={(event) => set({ conversationId: event.target.value })}
-          className={selectClass + " max-w-[10rem]"}
-        >
-          <option value="">{tt("全部会话")}</option>
-          {conversations.map((conversation) => (
-            <option key={conversation.id} value={conversation.id}>
-              {conversation.title}
-            </option>
-          ))}
-        </select>
+          options={conversations.map((conversation) => ({ value: conversation.id, label: conversation.title }))}
+          onChange={(conversationId) => set({ conversationId })}
+        />
       )}
-      <select
-        aria-label={tt("发送人")}
+      <CollectionFilterSelect
+        name="sender"
+        size="compact"
+        searchable={senders.length > 8}
+        label={tt("发送人")}
+        allLabel={tt("所有发送人")}
         value={value.from}
-        onChange={(event) => set({ from: event.target.value })}
-        className={selectClass + " max-w-[9rem]"}
-      >
-        <option value="">{tt("所有发送人")}</option>
-        {senders.map((sender) => (
-          <option key={sender.id} value={sender.id}>
-            {sender.name}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label={tt("类型")}
+        options={senders.map((sender) => ({ value: sender.id, label: sender.name }))}
+        onChange={(from) => set({ from })}
+      />
+      <CollectionFilterSelect
+        name="kind"
+        size="compact"
+        label={tt("类型")}
         value={value.kind}
-        onChange={(event) => set({ kind: event.target.value as ImMessageKind | "" })}
-        className={selectClass}
-      >
-        {SEARCH_KINDS.map((entry) => (
-          <option key={entry.kind} value={entry.kind}>
-            {tt(entry.label)}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label={tt("时间")}
+        options={SEARCH_KINDS.map((entry) => ({ value: entry.kind, label: tt(entry.label) }))}
+        onChange={(kind) => set({ kind: kind as ImMessageKind | "" })}
+      />
+      <CollectionFilterSelect
+        name="time"
+        size="compact"
+        label={tt("时间")}
         value={value.range}
-        onChange={(event) => set({ range: event.target.value as TimeRange })}
-        className={selectClass}
-      >
-        <option value="any">{tt("不限时间")}</option>
-        <option value="day">{tt("最近一天")}</option>
-        <option value="week">{tt("最近 7 天")}</option>
-        <option value="month">{tt("最近 30 天")}</option>
-        <option value="custom">{tt("自定义范围")}</option>
-      </select>
+        defaultValue="any"
+        options={ranges}
+        onChange={(range) => set({ range: range as TimeRange })}
+      />
       {value.range === "custom" ? (
-        <span className="flex items-center gap-1 text-[12px] text-neutral-500">
+        <span className="flex items-center gap-1 text-[12px] text-stone-500">
           <input
             type="date"
             aria-label={tt("开始日期")}
             value={value.customAfter}
             max={value.customBefore || undefined}
             onChange={(event) => set({ customAfter: event.target.value })}
-            className={selectClass}
+            className={dateClass}
           />
           —
           <input
@@ -165,7 +161,7 @@ export function SearchFilters({
             value={value.customBefore}
             min={value.customAfter || undefined}
             onChange={(event) => set({ customBefore: event.target.value })}
-            className={selectClass}
+            className={dateClass}
           />
         </span>
       ) : null}
@@ -173,7 +169,7 @@ export function SearchFilters({
         <button
           type="button"
           onClick={() => onChange({ ...EMPTY_FILTERS, conversationId: conversationLocked ? value.conversationId : "" })}
-          className="text-[12px] text-neutral-500 underline hover:text-neutral-800"
+          className="rounded-lg px-2 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100"
         >
           {tt("清除筛选")}
         </button>
