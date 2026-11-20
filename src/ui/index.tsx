@@ -48,6 +48,7 @@ export {
 } from "./Toast";
 
 export { BackButton, type BackButtonProps } from "./BackButton";
+export { Breadcrumb, type BreadcrumbItem, type BreadcrumbProps } from "./Breadcrumb";
 
 /* ---------- Modal: scale+fade in, Escape + backdrop close, focus trap ---------- */
 
