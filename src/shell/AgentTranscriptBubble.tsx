@@ -163,11 +163,7 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
     "label" in model && typeof model.label === "string" ? model.label : "";
   const body = <>
     {modelLabel && <div data-agent-model="" className="mb-1 text-[12px] text-stone-400">{modelLabel}</div>}
-    {author && <div data-message-author="" className="mb-1 flex items-center gap-1.5 text-[12px] text-[var(--muted-foreground)]">
-      <span aria-hidden="true" className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--background-secondary)] font-medium text-[var(--foreground)]">{author.initial}</span>
-      <span className="min-w-0 truncate">{author.name || tt("参与者")}</span>
-    </div>}
-    <TranscriptBody {...props} />
+    <TranscriptBody {...props} author={author} />
   </>;
   const engineLabel = typeof message.meta?.engine_label === "string" ? message.meta.engine_label : "";
   const labelledBody = engineLabel ? (
@@ -296,7 +292,22 @@ function MessageActions({
   );
 }
 
+/**
+ * Another person's name, directly above their bubble and aligned with it (2026-11-20 rulings (6)): a small initial
+ * and the person's `name` from the server. The viewer's own messages never get one (`messageAuthor`).
+ */
+function MessageAuthorLabel({ author }: { author: MessageAuthor }) {
+  const tt = useUI();
+  return (
+    <div data-message-author="" className="flex min-w-0 max-w-[85%] items-center gap-1.5 text-[12px] text-stone-500 dark:text-stone-400">
+      <span aria-hidden="true" className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-stone-200 text-[11px] font-medium text-stone-600 dark:bg-neutral-700 dark:text-neutral-200">{author.initial}</span>
+      <span className="min-w-0 truncate">{author.name || tt("参与者")}</span>
+    </div>
+  );
+}
+
 function TranscriptBody({
+  author,
   message,
   streaming = false,
   stopped = false,
@@ -310,7 +321,7 @@ function TranscriptBody({
   highlightQuery,
   onNativeAnswer,
   onOpenAttachment,
-}: AgentTranscriptBubbleProps) {
+}: AgentTranscriptBubbleProps & { author?: MessageAuthor | null }) {
   const tt = useUI();
   const artifactLabels = agentArtifactLabels(tt);
 
@@ -358,6 +369,7 @@ function TranscriptBody({
     const attachments = message.meta?.attachments || [];
     return (
       <div className="group flex flex-col items-end gap-1.5" data-testid="task-user-bubble">
+        {author && <MessageAuthorLabel author={author} />}
         {attachments.length > 0 && (
           <div className="flex max-w-[85%] select-none flex-wrap justify-end gap-1.5" data-transcript-attachments="">
             {attachments.map((attachment, index) => (
