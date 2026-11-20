@@ -18,16 +18,15 @@ test("history APIs resolve the injected desktop gateway at request time", () => 
   assert.doesNotMatch(computer, /fetch\(`\$\{GATEWAY_BASE\}/);
 });
 
-test("desktop history is account-wide while the web portal keeps main-site scope", () => {
+test("desktop and web portal history include tasks from every site", () => {
   // Paired worktree (<unit>-oceanleo next to <unit>-oceanleo-ui), then sibling checkouts, then the main checkout via the git common dir.
   const commonDir = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: root, encoding: "utf8" }).trim();
   const namedPortal = resolve(dirname(root), basename(root).replace(/oceanleo-ui$/, "oceanleo"));
   const portal = [namedPortal, "../oceanleo", "../../oceanleo", resolve(dirname(commonDir), "../oceanleo")].find((path) => existsSync(resolve(root, path, "app/history/page.tsx")));
   assert.ok(portal, "portal checkout is present alongside main or worktree root");
   const page = source(`${portal}/app/history/page.tsx`);
-  assert.match(page, /useOptionalClientHost/);
-  assert.match(page, /platform === "desktop" \? undefined : "oceanleo"/);
-  assert.match(page, /<HistoryDetail\s+siteId=\{historySiteId\}/);
+  assert.doesNotMatch(page, /useOptionalClientHost|historySiteId|siteId="oceanleo"/);
+  assert.match(page, /<HistoryDetail(?:\s|\/)/);
 });
 
 test("task history keeps the session list and first-send race contracts wired", () => {
