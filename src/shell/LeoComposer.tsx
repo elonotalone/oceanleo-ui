@@ -33,6 +33,7 @@ import type { UploadProgressSnapshot } from "../lib/upload/progress";
 import type { PreparedImageDimensions } from "../lib/upload/image-compress";
 import { PRIVATE_ATTACHMENT_MAX_BYTES } from "../lib/attachment-url";
 import { AttachmentStrip } from "./AttachmentStrip";
+import { ComposerChatRecordChips, type ComposerChatRecord } from "./forward/chat-record";
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
@@ -266,6 +267,12 @@ export interface LeoComposerProps {
   attachments?: ComposerAttachment[];
   onRemoveAttachment?: (id: string) => void;
   /**
+   * Chats forwarded to this task (session/sites wave): one removable chip "N messages from <chat>" each, above
+   * the attachment tiles. They count as content, so Send works with an empty prompt; the host builds the text.
+   */
+  chatRecords?: readonly ComposerChatRecord[];
+  onRemoveChatRecord?: (id: string) => void;
+  /**
    * C1 (2026-10-31): given → clicking an attachment tile calls this (the host opens
    * it, e.g. in the task right sidebar); the shared Library detail handles opening.
    * rendered. Omitted → AttachmentStrip opens the shared Library detail locally.
@@ -383,6 +390,8 @@ export function LeoComposer({
   onAddAttachments,
   draftKey,
   attachments,
+  chatRecords,
+  onRemoveChatRecord,
   onRemoveAttachment,
   onOpenAttachment,
   onRetryAttachment,
@@ -504,7 +513,7 @@ export function LeoComposer({
   const failedFiles = failedAttachments(attachments);
   const attachmentFailure = attachmentFailureText(tt, attachments);
   const canSend =
-    Boolean(value.trim() || attachments?.length) &&
+    Boolean(value.trim() || attachments?.length || chatRecords?.length) &&
     !attachments?.some((attachment) => attachment.uploading) &&
     failedFiles.length === 0 &&
     // 压缩期间文件还没交给业务，此刻放行会把「没有附件」的消息发出去。
@@ -513,7 +522,7 @@ export function LeoComposer({
     !readOnly && !sendBlocked && (boundExecutionTarget !== null || nativeConversation);
   // 误触停止（F3 2026-11-02）：发送键原地变成停止键，双击「发送」的第二下曾把刚开始的
   // 任务停掉。停止键出现 800ms 内不认，且只认从停止键本身按下去的那一下（键盘不受后者限）。
-  const hasContent = Boolean(value.trim() || attachments?.length || intake.pending.length);
+  const hasContent = Boolean(value.trim() || attachments?.length || chatRecords?.length || intake.pending.length);
   const stopShown = Boolean(onSubmit && loading && onStop && (stopping || !hasContent));
   const stopShownAt = useRef(0);
   const stopPressOk = useRef(false);
@@ -658,6 +667,7 @@ export function LeoComposer({
       )}
       {/* 附件方块（ChatGPT 式，2026-10-31）：在输入区上方；上传中压暗 + 小圆环，失败红徽章，
           悬停 ×。进度来自总线读数（intake.inFlight），压缩中的文件先画成上传中方块。 */}
+      <ComposerChatRecordChips records={chatRecords ?? []} onRemove={onRemoveChatRecord} disabled={readOnly} />
       <AttachmentStrip
         attachments={attachments ?? []}
         onRemove={onRemoveAttachment}

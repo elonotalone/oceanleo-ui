@@ -46,6 +46,7 @@ import {
   type HistoryOpenHint,
 } from "./task-open-cache";
 import { useUI } from "../i18n/ui/useUI";
+import { chatRecordTitle } from "./forward/chat-record";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import { LibraryTaskHistoryWorkspace } from "./library-task-history";
 import { LocalTaskDetail, LocalTaskRows, useLocalTasks } from "./LocalWorkspace";
@@ -1056,8 +1057,9 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9", onOpenEntry }: {
         const isSession = entry.kind === "session";
         const record = isSession ? entry.session : entry.task;
         const on = historyEntryMatchesSelection(entry, sel);
+        // A task started from a forwarded chat shows the person's words or "N messages from <chat>", never the tags.
         const title =
-          record.title ||
+          chatRecordTitle(record.title || "", tt) ||
           (isSession ? entry.session.app_id : "") ||
           tt("未命名任务");
         const timestamp = historyEntryTimestamp(entry);

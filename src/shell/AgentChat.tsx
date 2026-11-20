@@ -70,7 +70,16 @@ import {
 import { AgentProgress } from "./AgentProgress";
 import { AGENT_CONVERSATION_MAX_WIDTH_CLASS } from "./agent-conversation-layout";
 import { agentMessageTimeSeparators } from "./chat-time-separators";
-import { LeoComposer, type ComposerMenuItem } from "./LeoComposer";
+import { LeoComposer, type ComposerAttachment, type ComposerMenuItem } from "./LeoComposer";
+import {
+  OPEN_TASK_PANEL_EVENT,
+  chatRecordTitle,
+  forwardedMessageText,
+  takePendingForward,
+  type ChatBundle,
+  type ForwardTaskTarget,
+  type OpenTaskPanelDetail,
+} from "./forward";
 import type { ExecutionTarget } from "../lib/execution-target";
 // Computer tasks (thin-gateway 2026-11-07): one stream per task, the raw ACP rows the
 // gateway stored (`AcpTranscript`) in this same stream frame and LeoComposer;
@@ -983,6 +992,35 @@ function AgentChatInner({
   // 关掉输入工具的站，首页那一侧的 HomeIntro 同样是关的，`onStart` 不可能带出附件；
   // 真收到就说明有人绕过了 D8，这里显式丢弃而不是默默照单全收。
   const initialAtts = toolsOn ? initialAttachments : undefined;
+  // Chats forwarded to this task (or to a new task draft): one removable chip each in the composer; on send the
+  // message text is each `<chat-record>` block, a blank line, then the prompt. Same path for cloud and computer tasks.
+  const [forwarded, setForwarded] = useState<ChatBundle[]>([]);
+  const adoptForwardedRef = useRef<(bundles: ChatBundle[]) => void>(() => undefined);
+  adoptForwardedRef.current = (bundles: ChatBundle[]) => {
+    if (!bundles.length) return;
+    setForwarded((current) => [...current, ...bundles.filter((bundle) => !current.some((known) => known.id === bundle.id))]);
+    const files = bundles.flatMap((bundle) => bundle.mode === "file" && bundle.attachment
+      ? [bundle.attachment as unknown as ComposerAttachment] : []);
+    if (files.length && toolsOn) atts.addComposerAttachments(files);
+  };
+  useEffect(() => {
+    const target: ForwardTaskTarget = taskId ? { kind: "task", taskId, title: "" } : { kind: "new-task" };
+    adoptForwardedRef.current(takePendingForward(target));
+    const onOpenTaskPanel = (event: Event) => {
+      const detail = (event as CustomEvent<OpenTaskPanelDetail | undefined>).detail;
+      if ((detail?.taskId || "") !== (taskId || "")) return;
+      adoptForwardedRef.current(takePendingForward(target));
+    };
+    window.addEventListener(OPEN_TASK_PANEL_EVENT, onOpenTaskPanel);
+    return () => window.removeEventListener(OPEN_TASK_PANEL_EVENT, onOpenTaskPanel);
+  }, [taskId]);
+  const removeForwarded = useCallback((id: string) => {
+    const bundle = forwarded.find((item) => item.id === id);
+    setForwarded((current) => current.filter((item) => item.id !== id));
+    const fileId = bundle?.mode === "file" ? (bundle.attachment as { id?: unknown } | null | undefined)?.id : undefined;
+    if (typeof fileId === "string" && fileId) atts.removeAttachment(fileId);
+  }, [forwarded, atts]);
+  const forwardedChips = useMemo(() => forwarded.map((bundle) => ({ id: bundle.id, title: bundle.title, messages: bundle.messages })), [forwarded]);
 
   useEffect(() => {
     setBranchTaskId(null);
@@ -2188,7 +2226,7 @@ function AgentChatInner({
   // program). A draft creates its task first. On a refusal (409) the composer keeps
   // the text; the user's own row, and the program's error row, arrive on the socket.
   async function sendAcpMessage(retry?: (typeof acpPendingSends)[number], providedText?: string) {
-    const text = retry ? retry.text : (providedText ?? input).trim();
+    const text = retry ? retry.text : providedText !== undefined ? providedText.trim() : forwardedMessageText(forwarded, input);
     const uploaded = retry ? retry.attachments : providedText !== undefined ? [] : toolsOn ? atts.ready() : [];
     if ((!text && uploaded.length === 0) || acpBusy || (pendingInFlight && !retry?.restored) || acpComposerDisabled || (!taskId && !retry && (!acpProgram || !acpComputerId))) return;
     if (providedText === undefined && toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
@@ -2221,6 +2259,7 @@ function AgentChatInner({
     if (providedText === undefined && (!retry || input.trim() === text)) {
       setInput("");
       atts.clear();
+      if (!retry) setForwarded([]);
     }
     void acpScroll.resumeFollowing();
     setAcpBusy(true);
@@ -2394,7 +2433,8 @@ function AgentChatInner({
 
   async function send(orgId?: string, executionTarget?: ExecutionTarget, connectorText?: string): Promise<boolean> {
     const fromConnector = connectorText !== undefined;
-    const prompt = (connectorText ?? input).trim();
+    const submittedForwarded = fromConnector ? [] : forwarded;
+    const prompt = forwardedMessageText(submittedForwarded, connectorText ?? input);
     // Allow send when there's an attachment even if the text is empty. But block
     // while any attachment is still uploading.
     // 关掉输入工具时不存在任何用户附件来源，附件相关的分支一律走空集，
@@ -2412,7 +2452,7 @@ function AgentChatInner({
       setBusy(true);
       const created = await edit.flow.start(prompt || tt("请分析我上传的文件。"), edit.binding, { attachments: uploaded, orgId, executionTarget });
       setBusy(false);
-      if (created) { if (!fromConnector) { setInput(""); atts.clear(); } adoptOwnedTask(created); }
+      if (created) { if (!fromConnector) { setInput(""); atts.clear(); setForwarded([]); } adoptOwnedTask(created); }
       return Boolean(created);
     }
     const submittedInput = input;
@@ -2421,10 +2461,12 @@ function AgentChatInner({
       if (fromConnector) return;
       setInput((current) => (current ? current : submittedInput));
       atts.restoreReady(submittedAttachments);
+      setForwarded((current) => (current.length ? current : submittedForwarded));
     };
     if (!fromConnector) {
       setInput("");
       atts.clear();
+      setForwarded([]);
     }
     const effectivePrompt = prompt || tt("请分析我上传的文件。");
     const turn = captureEditorTurn(effectivePrompt);
@@ -3056,7 +3098,8 @@ function AgentChatInner({
   const firstUserMessage = computerTask
     ? acpView.turns.find((turn) => turn.text.trim())?.text || messages.find((message) => message.role === "user")?.content
     : messages.find((message) => message.role === "user")?.content;
-  const convoSummary = taskHeaderTitle(taskTitle, firstUserMessage, tt("新任务"));
+  // A forwarded chat record is never the title: the person's words, else "N messages from <chat>".
+  const convoSummary = taskHeaderTitle(chatRecordTitle(taskTitle, tt), firstUserMessage ? chatRecordTitle(firstUserMessage, tt) : firstUserMessage, tt("新任务"));
 
   // ---------------------------------------------------------------------
   // 单行顶栏（操作员 2026-09-07：图 466f833a 布局 + 3f9d0f8c 图标 + 662b8bb0 搜索态）
@@ -3548,6 +3591,8 @@ function AgentChatInner({
             attachments={toolsOn ? atts.composerAttachments : undefined}
             onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
             onRetryAttachment={toolsOn ? atts.retryAttachment : undefined}
+            chatRecords={forwardedChips}
+            onRemoveChatRecord={removeForwarded}
             // Refresh keeps the follow-up text and its Library files; 「从资料库添加文件」.
             draftKey={taskId ? `task:${taskId}` : undefined}
             onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
@@ -3648,6 +3693,8 @@ function AgentChatInner({
           attachments={toolsOn ? atts.composerAttachments : undefined}
           onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
           onRetryAttachment={toolsOn ? atts.retryAttachment : undefined}
+          chatRecords={forwardedChips}
+          onRemoveChatRecord={removeForwarded}
           draftKey={taskId ? `task:${taskId}` : undefined}
           onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
           onVoiceTranscript={handleVoiceTranscript}

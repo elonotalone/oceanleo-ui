@@ -20,6 +20,7 @@ import { ApprovalCard, parseApprovalMessage } from "./ApprovalCard";
 import { ChatTimeSeparator } from "./ChatTimeSeparator";
 import { cloudHealthTone, deviceStatusNoticeLine, deviceStatusNoticeTime } from "../lib/local-agent-task";
 import { TranscriptApp, transcriptAppCall } from "./mcp-apps/TranscriptApp";
+import { TranscriptChatRecord, hasChatRecord, splitChatRecords } from "./forward/chat-record";
 
 export function agentArtifactLabels(
   tt: UITranslate,
@@ -367,6 +368,12 @@ function TranscriptBody({
 
   if (message.role === "user") {
     const attachments = message.meta?.attachments || [];
+    // A chat forwarded into the task: one collapsed chip per `<chat-record>` block, then the prompt (never the tags).
+    const segments = hasChatRecord(message.content) ? splitChatRecords(message.content) : null;
+    const records = segments ? segments.flatMap((segment) => (segment.kind === "record" ? [segment.record] : [])) : [];
+    const userText = segments
+      ? segments.flatMap((segment) => (segment.kind === "text" ? [segment.text] : [])).join("\n\n")
+      : message.content;
     return (
       <div className="group flex flex-col items-end gap-1.5" data-testid="task-user-bubble">
         {author && <MessageAuthorLabel author={author} />}
@@ -381,9 +388,10 @@ function TranscriptBody({
             ))}
           </div>
         )}
-        {message.content && (
+        {records.map((record, index) => <TranscriptChatRecord key={`record-${index}`} record={record} />)}
+        {userText && (
           <div className="min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-[15px] leading-relaxed text-neutral-900 [overflow-wrap:anywhere]">
-            <HighlightedText text={message.content} query={highlightQuery} />
+            <HighlightedText text={userText} query={highlightQuery} />
           </div>
         )}
         {onBranch && (
