@@ -2,11 +2,23 @@
 
 // 新任务输入框（首页 / 任务起步）上的「发给人」：默认动作仍是交给 agent（发送键、Enter 不变）；
 // 这里另选几个人，打的字成为一个新任务（人的会话）的第一条消息 → `POST /v1/task-rooms` → 打开这个任务。
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { MessagePromptDialog, PRIMARY, QUIET } from "../MessageSettingsFrame";
 import { MemberPicker } from "../people/MemberPicker";
-import { TASK_TITLE_MAX, createTaskRoom, newClientId } from "./task-room-calls";
+import { TASK_TITLE_MAX, createTaskRoom, knownTaskRoomsAvailability, newClientId, taskRoomsAvailable } from "./task-room-calls";
+
+/** True once this server is known to have tasks with people; before the database change the entry stays hidden. */
+function useTaskRoomsAvailable(): boolean {
+  const [available, setAvailable] = useState(() => knownTaskRoomsAvailability() === true);
+  useEffect(() => {
+    if (available) return undefined;
+    let alive = true;
+    void taskRoomsAvailable().then((value) => { if (alive && value) setAvailable(true); });
+    return () => { alive = false; };
+  }, [available]);
+  return available;
+}
 import { openTaskRoom } from "./open-task";
 
 /** 默认任务名：第一行文字，截到上限。 */
@@ -31,8 +43,10 @@ export function SendToPeopleButton({ text, blockedReason, options, onSent }: {
 }) {
   const tt = useUI();
   const [open, setOpen] = useState(false);
+  const available = useTaskRoomsAvailable();
   const empty = !text.trim();
   const label = tt("发给人");
+  if (!available) return null;
   return (
     <>
       <button

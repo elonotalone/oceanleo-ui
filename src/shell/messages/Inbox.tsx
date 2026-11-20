@@ -20,7 +20,7 @@ import { NewConversationDialog } from "./groups/NewConversationDialog";
 import { imStore, useImConnection, useImInbox, useImResync } from "./realtime/hooks";
 import { SearchView } from "./search/SearchView";
 import { conversationOpenAction, useMessagesHost } from "./host-state";
-import { inboxRowsFor, type InboxView } from "./inbox-view";
+import { inboxRowsFor, isTaskConversation, type InboxView } from "./inbox-view";
 import { runConversationOpen } from "./tasks/open-task";
 import { ensureStartTaskSelectionAction } from "./tasks/StartTaskSelectionAction";
 
@@ -88,6 +88,7 @@ export function Inbox(props: InboxProps) {
   });
 
   const rows = useMemo(() => inboxRowsFor(inbox.items, view), [inbox.items, view]);
+  const hasTaskRows = useMemo(() => inbox.items.some(isTaskConversation), [inbox.items]);
   // 只看任务、已加载的这几页里一个都没有、后面还有：自己往下翻一页（直到有或翻完）。
   const needMoreTasks = view === "task" && rows.length === 0 && Boolean(inbox.nextCursor) && !inbox.loading && !inbox.error;
   useEffect(() => {
@@ -155,7 +156,8 @@ export function Inbox(props: InboxProps) {
       ) : (
       <>
       <InboxNoticesRow active={props.noticesActive === true} onOpen={props.onOpenNotices} />
-      <div role="tablist" aria-label={tt("聊天筛选")} data-inbox-filter={view} className="flex shrink-0 gap-1 px-3 pb-1.5 pt-1">
+      {/* Only once there is a task in the list (none exist before the database change): today's inbox until then. */}
+      {hasTaskRows || view === "task" ? <div role="tablist" aria-label={tt("聊天筛选")} data-inbox-filter={view} className="flex shrink-0 gap-1 px-3 pb-1.5 pt-1">
         {([["all", tt("全部")], ["task", tt("任务（列表筛选）")]] as const).map(([id, label]) => (
           <button
             key={id}
@@ -169,7 +171,7 @@ export function Inbox(props: InboxProps) {
             {label}
           </button>
         ))}
-      </div>
+      </div> : null}
       <div
         className="min-h-0 flex-1 overflow-y-auto"
         onScroll={(event) => {

@@ -58,9 +58,45 @@ export function normalizeRoomSummary(raw: unknown): TaskRoomSummaryLite | null {
   };
 }
 
+// 这台网关上有没有任务功能（迁移上了没有）。只记确定的答案：读成功 = 有；503 / 没有这条路由 = 没有；
+// 别的失败（没登录、网络）不记，下次再问。入口（例如「发给人」）在确定「有」之前不出现：迁移前一切照旧。
+let availability: boolean | null = null;
+let availabilityProbe: Promise<boolean> | null = null;
+
+function noteAvailability(result: TaskRoomsResult<unknown>): void {
+  if (result.ok) availability = true;
+  else if (result.unavailable) availability = false;
+}
+
+/** 已知的答案（没问过 / 没问出来 = null）。 */
+export function knownTaskRoomsAvailability(): boolean | null {
+  return availability;
+}
+
+/** 任务功能在不在：一次便宜的读（我的任务列表），整页共用一个答案。 */
+export function taskRoomsAvailable(): Promise<boolean> {
+  if (availability !== null) return Promise.resolve(availability);
+  availabilityProbe ??= taskRoomsApi.listMyRooms().then((result) => {
+    noteAvailability(result);
+    availabilityProbe = null;
+    return availability === true;
+  }, () => {
+    availabilityProbe = null;
+    return false;
+  });
+  return availabilityProbe;
+}
+
+/** 测试用：忘掉答案。 */
+export function resetTaskRoomsAvailability(): void {
+  availability = null;
+  availabilityProbe = null;
+}
+
 /** 我是成员的任务（不含项目根任务），最新活动在前。`signal` 已中止时不再整理结果。 */
 export async function listMyTaskRooms(signal?: AbortSignal): Promise<TaskRoomCall<TaskRoomSummaryLite[]>> {
   const result = await taskRoomsApi.listMyRooms();
+  noteAvailability(result);
   if (signal?.aborted) return { ok: false, unavailable: false, status: 0, code: "aborted", message: "" };
   if (!result.ok) return failed(result);
   const rows = Array.isArray((result.data as { rooms?: unknown })?.rooms) ? (result.data.rooms as unknown[]) : [];

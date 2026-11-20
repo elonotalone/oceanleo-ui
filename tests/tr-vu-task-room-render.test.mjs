@@ -28,6 +28,9 @@ const dialogFrame = dataModule(`
   export function MessageSettingsDialog({ title, children }) {
     return React.createElement("div", { "data-dialog": title }, children);
   }
+  export function MessagePromptDialog({ title, children }) {
+    return React.createElement("div", { "data-dialog": title }, children);
+  }
 `);
 // One stub client for every component: each test sets the answers and reads the calls.
 globalThis.__vu = { calls: [], answers: {} };
@@ -347,4 +350,49 @@ test("TaskStackPanel: only the top entry shows; inside it cards push and Back po
     await view.rerender(React.createElement(TaskStackPanel, props([])));
     assert.equal(view.host.querySelector("[data-task-stack-panel]"), null);
   } finally { await view.close(); }
+});
+
+// ---------------------------------------------------------------------------------------------- before the database change
+test("availability: a 503 means no task entries (cached); a successful read means yes; other failures ask again", async () => {
+  const calls = await import(await compileModule("src/shell/messages/tasks/task-room-calls.ts", { "../../../lib/task-rooms-api": api }));
+  globalThis.__vu.calls = [];
+  globalThis.__vu.answers = { listMyRooms: { ok: false, unavailable: false, status: 0, code: "network", message: "" } };
+  assert.equal(await calls.taskRoomsAvailable(), false);
+  assert.equal(calls.knownTaskRoomsAvailability(), null, "a network failure is not an answer");
+  globalThis.__vu.answers = { listMyRooms: { ok: false, unavailable: true, status: 503, code: "task_rooms_unavailable", message: "" } };
+  assert.equal(await calls.taskRoomsAvailable(), false);
+  assert.equal(await calls.taskRoomsAvailable(), false);
+  assert.equal(globalThis.__vu.calls.filter(([name]) => name === "listMyRooms").length, 2, "the 503 answer is kept");
+  calls.resetTaskRoomsAvailability();
+  globalThis.__vu.answers = { listMyRooms: { ok: true, data: { rooms: [] } } };
+  assert.equal(await calls.taskRoomsAvailable(), true);
+  assert.equal(calls.knownTaskRoomsAvailability(), true);
+});
+
+test("Send to people stays hidden until the server is known to have tasks with people", async () => {
+  globalThis.__vuAvailable = false;
+  const { SendToPeopleButton } = await import(await compileModule("src/shell/messages/tasks/SendToPeople.tsx", {
+    "../../../i18n/ui/useUI": ui,
+    "../MessageSettingsFrame": dialogFrame,
+    "../people/MemberPicker": dataModule("export function MemberPicker(){ return null; }"),
+    "./open-task": dataModule("export function openTaskRoom(){}"),
+    "./task-room-calls": dataModule(`
+      export const TASK_TITLE_MAX = 80;
+      export function newClientId(){ return "c"; }
+      export async function createTaskRoom(){ return { ok: false, unavailable: true }; }
+      export function knownTaskRoomsAvailability(){ return null; }
+      export function taskRoomsAvailable(){ return Promise.resolve(globalThis.__vuAvailable); }
+    `),
+  }));
+  const hidden = await mount(React.createElement(SendToPeopleButton, { text: "hello", onSent() {} }));
+  try {
+    await flush();
+    assert.equal(hidden.host.querySelector("[data-composer-send-people]"), null, "today's task box before the database change");
+  } finally { await hidden.close(); }
+  globalThis.__vuAvailable = true;
+  const shown = await mount(React.createElement(SendToPeopleButton, { text: "hello", onSent() {} }));
+  try {
+    await flush();
+    assert.ok(shown.host.querySelector("[data-composer-send-people]"));
+  } finally { await shown.close(); }
 });
