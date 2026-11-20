@@ -61,9 +61,9 @@ test("project records open in place under /history (no interstitial)", () => {
   assert.doesNotMatch(masterDetail, /loaded\.kind === "project"/);
   assert.doesNotMatch(masterDetail, /kind: "project"/);
   assert.doesNotMatch(masterDetail, /项目记录不会显示在普通历史中/);
-  // 站点归属守卫仍在：别站的会话 / 旧任务照旧拒绝。
-  assert.match(masterDetail, /siteId && session\.site_id !== siteId/);
-  assert.match(masterDetail, /siteId &&\n\s*taskResult\.data\.task\.site_id/);
+  // Session / sites wave 2026-11-21: the site-mismatch guard is gone — every site's sessions and tasks open on the main site.
+  assert.doesNotMatch(masterDetail, /siteId && session\.site_id !== siteId/);
+  assert.doesNotMatch(masterDetail, /siteId &&\n\s*taskResult\.data\.task\.site_id/);
   // 移进项目不再把行从列表删掉，只换项目标注。
   assert.doesNotMatch(masterDetail, /patch\.project_id[\s\S]{0,40}list\.filter/);
 });

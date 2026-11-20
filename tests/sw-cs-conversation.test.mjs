@@ -143,7 +143,7 @@ const { ConversationView }=await import(await compileModule("src/shell/messages/
   "../people/ProfileCard":no("ProfileCard"), "../report/ReportDialog":no("ReportDialog"),
   "./MessageList":dataModule(`import React from ${JSON.stringify(reactUrl)};export function useStoreEvents(){}export function MessageList(){return React.createElement('div',{'data-test-messages':''})}`),
   "./MessageItem":dataModule('export function useMessageHandlers(){return {}}'),
-  "./PinnedBar":no("PinnedBar"), "./ForwardMessagesDialog":no("ForwardMessagesDialog"),
+  "./PinnedBar":no("PinnedBar"),
   "./TypingLine":dataModule('export function TypingLine(){return null}export function useTypingUsers(){return []}'),
   "./WorkConversationHeader":no("WorkConversationHeader"),
   "../call/chat":dataModule(`export function CallButton(){return null}export function CallChatProvider({children}){return children}export function callMetaOf(){return null}export function callMetaUserIds(){return []}export function removalReasonFor(){return null}export function useEndedCallIndex(){return ()=>null}`),

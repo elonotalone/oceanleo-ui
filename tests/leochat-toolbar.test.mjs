@@ -68,9 +68,6 @@ test("PanelToolbar：0 项没有 + 号；1 项有 + 且没有菜单；2 项有�
 });
 
 const inboxStubs = {
-  // Task rooms wave TU3: start-task registration and task opening are covered by tr-tu3-inbox-routing.
-  "./tasks/StartTaskSelectionAction": dataModule(`export function ensureStartTaskSelectionAction(){}`),
-  "./tasks/open-task": dataModule(`export function runConversationOpen(){}`),
   "../../i18n/ui/useUI": uiStub,
   "../../lib/im/inbox-api": dataModule(`export async function fetchDraftConversationIds(){ return []; }`),
   "../../lib/im/search-api": dataModule(`export function searchQueryReady(){ return false; }`),
