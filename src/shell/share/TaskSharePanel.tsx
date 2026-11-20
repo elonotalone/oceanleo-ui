@@ -14,6 +14,7 @@ import { taskAccessClient, type TaskAccess, type TaskAccessClient } from "../acc
 import { writeClipboardText } from "./share-clipboard";
 import { ShareLinkError, sendShareLink } from "./share-client";
 import { RW_FN_COPY as fn } from "../../i18n/ui/messages/rw-fn-copy";
+import { TR_PANEL_COPY as trPanel } from "../../i18n/ui/messages/tr-panel-copy";
 import { PeopleSuggestions } from "../messages/people/PeopleDiscovery";
 import type { PersonCard } from "../../lib/im/people-api";
 import { ShareEntryButton } from "./ShareActionBar";
@@ -28,9 +29,14 @@ export interface TaskSharePanelProps {
   client?: TaskAccessClient;
   /** Notify chosen people about the Share link; it grants nothing beyond the link. */
   sendShare?: (shareId: string, userIds: string[]) => Promise<void>;
+  /**
+   * "Invite people to discuss": this agent task becomes a sub task of a new task where people talk (the host asks
+   * to confirm, then opens it). Absent = no such entry (no task rooms, a task that already has a parent task, a viewer).
+   */
+  onDiscuss?: () => void;
 }
 
-export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAccessClient, sendShare = sendShareLink }: TaskSharePanelProps) {
+export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAccessClient, sendShare = sendShareLink, onDiscuss }: TaskSharePanelProps) {
   const tt = useUI();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<"actions" | "snapshot" | "collaborate" | "send">("actions");
@@ -160,6 +166,8 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
           <div className="space-y-2 px-2.5 py-1.5 text-[13px]">
             <p>{tt(text.link)}</p>
             <button type="button" onClick={() => void copyLink(taskUrl)} className="min-h-8 w-full rounded-lg border border-neutral-200/80 px-3 dark:border-white/10">{tt(text.copyTask)}</button>
+            {onDiscuss && <button type="button" data-task-share-discuss="" title={tt(trPanel.discussNote)} onClick={() => { close(); onDiscuss(); }}
+              className="min-h-8 w-full rounded-lg border border-neutral-200/80 px-3 dark:border-white/10">{tt(trPanel.inviteDiscuss)}</button>}
           </div>
         </>}
         {Boolean(readError) && <AutoRecovery identity={`task-share:${taskId}:${page}`} error={readError} recover={() => openPage(page === "send" ? "snapshot" : page)} />}

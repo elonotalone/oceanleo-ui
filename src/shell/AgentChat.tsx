@@ -3114,9 +3114,13 @@ function AgentChatInner({
   const discussAccess = accessState.access;
   const onOwnTaskPage = typeof window !== "undefined" && !sidebarHost &&
     window.location.pathname.replace(/\/+$/, "").endsWith(`/tasks/${encodeURIComponent(taskId || "")}`);
-  const showDiscuss = Boolean(taskId && !hostReadOnly && (onOwnTaskPage || sidebarHost) &&
+  // Who may turn this agent task into a sub task of a new task (the server's rule: owner or accepted collaborator),
+  // only while task rooms answer and the task has no parent task yet.
+  const canDiscuss = Boolean(taskId && !hostReadOnly && (onOwnTaskPage || sidebarHost) &&
     taskChain.state === "ready" && chainAncestors.length === 0 && discussAccess &&
-    (discussAccess.role === "owner" || (discussAccess.role === "collaborate" && discussAccess.state === "member")) &&
+    (discussAccess.role === "owner" || (discussAccess.role === "collaborate" && discussAccess.state === "member")));
+  // The header entry shows once other people are involved; Collaborate always offers "Invite people to discuss".
+  const showDiscuss = canDiscuss && Boolean(discussAccess &&
     (discussAccess.role !== "owner" || discussAccess.general_access === "restricted" ||
       (currentProjectMode !== null && currentProjectMode !== "private")));
   const discuss = async () => {
@@ -3254,7 +3258,8 @@ function AgentChatInner({
       {searchControl}
       {taskId && accessState.access && accessRights.canView && sharePaneShown && (
         <TaskSharePanel key={taskId} taskId={taskId} taskUrl={taskQuoteHref(taskId)}
-          access={{...accessState.access, can_manage: canManageTask}} share={share} />
+          access={{...accessState.access, can_manage: canManageTask}} share={share}
+          onDiscuss={canDiscuss ? () => setDiscussOpen(true) : undefined} />
       )}
       {taskId && !sidebarHost && (
         <TaskActionsMenu
