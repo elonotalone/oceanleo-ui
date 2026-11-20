@@ -1,18 +1,19 @@
-// Tasks and sub tasks for people (task rooms wave 2026-11-20, contract §2.3).
-export { RoomView, RoomView as TaskRoomView, type RoomViewProps, type RoomViewProps as TaskRoomViewProps } from "./RoomView";
-export { TaskCardView, openTaskChildAnywhere, type TaskCardViewProps } from "./TaskCardView";
-export { SummonDialog, newSummonDraft, type SummonDialogProps, type SummonDraft } from "./SummonDialog";
-export { SpinOffDialog, type SpinOffDialogProps } from "./SpinOffDialog";
-export { useTaskRoom, readTaskRoom, patchTaskRoomChild, type TaskRoomState } from "./useTaskRoom";
-export { openTaskChild, taskChildHref, OPEN_TASK_CHILD_EVENT, type OpenTaskChildDetail } from "./open-child";
-export { filterExtraMentions, type ComposerExtraMention, type ComposerExtras } from "./composer-extras";
+// Project sessions and the cards a session shows (session / sites wave 2026-11-21, contract §1 / §2.1 / §2.2).
+// The directory keeps its old name; the export names are what callers use.
+export { ProjectSessionView, type ProjectSessionViewProps } from "./ProjectSessionView";
+export { TaskCardView, type TaskCardViewProps } from "./TaskCardView";
+export { QuoteCardView, type QuoteCardViewProps } from "./QuoteCardView";
+export { QuoteMessagesPanel, type QuoteMessagesPanelProps } from "./QuoteMessagesPanel";
+export { openQuotePanel, OPEN_QUOTE_PANEL_EVENT, type OpenQuotePanelDetail } from "./open-quote";
 export {
+  taskCardOf,
+  quoteCardOf,
+  quoteLineText,
+  quotePreview,
   taskCardStatus,
-  canOpenChild,
-  sendableSubTasks,
-  readableSubTasks,
-  subTaskLabel,
-  summonSelection,
-  handoffTitles,
+  programName,
+  type TaskCardData,
+  type QuoteCardData,
+  type TaskCardAccess,
   type TaskCardStatus,
-} from "./room-model";
+} from "./card-model";

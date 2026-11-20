@@ -715,13 +715,6 @@ export { WorkWorkbench } from "./works-workbench/WorkWorkbench"; export { WorkWo
 
 export { LiveMaterialSearch } from "./bay/asset/LiveMaterialSearch";
 
-// Tasks and sub tasks (task rooms wave 2026-11-20): a task's people conversation, child cards, opening a child.
-export {
-  TaskRoomView, TaskCardView, openTaskChild, OPEN_TASK_CHILD_EVENT, useTaskRoom, SummonDialog,
-  type TaskRoomViewProps, type TaskCardViewProps, type OpenTaskChildDetail, type TaskRoomState,
-} from "./task-room";
-export {
-  taskRoomsApi, createTaskRoomsApi, TASK_ROOMS_UNAVAILABLE,
-  type TaskRoom, type TaskRoomChild, type TaskRoomSummary, type TaskRoomChainItem, type TaskHandoff,
-  type TaskRoomsResult, type TaskRoomsFailure, type SummonPreview, type SummonRequest, type SummonResult,
-} from "../lib/task-rooms-api";
+// Project sessions and the cards a session shows (session / sites wave 2026-11-21).
+export { ProjectSessionView, TaskCardView, QuoteCardView, QuoteMessagesPanel, openQuotePanel, OPEN_QUOTE_PANEL_EVENT, type ProjectSessionViewProps, type TaskCardViewProps, type QuoteCardViewProps, type OpenQuotePanelDetail } from "./task-room";
+export { projectSessionsApi, createProjectSessionsApi, type ProjectSession, type ProjectSessionsUnread, type ProjectSessionsResult, type ProjectSessionsFailure } from "../lib/project-sessions-api";

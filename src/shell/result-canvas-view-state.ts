@@ -13,15 +13,20 @@
  *
  * 纯状态，不渲染任何东西；`tests/workspace-view-state.test.mjs` 把两个 hook 接起来直接跑。
  *
- * Task stack (`view === "task"`): sub tasks and tasks opened beside the main column. A request from inside
- * this right panel pushes; one from the main column (or a host request) replaces the stack with that one entry
- * and shows the panel. Back pops; an empty stack returns to the cards.
+ * Right-panel task / quote (session / sites wave 2026-11-21): `oceanleo:open-task-panel` shows ONE task (or a new
+ * task draft) as `view === "task"`; `oceanleo:open-quote-panel` shows a quote card's snapshot read-only as
+ * `view === "quote"`. No stack: a new request replaces what is shown; Back returns to the cards.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import type { ImMessage } from "../lib/im/types";
+import type { OPEN_TASK_PANEL_EVENT as ForwardTaskPanelEvent } from "./forward";
 import type { WorkspaceLayer } from "./result-canvas-slot-state";
-import { OPEN_TASK_CHILD_EVENT, normalizeTaskEntry, workspaceMaterialAssetRef } from "./workspace-actions";
+import { OPEN_QUOTE_PANEL_EVENT } from "./task-room/open-quote";
+import { normalizeTaskEntry, workspaceMaterialAssetRef } from "./workspace-actions";
+
+/** `OPEN_TASK_PANEL_EVENT` of `./forward` (bound to it by type; no runtime import of the picker module). */
+const OPEN_TASK_PANEL_EVENT: typeof ForwardTaskPanelEvent = "oceanleo:open-task-panel";
 import type {
-  WorkspaceTaskEntry,
   WorkspaceActionEnvelope,
   WorkspaceBayRequest,
   WorkspaceChatRequest,
@@ -38,46 +43,64 @@ export interface WorkspaceViewStateInput {
   setLayer: (layer: WorkspaceLayer) => void;
   panelAction: WorkspaceActionEnvelope | null;
   select: (slot: WorkspaceSlotId) => void;
-  /** Product availability; both China and overseas support LeoBay and LeoChat. `task` (the task stack) is on unless false. */
+  /** Product availability; both China and overseas support LeoBay and LeoChat. `task` (task + quote views) is on unless false. */
   panels: { bay: boolean; leochat: boolean; devices?: boolean; projects?: boolean; settings?: boolean; tasks?: boolean; task?: boolean };
   /** 回到卡片时调：宿主把自己的受控值改成 `"home"`，之后它再切栏位才算一次变化。 */
   onHome?: () => void;
   /**
-   * Where an `oceanleo:open-task-child` request came from, given the element the person just clicked (null when
-   * the request was made in code). `null` = not this workspace's business (another workspace's click).
-   * Default: code requests count as the main column, clicks are ignored.
+   * Whether a task / quote request belongs to this workspace, given the element the person just clicked (null when
+   * the request was made in code). `null` = another workspace's click. Default: code requests are taken, clicks ignored.
+   * A click outside every `[data-workspace-split]` (a portalled menu) counts as a request made in code.
    */
   taskOrigin?: (target: Element | null) => TaskOpenOrigin | null;
-  /** Host request: replace the stack with these entries and show the panel (task page: `[this sub task]`). */
-  taskRequest?: WorkspaceTaskRequest | null;
-  /** A main-column request (or host request) opened the stack: the host shows its right pane. */
+  /** The project a new task draft opened here belongs to (project page / project session), else null. */
+  draftProjectId?: () => string | null;
+  /** A request opened the task / quote view: the host shows its right pane. */
   onTaskReveal?: () => void;
 }
 
 export type TaskOpenOrigin = "panel" | "main";
 
-export interface WorkspaceTaskRequest {
-  nonce: string;
-  entries: WorkspaceTaskEntry[];
-}
+/** What the right panel's task view shows: one task, a new task draft, or a quote card's snapshot. */
+export type WorkspaceTaskPanelEntry =
+  | { kind: "task"; key: number; id: string; title: string }
+  | { kind: "draft"; key: number; projectId: string | null }
+  | { kind: "quote"; key: number; message: ImMessage };
 
-/** Deep enough for any real chain of cards; an endless card loop cannot grow memory. */
-const TASK_STACK_LIMIT = 20;
 /** A request made just before a lazy right pane mounted is still taken within this window. */
-const PENDING_TASK_CHILD_MS = 3000;
+const PENDING_PANEL_MS = 3000;
 
-interface PendingTaskChild {
-  entry: WorkspaceTaskEntry;
+type PanelRequest = { kind: "task"; id: string; title: string } | { kind: "draft" } | { kind: "quote"; message: ImMessage };
+
+interface PendingPanelRequest {
+  request: PanelRequest;
   origin: Element | null;
   at: number;
   taken: boolean;
 }
 
+/** `oceanleo:open-task-panel` detail → a task (valid id) or a draft (no id); anything malformed → null. */
+export function normalizeTaskPanelDetail(value: unknown): PanelRequest | null {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  if (raw.taskId === undefined || raw.taskId === null || raw.taskId === "") return { kind: "draft" };
+  const entry = normalizeTaskEntry({ kind: "agent_task", id: raw.taskId, title: raw.title });
+  return entry ? { kind: "task", id: entry.id, title: entry.title } : null;
+}
+
+/** `oceanleo:open-quote-panel` detail → the quote message, or null unless it carries a quote card. */
+export function normalizeQuotePanelDetail(value: unknown): PanelRequest | null {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const message = raw.message as ImMessage | undefined;
+  if (!message || typeof message !== "object" || message.card?.type !== "quote") return null;
+  return { kind: "quote", message };
+}
+
 // The element the person is clicking right now (cleared once that click has been dispatched), and the last
-// open-task-child request with the click it came from. Window-level: the request may arrive before any
-// workspace mounted (a page whose right pane mounts on first open).
+// task / quote request with the click it came from. Window-level: the request may arrive before any workspace
+// mounted (a page whose right pane mounts on first open). The events are not cancelable: `taken` marks the one
+// workspace that took a request.
 let lastInteraction: Element | null = null;
-let pendingTaskChild: PendingTaskChild | null = null;
+let pendingPanel: PendingPanelRequest | null = null;
 const recorderWindows = new WeakSet<object>();
 
 /** Idempotent per window; runs at import in the browser. Hosts and tests may call it earlier. */
@@ -90,12 +113,19 @@ export function installTaskChildRecorder(): void {
     win.setTimeout(() => { lastInteraction = null; }, 0);
   }, true);
   // Registered before any workspace listener, so it runs first for every request.
-  win.addEventListener(OPEN_TASK_CHILD_EVENT, (event) => {
-    const entry = normalizeTaskEntry((event as CustomEvent).detail);
-    pendingTaskChild = entry ? { entry, origin: lastInteraction, at: Date.now(), taken: false } : null;
-  });
+  const record = (normalize: (detail: unknown) => PanelRequest | null) => (event: Event) => {
+    const request = normalize((event as CustomEvent).detail);
+    pendingPanel = request ? { request, origin: lastInteraction, at: Date.now(), taken: false } : null;
+  };
+  win.addEventListener(OPEN_TASK_PANEL_EVENT, record(normalizeTaskPanelDetail));
+  win.addEventListener(OPEN_QUOTE_PANEL_EVENT, record(normalizeQuotePanelDetail));
 }
 installTaskChildRecorder();
+
+/** A click outside every workspace split (a portalled menu, a dialog) is treated like a request made in code. */
+function effectiveOrigin(target: Element | null): Element | null {
+  return target && target.isConnected && target.closest("[data-workspace-split]") ? target : null;
+}
 
 const defaultTaskOrigin = (target: Element | null): TaskOpenOrigin | null => target ? null : "main";
 
@@ -103,7 +133,7 @@ export interface WorkspaceViewState {
   view: WorkspaceViewId;
   /** 点某个槽位的卡片。 */
   openSlot: (slot: WorkspaceSlotId) => void;
-  /** 点 LeoBay / LeoChat 的卡片；`task` 回到仍在的任务栈。 */
+  /** 点 LeoBay / LeoChat 的卡片；`task` 回到仍在的任务。 */
   openPanel: (panel: WorkspacePanelId | WorkspaceManagedPanelId | "task") => void;
   /** 「返回」：回到卡片首页。 */
   goHome: () => void;
@@ -113,29 +143,31 @@ export interface WorkspaceViewState {
   chatRequest: WorkspaceChatRequest | null;
   /** 从 LeoBay 那一块进 LeoChat 的某条会话。 */
   openChat: (conversationId: string) => void;
-  /** The task stack, bottom first; the last entry is the one shown. */
-  taskStack: WorkspaceTaskEntry[];
-  /** Open a sub task / task: `panel` pushes onto the shown stack, `main` replaces it and shows the panel. */
-  openTask: (entry: WorkspaceTaskEntry, from: TaskOpenOrigin) => void;
-  /** Back from the shown entry; the last one returns to the cards. */
-  popTask: () => void;
+  /** What the task / quote view shows (kept while another view is in front); null = nothing opened yet. */
+  taskPanel: WorkspaceTaskPanelEntry | null;
+  /** Show one task in the panel (replaces whatever it showed); `main` also reveals the pane. */
+  openTask: (entry: { id: string; title: string }, from: TaskOpenOrigin) => void;
+  /** The draft shown in the panel became a real task: keep the same view mounted, now naming the task. */
+  draftCreated: (taskId: string) => void;
+  /** Back from the task / quote view: the cards. */
+  closeTask: () => void;
 }
 
 export function useWorkspaceViewState(
   input: WorkspaceViewStateInput,
 ): WorkspaceViewState {
-  const { selected, layer, setLayer, panelAction, select, panels, onHome, taskRequest } =
-    input;
+  const { selected, layer, setLayer, panelAction, select, panels, onHome } = input;
   const bayOn = panels.bay;
   const chatOn = panels.leochat;
   const taskOn = panels.task !== false;
-  const [taskStack, setTaskStack] = useState<WorkspaceTaskEntry[]>([]);
-  const taskStackRef = useRef(taskStack);
-  taskStackRef.current = taskStack;
-  const layerRef = useRef(layer);
-  layerRef.current = layer;
+  const [taskPanel, setTaskPanel] = useState<WorkspaceTaskPanelEntry | null>(null);
+  const taskPanelRef = useRef(taskPanel);
+  taskPanelRef.current = taskPanel;
+  const panelKey = useRef(0);
   const taskOriginRef = useRef(input.taskOrigin);
   taskOriginRef.current = input.taskOrigin;
+  const draftProjectRef = useRef(input.draftProjectId);
+  draftProjectRef.current = input.draftProjectId;
   const onTaskRevealRef = useRef(input.onTaskReveal);
   onTaskRevealRef.current = input.onTaskReveal;
   const [bayRequest, setBayRequest] = useState<WorkspaceBayRequest | null>(
@@ -168,10 +200,10 @@ export function useWorkspaceViewState(
   // 停在某一块上时它变得不可用了（功能不可用）：回到卡片。
   useEffect(() => {
     if ((layer === "bay" && !bayOn) || (layer === "leochat" && !chatOn) || (layer === "tasks" && !panels.tasks) ||
-        (layer === "task" && (!taskOn || taskStack.length === 0))) {
+        ((layer === "task" || layer === "quote") && (!taskOn || !taskPanel))) {
       setLayer("home");
     }
-  }, [bayOn, chatOn, layer, panels.tasks, setLayer, taskOn, taskStack.length]);
+  }, [bayOn, chatOn, layer, panels.tasks, setLayer, taskOn, taskPanel]);
 
   // `select` 自己会把层换成槽位。
   const openSlot = useCallback(
@@ -184,7 +216,8 @@ export function useWorkspaceViewState(
   const openPanel = useCallback(
     (panel: WorkspacePanelId | WorkspaceManagedPanelId | "task") => {
       if (panel === "task") {
-        if (taskOn && taskStackRef.current.length) setLayer("task");
+        const current = taskPanelRef.current;
+        if (taskOn && current) setLayer(current.kind === "quote" ? "quote" : "task");
         return;
       }
       const enabled = panel === "bay" ? bayOn : panel === "leochat" ? chatOn : panel === "tasks" ? panels.tasks === true : panels[panel] !== false;
@@ -211,75 +244,65 @@ export function useWorkspaceViewState(
     [chatOn, setLayer],
   );
 
-  const openTask = useCallback(
-    (entry: WorkspaceTaskEntry, from: TaskOpenOrigin) => {
-      if (!taskOn) return;
-      const current = taskStackRef.current;
-      const top = current[current.length - 1];
-      let next: WorkspaceTaskEntry[];
-      if (from === "panel" && layerRef.current === "task" && top) {
-        next = top.kind === entry.kind && top.id === entry.id ? current : [...current, entry].slice(-TASK_STACK_LIMIT);
-      } else {
-        next = [entry];
-      }
-      taskStackRef.current = next;
-      setTaskStack(next);
-      setLayer("task");
-      if (from === "main") onTaskRevealRef.current?.();
-    },
-    [setLayer, taskOn],
-  );
+  const show = useCallback((request: PanelRequest, from: TaskOpenOrigin) => {
+    if (!taskOn) return;
+    const key = ++panelKey.current;
+    const next: WorkspaceTaskPanelEntry = request.kind === "task"
+      ? { kind: "task", key, id: request.id, title: request.title }
+      : request.kind === "quote"
+        ? { kind: "quote", key, message: request.message }
+        : { kind: "draft", key, projectId: draftProjectRef.current?.() ?? null };
+    taskPanelRef.current = next;
+    setTaskPanel(next);
+    setLayer(next.kind === "quote" ? "quote" : "task");
+    if (from === "main") onTaskRevealRef.current?.();
+  }, [setLayer, taskOn]);
 
-  const popTask = useCallback(() => {
-    const next = taskStackRef.current.slice(0, -1);
-    taskStackRef.current = next;
-    setTaskStack(next);
-    if (!next.length) goHome();
+  const openTask = useCallback((entry: { id: string; title: string }, from: TaskOpenOrigin) => {
+    const normal = normalizeTaskEntry({ kind: "agent_task", id: entry.id, title: entry.title });
+    if (!normal) return;
+    const current = taskPanelRef.current;
+    if (current?.kind === "task" && current.id === normal.id && layer === "task") return;
+    show({ kind: "task", id: normal.id, title: normal.title }, from);
+  }, [layer, show]);
+
+  const draftCreated = useCallback((taskId: string) => {
+    const current = taskPanelRef.current;
+    if (current?.kind !== "draft" || !taskId) return;
+    const next: WorkspaceTaskPanelEntry = { kind: "task", key: current.key, id: taskId, title: "" };
+    taskPanelRef.current = next;
+    setTaskPanel(next);
+  }, []);
+
+  const closeTask = useCallback(() => {
+    taskPanelRef.current = null;
+    setTaskPanel(null);
+    goHome();
   }, [goHome]);
 
-  // The host's request (task page: the sub task beside its parent task). Each nonce applies once.
-  const seenTaskRequest = useRef<string | null>(null);
-  useEffect(() => {
-    if (!taskOn || !taskRequest || taskRequest.nonce === seenTaskRequest.current) return;
-    seenTaskRequest.current = taskRequest.nonce;
-    const entries = taskRequest.entries
-      .map(normalizeTaskEntry)
-      .filter((entry): entry is WorkspaceTaskEntry => Boolean(entry))
-      .slice(-TASK_STACK_LIMIT);
-    if (!entries.length) return;
-    taskStackRef.current = entries;
-    setTaskStack(entries);
-    setLayer("task");
-    onTaskRevealRef.current?.();
-  }, [setLayer, taskOn, taskRequest]);
-
-  // `oceanleo:open-task-child` from anywhere. The first workspace that recognises the click takes the request
-  // (`preventDefault`, so `openTaskChild` knows it was handled); a click elsewhere is left to its own workspace.
+  // `oceanleo:open-task-panel` / `oceanleo:open-quote-panel` from anywhere. The first workspace that recognises the
+  // click takes the request (marks it taken); a click in another workspace's split is left to that workspace.
   useEffect(() => {
     if (!taskOn || typeof window === "undefined") return undefined;
     installTaskChildRecorder();
-    const classify = (target: Element | null) => (taskOriginRef.current ?? defaultTaskOrigin)(target);
-    const receive = (event: Event) => {
-      if (event.defaultPrevented || pendingTaskChild?.taken) return;
-      const entry = normalizeTaskEntry((event as CustomEvent).detail);
-      if (!entry) return;
-      const from = classify(lastInteraction);
-      if (!from) return;
-      event.preventDefault();
-      if (pendingTaskChild) pendingTaskChild.taken = true;
-      openTask(entry, from);
-    };
-    window.addEventListener(OPEN_TASK_CHILD_EVENT, receive);
-    const pending = pendingTaskChild;
-    if (pending && !pending.taken && Date.now() - pending.at < PENDING_TASK_CHILD_MS) {
+    const classify = (target: Element | null) => (taskOriginRef.current ?? defaultTaskOrigin)(effectiveOrigin(target));
+    const receive = () => {
+      const pending = pendingPanel;
+      if (!pending || pending.taken) return;
       const from = classify(pending.origin);
-      if (from) {
-        pending.taken = true;
-        openTask(pending.entry, from);
-      }
-    }
-    return () => window.removeEventListener(OPEN_TASK_CHILD_EVENT, receive);
-  }, [openTask, taskOn]);
+      if (!from) return;
+      pending.taken = true;
+      show(pending.request, from);
+    };
+    window.addEventListener(OPEN_TASK_PANEL_EVENT, receive);
+    window.addEventListener(OPEN_QUOTE_PANEL_EVENT, receive);
+    const pending = pendingPanel;
+    if (pending && !pending.taken && Date.now() - pending.at < PENDING_PANEL_MS) receive();
+    return () => {
+      window.removeEventListener(OPEN_TASK_PANEL_EVENT, receive);
+      window.removeEventListener(OPEN_QUOTE_PANEL_EVENT, receive);
+    };
+  }, [show, taskOn]);
 
   const view: WorkspaceViewId = layer === "slot" ? (selected === "materials" ? "bay" : selected) : layer;
   return {
@@ -290,18 +313,19 @@ export function useWorkspaceViewState(
     bayRequest,
     chatRequest,
     openChat,
-    taskStack,
+    taskPanel,
     openTask,
-    popTask,
+    draftCreated,
+    closeTask,
   };
 }
 
 /**
  * For the host that owns a split whose right pane mounts on first open (and so has no ResultCanvas listening
- * yet): an `oceanleo:open-task-child` request from this split's main column (or made in code) opens the pane.
- * The request is marked handled at once; the ResultCanvas that then mounts takes it from the window-level
- * record and shows it. With a ResultCanvas already mounted in the split this does nothing (that one handles it).
- * `anchorRef`: any element inside the split's main column.
+ * yet): a task / quote request from this split's main column (or made in code) opens the pane. The ResultCanvas
+ * that then mounts takes the request from the window-level record and shows it. With a ResultCanvas already
+ * mounted in the split this does nothing (that one handles it). `anchorRef`: any element inside the split's main
+ * column. (Name kept from the previous wave; `TaskWorkspaceShell` calls it.)
  */
 export function useTaskChildPaneOpener(anchorRef: RefObject<Element | null>, open: () => void): void {
   const openRef = useRef(open);
@@ -309,16 +333,20 @@ export function useTaskChildPaneOpener(anchorRef: RefObject<Element | null>, ope
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     installTaskChildRecorder();
-    const receive = (event: Event) => {
-      const pending = pendingTaskChild;
-      if (event.defaultPrevented || !pending || pending.taken) return;
+    const receive = () => {
+      const pending = pendingPanel;
+      if (!pending || pending.taken) return;
       const split = anchorRef.current?.closest("[data-workspace-split]");
       if (!split || split.querySelector("[data-workspace-view]")) return;
-      if (pending.origin && !split.contains(pending.origin)) return;
-      event.preventDefault();
+      const origin = effectiveOrigin(pending.origin);
+      if (origin && !split.contains(origin)) return;
       openRef.current();
     };
-    window.addEventListener(OPEN_TASK_CHILD_EVENT, receive);
-    return () => window.removeEventListener(OPEN_TASK_CHILD_EVENT, receive);
+    window.addEventListener(OPEN_TASK_PANEL_EVENT, receive);
+    window.addEventListener(OPEN_QUOTE_PANEL_EVENT, receive);
+    return () => {
+      window.removeEventListener(OPEN_TASK_PANEL_EVENT, receive);
+      window.removeEventListener(OPEN_QUOTE_PANEL_EVENT, receive);
+    };
   }, [anchorRef]);
 }

@@ -1,6 +1,6 @@
-// The task stack inside the real ResultCanvas + SplitWorkspace (task rooms wave, TU2). Setup copied from
-// sidebar-task-workspace.test.mjs (same stubs); the task stack panel itself is a stub that shows its props.
-// The fixture's mount() wraps everything in its own split; the task page's split sits inside it.
+// The right panel's task / quote view inside the real ResultCanvas + SplitWorkspace (session / sites wave, unit US;
+// rewritten from the task rooms wave's stack test). Setup copied from sidebar-task-workspace.test.mjs (same stubs);
+// the panel itself is a stub that shows its props. The fixture's mount() wraps everything in its own split.
 import { W4_SIDEBAR_STUBS } from "./helpers/w4-sidebar-stubs.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -178,10 +178,9 @@ const stackStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   export function TaskStackPanel(props) {
     globalThis.__stackProps = props;
-    const top = props.stack[props.stack.length - 1];
-    return React.createElement("div", { "data-stack-stub": props.stack.map(e => e.id).join(",") },
-      React.createElement("span", { "data-stack-title": true }, top.title),
-      React.createElement("button", { "data-stack-push": true, onClick: () => window.dispatchEvent(new CustomEvent("oceanleo:open-task-child", { detail: { kind: "room", id: "r9", title: "Inner" }, cancelable: true })) }, "card inside"),
+    const entry = props.entry;
+    return React.createElement("div", { "data-stack-stub": entry.kind + ":" + (entry.id || entry.projectId || (entry.message && entry.message.id) || "") },
+      React.createElement("button", { "data-stack-inner": true, onClick: () => window.dispatchEvent(new CustomEvent("oceanleo:open-task-panel", { detail: { taskId: "t9", title: "Inner" } })) }, "task link inside"),
       React.createElement("button", { "data-stack-back": true, onClick: props.onBack }, "back"));
   }
 `);
@@ -197,16 +196,20 @@ const isVisible = node => {
   for (let current = node; current; current = current.parentElement) if (current.hidden || current.classList.contains("hidden") || current.getAttribute("aria-hidden") === "true") return false;
   return true;
 };
-function Page({ request = null }) {
+const QUOTE = { id: "q1", card: { type: "quote", source_title: "Design", count: 1, items: [] } };
+function Page({ taskProjectId = null }) {
   const [open, setOpen] = React.useState(false);
-  const card = () => window.dispatchEvent(new CustomEvent("oceanleo:open-task-child", { detail: { kind: "agent_task", id: "t1", title: "Draft the plan" }, cancelable: true }));
-  return React.createElement("div", { "data-room-page": true }, React.createElement(SplitWorkspace, { workspaceInstanceId: "room-page", fillParent: true,
-    left: React.createElement("button", { "data-main-card": true, onClick: card }, "card in the task"),
-    right: React.createElement(ResultCanvas, { tabs: [], active: "home", showTemplate: false, siteId: "oceanleo", workspaceInstanceId: "room-page", workspaceOpen: open, taskStackRequest: request }),
+  const send = (name, detail) => () => window.dispatchEvent(new CustomEvent(name, { detail }));
+  return React.createElement("div", { "data-room-page": true }, React.createElement(SplitWorkspace, { workspaceInstanceId: "session-page", fillParent: true,
+    left: React.createElement("div", { "data-session-project-id": "p1" },
+      React.createElement("button", { "data-main-card": true, onClick: send("oceanleo:open-task-panel", { taskId: "t1", title: "Draft the plan" }) }, "task card"),
+      React.createElement("button", { "data-main-new": true, onClick: send("oceanleo:open-task-panel", {}) }, "new task"),
+      React.createElement("button", { "data-main-quote": true, onClick: send("oceanleo:open-quote-panel", { message: QUOTE }) }, "quote card")),
+    right: React.createElement(ResultCanvas, { tabs: [], active: "home", showTemplate: false, siteId: "oceanleo", workspaceInstanceId: "session-page", workspaceOpen: open, taskProjectId }),
     library: { open, onOpenChange: setOpen, hideToggle: true } }));
 }
 
-test("a card in the main column opens the closed panel on that sub task; a card inside pushes; Back pops, then the cards", async () => {
+test("a task card in the main column opens the closed panel on that one task; a link inside replaces it; Back → the cards", async () => {
   const view = await mount(React.createElement(Page));
   const q = selector => view.container.querySelector(selector);
   try {
@@ -214,27 +217,47 @@ test("a card in the main column opens the closed panel on that sub task; a card 
     assert.equal(q('[data-room-page] [data-workspace-pane="main"]').getAttribute("data-workspace-pane-state"), "closed");
     await act(async () => q("[data-main-card]").click()); await flush();
     assert.equal(q('[data-room-page] [data-workspace-pane="main"]').getAttribute("data-workspace-pane-state"), "open", "the panel is shown");
-    assert.equal(q("[data-stack-stub]").getAttribute("data-stack-stub"), "t1");
+    assert.equal(q("[data-stack-stub]").getAttribute("data-stack-stub"), "task:t1");
     assert.ok(isVisible(q('[data-workspace-managed-panel="task"]')));
-    assert.equal(q("[data-workspace-view-header]"), null, "the entry carries its own header with Back");
-    await act(async () => q("[data-stack-push]").click()); await flush();
-    assert.equal(q("[data-stack-stub]").getAttribute("data-stack-stub"), "t1,r9");
-    await act(async () => q("[data-main-card]").click()); await flush();
-    assert.equal(q("[data-stack-stub]").getAttribute("data-stack-stub"), "t1", "the main column replaces the stack");
+    assert.equal(q("[data-workspace-view-header]"), null, "the task carries its own header with Back");
+    assert.equal(globalThis.__stackProps.host.instanceId, "session-page");
+    await act(async () => q("[data-stack-inner]").click()); await flush();
+    assert.equal(q("[data-stack-stub]").getAttribute("data-stack-stub"), "task:t9", "no stack: the inner task replaces it");
     await act(async () => q("[data-stack-back]").click()); await flush();
     assert.equal(q('[data-workspace-view]').getAttribute("data-workspace-view"), "home");
     assert.ok(isVisible(q("[data-workspace-home]")));
   } finally { await view.unmount(); }
 });
 
-test("task page: the host request shows the sub task beside its parent task", async () => {
-  const view = await mount(React.createElement(Page, { request: { nonce: "page:0", entries: [{ kind: "agent_task", id: "t7", title: "Numbers" }] } }));
+test("New task from a project session opens a draft in that project; the page's taskProjectId wins", async () => {
+  let view = await mount(React.createElement(Page));
+  let q = selector => view.container.querySelector(selector);
+  try {
+    await flush();
+    await act(async () => q("[data-main-new]").click()); await flush();
+    assert.equal(q("[data-stack-stub]").getAttribute("data-stack-stub"), "draft:p1");
+    assert.equal(q('[data-workspace-managed-panel="task"]').getAttribute("data-workspace-task-view"), "draft");
+  } finally { await view.unmount(); }
+  view = await mount(React.createElement(Page, { taskProjectId: "p2" }));
+  q = selector => view.container.querySelector(selector);
+  try {
+    await flush();
+    await act(async () => q("[data-main-new]").click()); await flush();
+    assert.equal(q("[data-stack-stub]").getAttribute("data-stack-stub"), "draft:p2");
+  } finally { await view.unmount(); }
+});
+
+test("a quote card opens the quote view (its own header, no workspace header)", async () => {
+  const view = await mount(React.createElement(Page));
   const q = selector => view.container.querySelector(selector);
   try {
     await flush();
+    await act(async () => q("[data-main-quote]").click()); await flush();
     assert.equal(q('[data-room-page] [data-workspace-pane="main"]').getAttribute("data-workspace-pane-state"), "open");
-    assert.equal(q("[data-stack-stub]").getAttribute("data-stack-stub"), "t7");
-    assert.equal(q("[data-stack-title]").textContent, "Numbers");
-    assert.equal(globalThis.__stackProps.host.instanceId, "room-page");
+    assert.equal(q('[data-workspace-view]').getAttribute("data-workspace-view"), "quote");
+    assert.equal(q("[data-stack-stub]").getAttribute("data-stack-stub"), "quote:q1");
+    assert.equal(q("[data-workspace-view-header]"), null);
+    await act(async () => q("[data-stack-back]").click()); await flush();
+    assert.equal(q('[data-workspace-view]').getAttribute("data-workspace-view"), "home");
   } finally { await view.unmount(); }
 });
