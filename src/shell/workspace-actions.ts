@@ -59,7 +59,7 @@ export type WorkspaceActionTab = WorkspaceSlotId | "bay" | Exclude<WorkspaceMana
 export type WorkspaceActionIntent = "open" | "edit";
 
 import type { AssetRef } from "./asset-detail/types";
-import { DOMAIN_FAMILIES, domainFamilyProfile, familyForHost, runtimePageOrigin } from "../contracts/domain-family";
+import { domainFamilyProfile, familyForHost, runtimePageOrigin } from "../contracts/domain-family";
 import { isLeoDevPreviewHost } from "../lib/auth/config";
 
 const WORKSPACE_ACTION_INTENTS: readonly WorkspaceActionIntent[] = [
@@ -323,25 +323,11 @@ export function dispatchWorkspaceAction(envelope: WorkspaceActionEnvelope): bool
   );
 }
 
-// COM's profile uses "all" for availability, not as a host allowlist. The
-// explicit family inventories enumerate the functional product hosts; aitools
-// is the documented COM-only host (absent from CN and the twin).
-const PRODUCT_SUBSITES = new Set([
-  ...DOMAIN_FAMILIES.flatMap((family) => {
-    const sites = domainFamilyProfile(family).availableSubsites;
-    return sites === "all" ? [] : sites;
-  }),
-  "aitools",
-]);
-
+// Sub-site hosts are gone (session / sites wave 2026-11-21): only a family's portal host is a product page.
 function productHost(hostname: string): boolean {
   const family = familyForHost(hostname);
   if (!family) return false;
-  const profile = domainFamilyProfile(family);
-  if (hostname === profile.registrableDomain) return true;
-  return [...PRODUCT_SUBSITES].some((site) =>
-    hostname === `${site}.${profile.registrableDomain}` &&
-    (profile.availableSubsites === "all" || profile.availableSubsites.includes(site)));
+  return hostname === domainFamilyProfile(family).registrableDomain;
 }
 
 /** Resolve only product pages the workspace can actually display. No content host is trusted. */
@@ -359,19 +345,7 @@ export function workspaceActionForHref(href: string, origin: string): WorkspaceA
   const ownDevHost = url.origin === pageOrigin && !url.hostname.endsWith(".") && isLeoDevPreviewHost(url.hostname);
   if (!productHost(url.hostname) && !ownDevHost) return null;
   if (url.protocol !== "https:" && url.origin !== pageOrigin) return null;
-  let path = url.pathname.replace(/\/$/, "") || "/";
-  const merged = path.match(/^\/s\/([a-z0-9-]+)(\/.*)$/);
-  if (merged) {
-    // Merged routes use site keys, whose three historical host labels differ.
-    const labels: Record<string, string> = { ppt: "slide", ecommerce: "e-commerce", threed: "3d" };
-    const site = merged[1];
-    const label = labels[site] || site;
-    const family = familyForHost(url.hostname)!;
-    const profile = domainFamilyProfile(family);
-    if (["slide", "e-commerce", "3d"].includes(site) || !PRODUCT_SUBSITES.has(label) ||
-        (profile.availableSubsites !== "all" && !profile.availableSubsites.includes(label))) return null;
-    path = merged[2];
-  }
+  const path = url.pathname.replace(/\/$/, "") || "/";
   const params = url.searchParams;
   const itemId = params.get("item") || params.get("artifactId") || undefined;
   const revisionId = params.get("revisionId") || params.get("revision") || undefined;
@@ -382,7 +356,7 @@ export function workspaceActionForHref(href: string, origin: string): WorkspaceA
       ...(params.get("q") ? { query: params.get("q")! } : {}) };
   }
   if (path === "/library" || path === "/history" ||
-      (/^\/workspace(?:\/[a-z0-9][a-z0-9_-]*)?$/.test(path) && params.get("tab") === "library" && itemId)) {
+      (/^\/workspace(?:\/[a-z0-9][a-z0-9_-]*){0,2}$/.test(path) && params.get("tab") === "library" && itemId)) {
     return { version: 1, tab: "mine", itemId, revisionId };
   }
   const project = path.match(/^\/projects(?:\/([a-zA-Z0-9][a-zA-Z0-9_-]*))?$/);
