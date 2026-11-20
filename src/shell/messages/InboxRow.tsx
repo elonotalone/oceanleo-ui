@@ -12,6 +12,9 @@ import { useUI } from "../../i18n/ui/useUI";
 import { formatBadge } from "./realtime/store";
 import { GroupAvatar, PersonAvatar } from "./groups/GroupAvatar";
 import { inboxPreviewText } from "./preview-label";
+import { INBOX_ROW, INBOX_ROW_IDLE, INBOX_ROW_SELECTED, UnreadBadge } from "./inbox-row-look";
+
+export { INBOX_ROW, INBOX_ROW_IDLE, INBOX_ROW_SELECTED, UnreadBadge };
 
 /** 通话装饰（`call/chat` 的 InboxCallDecor）：part=slot 画在行按钮右列里占位，part=badge 画在行外叠上去。 */
 export type InboxRowCallDecor = ComponentType<{ conversationId: string; activeCall: unknown; part: "slot" | "badge" }>;
@@ -37,29 +40,6 @@ function MutedIcon() {
     <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
       <path d="M18 8a6 6 0 0 0-9.3-5M6 6.2C6 12 3 14 3 17h14M10 21h4M3 3l18 18" />
     </svg>
-  );
-}
-
-/** 收件箱行、「通知」行共用：侧栏同一种圆角行，选中是 `bg-neutral-200/80` 的底色（没有左侧竖条）。 */
-export const INBOX_ROW =
-  "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300";
-export const INBOX_ROW_IDLE = "hover:bg-neutral-200/50";
-export const INBOX_ROW_SELECTED = "bg-neutral-200/80";
-
-/** 头像右上角的未读数：1 条是一个小圆点，多条是数字。 */
-export function UnreadBadge({ count, label, muted = false }: { count: string; label: string; muted?: boolean }) {
-  const dot = count === "1";
-  return (
-    <span
-      data-im-unread=""
-      data-im-unread-count={dot ? undefined : count}
-      aria-label={label}
-      className={`absolute -right-0.5 -top-0.5 flex items-center justify-center rounded-full bg-neutral-900 text-white ${
-        dot ? "h-2.5 w-2.5" : "h-4 min-w-4 px-1 text-[10px] font-medium leading-none"
-      } ${muted ? "opacity-40" : ""}`}
-    >
-      {dot ? "" : count}
-    </span>
   );
 }
 

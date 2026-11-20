@@ -72,7 +72,7 @@ const { LeoChatButton } = await import(
         return { toggleWindow(){ globalThis.__w5Button.windowToggles += 1; } };
       }
     `),
-    "../messages/messages-surface": dataModule(`export function ensureMessagesSurfaceStyles(){}`),
+    "../messages/messages-surface": dataModule(`export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImSearchIcon(){return null;} export function ImMoreIcon(){return null;} export function ensureMessagesSurfaceStyles(){}`),
     "../messages/notices/use-notices": dataModule(`
       export function useLeoChatUnread(){ return { chat: 0, notices: 0, requests: 0, total: 0 }; }
     `),

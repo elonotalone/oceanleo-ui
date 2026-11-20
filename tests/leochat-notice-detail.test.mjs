@@ -89,7 +89,7 @@ const detailState = { target: { kind: "internal", href: "/history?task=t1" }, ac
 const viewModule = await compileModule("src/shell/messages/notices/NoticeDetailView.tsx", {
   "../../../api/notifications": dataModule("export {};"),
   "../../../i18n/ui/useUI": dataModule("export function useUI(){ return (value) => value; }"),
-  "../messages-surface": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function ImBackIcon(){ return React.createElement("i"); }`),
+  "../messages-surface": dataModule(`export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImSearchIcon(){return null;} export function ImMoreIcon(){return null;} import React from ${JSON.stringify(reactUrl)}; export function ImBackIcon(){ return React.createElement("i"); }`),
   "./notice-icons": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function NoticeBellIcon(){ return React.createElement("i"); }`),
   "./notice-present": dataModule("export function formatNoticeTime(){ return '2026/11/05 13:00'; }"),
   "./open-notice": dataModule(`

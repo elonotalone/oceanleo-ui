@@ -59,7 +59,7 @@ const {ConversationView} = await import(await compileModule('src/shell/messages/
   '../../nav-source/route-boundary':dataModule('export function RoutePageSkeleton(){return null;}'),
   '../composer/Composer':dataModule('export function Composer(){return null;}'),
   '../host-state':dataModule('export function openMessages(){}'),
-  '../messages-surface':dataModule('export function ImBackIcon(){return null;} export function ImInfoIcon(){return null;} export function ImSearchIcon(){return null;}'),
+  '../messages-surface':dataModule('export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImMoreIcon(){return null;} export function ImBackIcon(){return null;} export function ImInfoIcon(){return null;} export function ImSearchIcon(){return null;}'),
   '../search/SearchView':dataModule('export function SearchView(){return null;}'),
   '../people/ProfileCard':dataModule('export function ProfileCard(){return null;}'),
   '../report/ReportDialog':dataModule('export function ReportDialog(){return null;}'),

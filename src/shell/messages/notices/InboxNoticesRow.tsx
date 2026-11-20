@@ -8,7 +8,7 @@ import { NoticeAvatar } from "./notice-icons";
 import { formatNoticeRowTime } from "./notice-present";
 import { unreadBadgeText } from "./notice-unread";
 import { useNoticeState } from "./use-notices";
-import { INBOX_ROW, INBOX_ROW_IDLE, INBOX_ROW_SELECTED, UnreadBadge } from "../InboxRow";
+import { INBOX_ROW, INBOX_ROW_IDLE, INBOX_ROW_SELECTED, UnreadBadge } from "../inbox-row-look";
 import { noticeText } from "./notice-text";
 
 export interface InboxNoticesRowProps {
@@ -41,7 +41,7 @@ export function InboxNoticesRow({ active, onOpen }: InboxNoticesRowProps): React
       >
         <span className="relative shrink-0">
           <NoticeAvatar />
-          {badge ? <UnreadBadge count={badge} label={tt("未读 {count} 条", { count: badge })} /> : null}
+          {badge ? <UnreadBadge count={badge} label={tt("未读 {count} 条", { count: badge })} dotForOne={false} /> : null}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
