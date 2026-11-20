@@ -1,35 +1,33 @@
 "use client";
 
-// 会话：消息流、输入框、置顶条、「正在输入」。导出名与 props 不变（契约 §8.2）。
+// 会话：消息流、输入框、置顶条、「正在输入」。导出名不变（契约 §8.2）；与任务页同一套顶栏与选择模式
+// （session / sites wave 2026-11-21, contract §1 / §2.4）：搜索右边一个「转发 / 复制」键，点开即全选并弹出小菜单；
+// 搜索打开时顶栏本身变成「<会话名> / 搜索消息」面包屑。旧的底部多选条与批量删除已去掉。
 import { BackButton } from "../../../ui/BackButton";
+import { Breadcrumb } from "../../../ui/Breadcrumb";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ForwardMessagesDialog } from "./ForwardMessagesDialog";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ImApiError } from "../../../lib/im/client";
 import { conversationDisplayTitle, visiblePersonName } from "../../../lib/im/people-api";
 import { messagesApi } from "../../../lib/im/messages-api";
-import { fetchConversations } from "../../../lib/im/inbox-api";
-import type { ImConversationDetail, ImConversationSummary, ImMessage, ImProfile } from "../../../lib/im/types";
-import { MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
+import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
 import { RoutePageSkeleton } from "../../nav-source/route-boundary";
 import { Composer } from "../composer/Composer";
 import { openMessages } from "../host-state";
-import { ImInfoIcon, ImSearchIcon } from "../messages-surface";
 import { SearchView } from "../search/SearchView";
 import { ProfileCard } from "../people/ProfileCard";
 import { useImEvent, useImResync, usePresence } from "../realtime/hooks";
 import { ReportDialog } from "../report/ReportDialog";
 import { MessageList, useStoreEvents } from "./MessageList";
-import { useMessageHandlers } from "./MessageItem";
+import { useMessageHandlers, type MessageCardOpeners } from "./MessageItem";
 import { PinnedBar } from "./PinnedBar";
 import { TypingLine, useTypingUsers } from "./TypingLine";
 import { getConversationStore, unreadBoundary, type ConversationStore } from "./conversation-store";
 import { historyEventTargetsConversation, subscribeHistoryCleared } from "./history-events";
 import { WorkConversationHeader } from "./WorkConversationHeader";
 import { workSendPolicy } from "./work-policy";
-import { selectionActionsFor, useMessageSelectionActions, type MessageSelectionAction, type MessageSelectionContext } from "./selection-actions";
-import type { ComposerExtras } from "../../task-room/composer-extras";
-import { ensureStartTaskSelectionAction } from "../tasks/StartTaskSelectionAction";
+import { ForwardCopyMenu, type ForwardCopyPage } from "./ForwardCopyMenu";
+import { SELECT_ALL_LIMIT, everythingSelected, orderedSelection, selectableIds, selectionText } from "./message-selection";
 import {
   CallButton,
   CallChatProvider,
@@ -41,10 +39,20 @@ import {
   type RemovalReason,
 } from "../call/chat";
 
-// "New task from selected messages" in every ordinary conversation's select bar, wherever a conversation is
-// mounted (LeoChat window / page / panel, a deal, a task page), not only once the inbox module was loaded.
-// A called export, not a bare import: the package's `sideEffects` would let a bundler drop a bare one.
-ensureStartTaskSelectionAction();
+/** The task page's header icon button (`AgentChat.tsx` HEADER_ICON_BUTTON_CLASS): `p-1.5` + 16 px icon = 28 px. */
+export const CONVERSATION_HEADER_ICON_CLASS =
+  "inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
+
+/** Rows stay clickable while the Forward / Copy menu is open (it closes on any other outside click). */
+const SELECT_ROW_SELECTOR = "[data-share-select-control], [data-message-select-row]";
+
+function HeaderIcon({ name }: { name: "search" | "info" }) {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {name === "search" ? <path d="M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Zm9 2-4-4" /> : <path d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18Zm0-5v-5m0-3h.01" />}
+    </svg>
+  );
+}
 
 export interface ConversationViewProps {
   conversationId: string;
@@ -58,21 +66,23 @@ export interface ConversationViewProps {
    * 换了账号、被移出群之后那条记录就失效了：调用方据此退回列表，而不是停在一块空白上。
    */
   onUnavailable?: () => void;
-  // ── Task rooms (wave 2026-11-20, TU1): all optional; absent = the conversation exactly as before. ──
-  /** This conversation's own multi-select bar actions (shown whatever their `appliesTo` says). */
-  selectionActions?: MessageSelectionAction[];
-  /** Replaces the title + member count in the header (a task shows its breadcrumb). */
+  // ── Optional; absent = an ordinary LeoChat conversation. ──
+  /** Replaces the title + member count in the header (a session shows its breadcrumb). */
   titleSlot?: ReactNode;
   /** Extra header buttons, before search. */
   headerActions?: ReactNode;
-  /** A strip under the header (a task's children). */
-  belowHeader?: ReactNode;
-  /** One short line under a message, by message id ("Given to …"). */
+  /** One short line under a message, by message id. */
   messageMarks?: Readonly<Record<string, string>>;
   /** Enter select mode with exactly these ids (a new nonce each time). */
   selectionRequest?: { ids: readonly string[]; nonce: number } | null;
-  /** Passed to the composer (see task-room/composer-extras.ts). */
-  composerExtras?: ComposerExtras;
+  /** Where this conversation is shown (contract §2.4): a LeoChat chat, or a project session. */
+  surface?: "leochat" | "session";
+  /** A task card was clicked (default: the card opens the task in the right panel). */
+  onOpenTask?: (taskId: string, title: string) => void;
+  /** A quote card was clicked (default: the card opens it read-only in the right panel). */
+  onOpenQuote?: (message: ImMessage) => void;
+  /** The composer's attach menu offers "Task" (sessions; composer unit UM). */
+  attachTaskCard?: boolean;
 }
 
 // ── 我是谁（整个页面只问一次）─────────────────────────────────────────────
@@ -218,18 +228,17 @@ function ConversationBody(props: ConversationViewProps & {
   store: ConversationStore;
 }) {
   const { conversationId, active = true, layout, onBack, onOpenInfo, highlightSeq = null, viewerId, conversation, store } = props;
-  const { selectionActions, titleSlot, headerActions, belowHeader, messageMarks, selectionRequest, composerExtras } = props;
+  const { titleSlot, headerActions, messageMarks, selectionRequest, surface = "leochat", onOpenTask, onOpenQuote, attachTaskCard } = props;
   const tt = useUI();
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [quote, setQuote] = useState<ImMessage | null>(null);
   const [editing, setEditing] = useState<ImMessage | null>(null);
-  const [forwardMessages, setForwardMessages] = useState<ImMessage[] | null>(null);
-  const [forwardTargets, setForwardTargets] = useState<ImConversationSummary[]>([]);
-  const [forwardError, setForwardError] = useState("");
-  const [forwarding, setForwarding] = useState(false);
+  // Select mode lives exactly as long as the Forward / Copy menu is open (task page Share behaviour).
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(() => new Set());
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [menuPage, setMenuPage] = useState<ForwardCopyPage>("actions");
+  const [selectingAll, setSelectingAll] = useState(false);
+  const selectionGeneration = useRef(0);
   const [reporting, setReporting] = useState<ImMessage | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
@@ -253,16 +262,6 @@ function ConversationBody(props: ConversationViewProps & {
     void store.refreshPins();
   }, [store]);
 
-  useEffect(() => {
-    if (!forwardMessages) return;
-    let alive = true;
-    void fetchConversations("all").then((page) => {
-      if (alive) setForwardTargets(page.items.filter((item) => item.id !== conversationId));
-    }).catch(() => {
-      if (alive) setForwardError("暂时无法加载会话列表。");
-    });
-    return () => { alive = false; };
-  }, [forwardMessages, conversationId]);
   useEffect(() => subscribeHistoryCleared(window, conversationId, reloadHistory), [conversationId, reloadHistory]);
   useImEvent("conversation.updated", (event) => {
     if (historyEventTargetsConversation(event, conversationId)) reloadHistory();
@@ -365,27 +364,54 @@ function ConversationBody(props: ConversationViewProps & {
   const profiles = useProfileMap(conversation, referencedIds);
 
   const isAdmin = conversation?.my_role === "owner" || conversation?.my_role === "admin";
-  const selectedMessages = snapshot.messages.filter((message) => selectedMessageIds.has(message.id));
-  const canDeleteSelection = selectedMessages.length > 0 && (Boolean(isAdmin) || selectedMessages.every((message) => message.sender_kind === "user" && message.sender_id === viewerId));
-  const registeredSelectionActions = useMessageSelectionActions();
-  const slotActions = selectionActionsFor(registeredSelectionActions, selectionActions ?? [], conversation);
-  const selectionContext: MessageSelectionContext = {
-    conversationId,
-    conversation,
-    viewerId,
-    selectedMessages,
-    selectedMessageIds,
-    setSelectedMessageIds: (ids) => setSelectedMessageIds(new Set(ids)),
-    exitSelection: () => {
-      setSelectionMode(false);
+
+  // ── Select mode + the Forward / Copy menu ──
+  const enterSelection = useCallback((ids: Iterable<string>, page: ForwardCopyPage) => {
+    selectionGeneration.current += 1;
+    setSearchOpen(false);
+    setSelectingAll(false);
+    setSelectedMessageIds(new Set(ids));
+    setMenuPage(page);
+    setSelectionMode(true);
+  }, []);
+  const exitSelection = useCallback(() => {
+    selectionGeneration.current += 1;
+    setSelectionMode(false);
+    setSelectingAll(false);
+    setSelectedMessageIds(new Set());
+    setMenuPage("actions");
+  }, []);
+  const selectedInOrder = useMemo(() => orderedSelection(snapshot.messages, selectedMessageIds), [snapshot.messages, selectedMessageIds]);
+  const allSelected = everythingSelected(snapshot.messages, selectedMessageIds, snapshot.hasMoreBefore);
+  /** Every message, older pages included (up to SELECT_ALL_LIMIT, newest kept), or clear when all are selected. */
+  const toggleAll = useCallback(() => {
+    if (allSelected) {
       setSelectedMessageIds(new Set());
-    },
-  };
+      return;
+    }
+    const generation = selectionGeneration.current;
+    setSelectingAll(true);
+    void (async () => {
+      let current = store.getSnapshot();
+      try {
+        while (current.hasMoreBefore && selectableIds(current.messages).length < SELECT_ALL_LIMIT) {
+          const before = current.messages.length;
+          await store.loadBefore();
+          current = store.getSnapshot();
+          if (current.messages.length === before) break;
+        }
+      } catch {
+        current = store.getSnapshot();
+      }
+      if (generation !== selectionGeneration.current) return;
+      setSelectedMessageIds(new Set(selectableIds(current.messages).slice(-SELECT_ALL_LIMIT)));
+      setSelectingAll(false);
+    })();
+  }, [allSelected, store]);
   const selectionRequestNonce = selectionRequest?.nonce;
   useEffect(() => {
     if (!selectionRequest) return;
-    setSelectionMode(true);
-    setSelectedMessageIds(new Set(selectionRequest.ids));
+    enterSelection(selectionRequest.ids, "actions");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionRequestNonce]);
   const nameOf = useCallback(
@@ -422,14 +448,10 @@ function ConversationBody(props: ConversationViewProps & {
     store,
     conversationId,
     onQuote: setQuote,
-    onForward: (message) => {
-      setForwardError("");
-      setForwardMessages([message]);
-    },
-    onMultiSelect: (message) => {
-      setSelectionMode(true);
-      setSelectedMessageIds(new Set([message.id]));
-    },
+    // The right-click menu: "Forward" = select mode with this message and the Forward page open; "Select multiple" =
+    // select mode with this message.
+    onForward: (message) => enterSelection([message.id], "forward"),
+    onMultiSelect: (message) => enterSelection([message.id], "actions"),
     onEdit: (message) => {
       setQuote(null);
       setEditing(message);
@@ -486,55 +508,88 @@ function ConversationBody(props: ConversationViewProps & {
     );
   }
 
+  const cardOpeners: MessageCardOpeners | undefined = onOpenTask || onOpenQuote ? { onOpenTask, onOpenQuote } : undefined;
+  const nameOfMessage = (message: ImMessage) => (message.sender_kind === "leo" ? "leo" : nameOf(message.sender_id));
+
   return (
-    <div className="relative flex h-full min-h-0" data-conversation-view={conversationId}>
+    <div className="relative flex h-full min-h-0" data-conversation-view={conversationId} data-conversation-surface={surface}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center gap-1 border-b border-neutral-200/80 px-2 py-2">
+        <header className="flex shrink-0 items-center gap-1 px-3 py-2" data-conversation-header="">
           {onBack ? (
             <BackButton onClick={onBack} label={tt("返回")} />
           ) : null}
-          {titleSlot !== undefined ? <div className="min-w-0 flex-1 px-1" data-conversation-title-slot="">{titleSlot}</div> : <div className="min-w-0 flex-1 px-1">
-            <div className="flex items-center gap-1.5">
+          {searchOpen ? (
+            // Search is part of this one header row: "<chat name> / Search messages"; the first crumb closes search.
+            <div className="flex min-w-0 flex-1 items-center px-1" data-conversation-search-trail="">
+              <Breadcrumb
+                className="text-[13px]"
+                items={[{ label: title, onClick: () => setSearchOpen(false) }, { label: tt("搜索消息") }]}
+              />
+            </div>
+          ) : titleSlot !== undefined ? <div className="min-w-0 flex-1 px-1" data-conversation-title-slot="">{titleSlot}</div> : (
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1">
               {peerPresence ? (
                 <span
                   className={
                     "h-1.5 w-1.5 shrink-0 rounded-full " +
-                    (peerPresence === "online" ? "bg-emerald-500" : peerPresence === "away" ? "bg-neutral-400" : "bg-neutral-300")
+                    (peerPresence === "online" ? "bg-emerald-500" : peerPresence === "away" ? "bg-stone-400" : "bg-stone-300")
                   }
                   title={peerPresence === "online" ? tt("在线") : peerPresence === "away" ? tt("离开") : tt("离线")}
                 />
               ) : null}
-              <h2 className="truncate text-[13px] font-semibold tracking-tight text-neutral-900">{title}</h2>
-              {conversation?.has_external ? (
-                <span className="shrink-0 text-[11px] text-neutral-400">{tt("含外部成员")}</span>
+              <h2 className="min-w-0 truncate text-[13px] font-medium text-stone-700">{title}</h2>
+              {conversation.has_external ? (
+                <span className="shrink-0 text-[11px] text-stone-400">{tt("含外部成员")}</span>
+              ) : null}
+              {conversation.kind !== "dm" ? (
+                <span className="shrink-0 text-[12px] text-stone-400" data-conversation-members="">{tt(conversation.member_count === 1 ? "1 位成员" : "{n} 位成员", { n: conversation.member_count })}</span>
               ) : null}
             </div>
-            {conversation && conversation.kind !== "dm" ? (
-              <div className="text-[12px] text-neutral-400">{tt(conversation.member_count === 1 ? "1 位成员" : "{n} 位成员", { n: conversation.member_count })}</div>
-            ) : null}
-          </div>}
+          )}
           {headerActions}
           <button
             type="button"
-            data-im-chrome-btn
-            onClick={() => setSearchOpen((open) => !open)}
+            className={`${CONVERSATION_HEADER_ICON_CLASS} ${searchOpen ? "bg-stone-100 text-stone-800" : ""}`}
+            data-conversation-search=""
+            onClick={() => {
+              if (!searchOpen) exitSelection();
+              setSearchOpen((open) => !open);
+            }}
             aria-label={tt("搜索消息")}
             title={tt("搜索消息")}
             aria-pressed={searchOpen}
           >
-            <ImSearchIcon />
+            <HeaderIcon name="search" />
           </button>
+          <ForwardCopyMenu
+            conversationId={conversationId}
+            title={title}
+            open={selectionMode}
+            page={menuPage}
+            onToggle={() => {
+              if (selectionMode) exitSelection();
+              else enterSelection(selectableIds(snapshot.messages), "actions");
+            }}
+            onClose={exitSelection}
+            onPage={setMenuPage}
+            selectedCount={selectedInOrder.length}
+            allSelected={allSelected}
+            selectingAll={selectingAll}
+            onToggleAll={toggleAll}
+            copyText={() => ({ text: selectionText(selectedInOrder, nameOfMessage), count: selectedInOrder.length })}
+            messageIds={selectedInOrder.map((message) => message.id)}
+            ignoreOutsideSelector={SELECT_ROW_SELECTOR}
+          />
           {onOpenInfo ? (
-            <button type="button" data-im-chrome-btn onClick={onOpenInfo} aria-label={tt("详情")} title={tt("详情")}>
-              <ImInfoIcon />
+            <button type="button" className={CONVERSATION_HEADER_ICON_CLASS} data-conversation-info="" onClick={onOpenInfo} aria-label={tt("详情")} title={tt("详情")}>
+              <HeaderIcon name="info" />
             </button>
           ) : null}
-          {showCallButton && conversation ? (
+          {showCallButton ? (
             <CallButton conversationId={conversationId} title={title} kind={conversation.kind} disabled={policy?.awaiting_reply} />
           ) : null}
         </header>
         <WorkConversationHeader conversation={conversation} onBlocked={() => setBlocked(true)} />
-        {belowHeader}
         <PinnedBar
           pins={snapshot.pins}
           nameOf={nameOf}
@@ -543,7 +598,6 @@ function ConversationBody(props: ConversationViewProps & {
         />
         {searchOpen ? (
           <SearchView
-            onBack={() => setSearchOpen(false)}
             conversationId={conversationId}
             onOpenResult={(_id, seq) => {
               setSearchOpen(false);
@@ -574,13 +628,14 @@ function ConversationBody(props: ConversationViewProps & {
               onReachBottom={reportRead}
               scrollToMessageId={scrollTarget}
               messageMarks={messageMarks}
+              cardOpeners={cardOpeners}
             />
             <TypingLine names={typing.map((id) => nameOf(id))} />
           </CallChatProvider>
         )}
-        <div className="shrink-0" hidden={searchOpen} style={{ display: searchOpen ? "none" : undefined }} data-conversation-composer>
+        <div className="shrink-0" hidden={searchOpen} data-conversation-composer>
           {snapshot.pending.some((item) => item.status === "failed" && item.error === "reply_limit") ? (
-            <p role="status" data-reply-limit className="px-3 pt-2 text-[12px] text-neutral-500">{tt("对方回复前，每周最多发送 3 条消息")}</p>
+            <p role="status" data-reply-limit className="px-3 pt-2 text-[12px] text-stone-500">{tt("对方回复前，每周最多发送 3 条消息")}</p>
           ) : null}
           <Composer
             store={store}
@@ -597,49 +652,10 @@ function ConversationBody(props: ConversationViewProps & {
             disabled={Boolean(disabledReason)}
             disabledReason={disabledReason}
             workPolicy={policy}
-            {...composerExtras}
+            attachTaskCard={attachTaskCard}
           />
         </div>
       </div>
-      {selectionMode ? (
-        <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 overflow-x-auto whitespace-nowrap border-t border-neutral-200 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900" data-message-selection-toolbar="">
-          <span className="mr-auto shrink-0 text-sm">{tt("已选择 {n} 条", { n: selectedMessageIds.size })}</span>
-          {slotActions.map((action) => <action.Component key={action.id} ctx={selectionContext} />)}
-          <button type="button" disabled={!selectedMessageIds.size} onClick={() => setForwardMessages(snapshot.messages.filter((message) => selectedMessageIds.has(message.id) && message.card?.type !== "task"))}>{tt("转发")}</button>
-          <button type="button" disabled={!canDeleteSelection} onClick={() => setBulkDeleteOpen(true)} className="text-neutral-600 disabled:opacity-40">{tt("删除")}</button>
-          <button type="button" onClick={() => { setSelectionMode(false); setSelectedMessageIds(new Set()); }}>{tt("完成")}</button>
-        </div>
-      ) : null}
-      {bulkDeleteOpen ? (
-        <ConfirmDialog
-          title={tt("删除所选消息？删除后所有人都看不到内容。")}
-          confirmLabel={tt("删除")}
-          danger
-          onConfirm={() => {
-            setBulkDeleteOpen(false);
-            for (const message of selectedMessages) void store.recall(message.id);
-            setSelectedMessageIds(new Set());
-            setSelectionMode(false);
-          }}
-          onCancel={() => setBulkDeleteOpen(false)}
-        />
-      ) : null}
-      {forwardMessages ? (
-        <ForwardMessagesDialog targets={forwardTargets} error={forwardError} busy={forwarding} onClose={() => setForwardMessages(null)} onForward={(targetId) => {
-          setForwarding(true);
-          void Promise.all(forwardMessages.map((message) => messagesApi.sendMessage(targetId, {
-            client_id: crypto.randomUUID(),
-            kind: ["text", "file", "image", "video", "audio", "voice", "artifact", "replay"].includes(message.kind) ? message.kind as "text" : "text",
-            body: message.body,
-            attachments: message.attachments,
-            card: message.card,
-          }))).then(() => {
-            setForwardMessages(null);
-            setSelectedMessageIds(new Set());
-            setSelectionMode(false);
-          }).catch(() => setForwardError("转发失败，请稍后重试。")).finally(() => setForwarding(false));
-        }} />
-      ) : null}
       {reporting ? (
         <ReportDialog
           target={{ kind: "message", id: reporting.id, label: nameOf(reporting.sender_id) }}

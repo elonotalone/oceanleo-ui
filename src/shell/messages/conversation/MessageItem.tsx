@@ -1,8 +1,9 @@
 "use client";
 
-// 一条消息：头像、名字、「外部」标记、时间、正文 / 附件 / 卡片、已编辑、撤回与隐藏占位、
-// 引用、读状态；系统消息单独一行；leo 的消息用 W06 的 LeoMessageBody。
-import { useCallback, useMemo, useRef, useState } from "react";
+// 一条消息，与任务页同一套样子（session / sites wave 2026-11-21, F2 §3）：居中 52rem 的一栏里，自己的消息靠右灰色气泡，
+// 别人的靠左白底描边气泡、上方一行灰色首字母头像 + 名字；卡片（任务 / 引用 / 作品 / 回放）不套气泡；系统消息单独一行。
+// 选择模式：每行左边一个 20 px 实心勾选圈，整行可点，选中行浅色底。右键（触屏长按）在指针处打开消息菜单。
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
 import { MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
@@ -13,7 +14,7 @@ import { visiblePersonName } from "../../../lib/im/people-api";
 import { LeoMessageBody, LeoNoticeLine } from "../leo/LeoMessageBody";
 import { ArtifactCardView } from "./ArtifactCardView";
 import { AttachmentView, safeMediaUrl } from "./AttachmentView";
-import { MessageActions, actionPermissions, type MessageActionHandlers } from "./MessageActions";
+import { MessageContextMenu, actionPermissions, type MenuPoint, type MessageActionHandlers } from "./MessageActions";
 import { MessageBody } from "./MessageBody";
 import { DmReadReceipt, MentionReadReceipt } from "./ReadReceipt";
 import { BayOrderCard } from "../../bay/orders/BayOrderCard";
@@ -21,7 +22,12 @@ import { ReplayCardView } from "./ReplayCardView";
 import { SystemLine } from "./SystemLine";
 import type { ConversationStore, LeoNoticeCode, PendingMessage } from "./conversation-store";
 import { plainTextOf } from "./message-format";
+// Direct files, not the `task-room` index: the index also exports the session view, which renders ConversationView —
+// importing it here would close a module cycle (ConversationView → MessageList → MessageItem → index → session view).
 import { TaskCardView } from "../../task-room/TaskCardView";
+import { QuoteCardView } from "../../task-room/QuoteCardView";
+import { ShareCheckbox } from "../../share/ShareActionBar";
+import { writeClipboardText } from "../../share/share-clipboard";
 
 export function formatClock(iso: string, locale: string): string {
   const date = new Date(iso);
@@ -35,6 +41,16 @@ export function formatFullTime(iso: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: "full", timeStyle: "medium" }).format(date);
 }
 
+const AVATAR_SIZE: Record<number, string> = {
+  20: "size-5 text-[11px]",
+  24: "size-6 text-[11px]",
+  28: "size-7 text-[12px]",
+  32: "size-8 text-[13px]",
+  36: "size-9 text-[13px]",
+  40: "size-10 text-[14px]",
+};
+
+/** Grey initials (or the person's photo), the same chip the task page puts above another person's message. */
 export function Avatar({
   profile,
   size = 36,
@@ -47,21 +63,18 @@ export function Avatar({
   const name = profile?.display_name ?? "";
   const url = safeMediaUrl(profile?.avatar_url ?? null);
   const initial = Array.from(name.trim())[0]?.toUpperCase() ?? "?";
-  const style = { width: size, height: size };
+  const sizeClass = AVATAR_SIZE[size] ?? AVATAR_SIZE[36];
   const inner = url ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt="" style={style} className="rounded-full object-cover" loading="lazy" />
+    <img src={url} alt="" className={`${sizeClass} rounded-full object-cover`} loading="lazy" />
   ) : (
-    <span
-      style={style}
-      className="flex items-center justify-center rounded-full bg-neutral-200 text-[13px] font-medium text-neutral-600"
-    >
+    <span className={`${sizeClass} inline-flex items-center justify-center rounded-full bg-stone-200 font-medium text-stone-600`}>
       {initial}
     </span>
   );
-  if (!onClick) return <span className="shrink-0">{inner}</span>;
+  if (!onClick) return <span className="inline-flex shrink-0">{inner}</span>;
   return (
-    <button type="button" onClick={onClick} aria-label={name} className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+    <button type="button" onClick={onClick} aria-label={name} className="inline-flex shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-stone-300">
       {inner}
     </button>
   );
@@ -84,6 +97,12 @@ export interface MessageItemHandlers {
   onDiscard: (clientId: string) => void;
 }
 
+/** What a task / quote card opens with when the host asked for its own handling (contract §2.4). */
+export interface MessageCardOpeners {
+  onOpenTask?: (taskId: string, title: string) => void;
+  onOpenQuote?: (message: ImMessage) => void;
+}
+
 export interface MessageItemProps {
   message: ImMessage;
   pending?: PendingMessage | null;
@@ -101,9 +120,25 @@ export interface MessageItemProps {
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelected?: (message: ImMessage) => void;
-  /** One short line under the bubble (a task: "Given to …"). */
+  /** One short line under the bubble. */
   mark?: string;
+  cardOpeners?: MessageCardOpeners;
 }
+
+/** `card.type` of a task card or a quote card (the quote type lands with US's `ImCard`; read through a narrow cast). */
+export function messageCardType(message: ImMessage): "task" | "quote" | null {
+  const type = (message.card as { type?: string } | null)?.type;
+  const kind = message.kind as string;
+  if (type === "task" || kind === "task") return "task";
+  if (type === "quote" || kind === "quote") return "quote";
+  return null;
+}
+
+const OWN_BUBBLE =
+  "min-w-0 max-w-[85%] break-words rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-left text-[15px] leading-relaxed text-neutral-900 [overflow-wrap:anywhere]";
+const OTHER_BUBBLE =
+  "min-w-0 max-w-[85%] break-words rounded-2xl rounded-bl-md border border-stone-200 bg-white px-4 py-2.5 text-left text-[15px] leading-relaxed text-neutral-900 [overflow-wrap:anywhere]";
+const META = "text-[11px] text-stone-400";
 
 export function MessageItem(props: MessageItemProps) {
   const {
@@ -123,22 +158,32 @@ export function MessageItem(props: MessageItemProps) {
     selected = false,
     onToggleSelected,
     mark,
+    cardOpeners,
   } = props;
   const tt = useUI();
   const locale = useLocale();
-  const [touchOpen, setTouchOpen] = useState(false);
+  const [menuAt, setMenuAt] = useState<MenuPoint | null>(null);
   const [recallOpen, setRecallOpen] = useState(false);
   const [translation, setTranslation] = useState("");
   const [translationError, setTranslationError] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enterRef = useRef<"" | "own" | "peer" | null>(null);
 
-  const taskCard = message.card?.type === "task" || message.kind === "task";
-  if (taskCard && message.sender_kind === "system" && !message.recalled_at) {
-    // A card the server posted on nobody's behalf: centered like a system line.
+  const cardType = messageCardType(message);
+  // Only the openers the host passed: the cards keep their own defaults otherwise (signals/UC-needs.md).
+  const openers: MessageCardOpeners = {};
+  if (cardOpeners?.onOpenTask) openers.onOpenTask = cardOpeners.onOpenTask;
+  if (cardOpeners?.onOpenQuote) openers.onOpenQuote = cardOpeners.onOpenQuote;
+  const cardNode: ReactNode = cardType === "task"
+    ? <TaskCardView message={message} conversationId={message.conversation_id} {...openers} />
+    : cardType === "quote"
+      ? <QuoteCardView message={message} conversationId={message.conversation_id} {...openers} />
+      : null;
+  if (cardNode && message.sender_kind === "system" && !message.recalled_at) {
+    // A card the server posted on nobody's behalf: centred like a system line.
     return (
-      <div data-seq={message.seq} data-message-id={message.id} className="flex justify-center px-4 py-2">
-        <TaskCardView message={message} conversationId={message.conversation_id} />
+      <div data-seq={message.seq} data-message-id={message.id} data-message-card={cardType ?? undefined} className="flex justify-center py-2">
+        {cardNode}
       </div>
     );
   }
@@ -168,6 +213,7 @@ export function MessageItem(props: MessageItemProps) {
   const isPlaceholder = recalled || hidden || blockedHidden;
   const permissions = actionPermissions({ message, viewerId, isAdmin });
   const nameOf = (userId: string) => profiles[userId]?.display_name ?? tt("已退出的成员");
+  const menuEnabled = !selectionMode && !isPlaceholder && !pending;
 
   const actionHandlers: MessageActionHandlers = {
     onQuote: () => handlers.onQuote(message),
@@ -182,9 +228,11 @@ export function MessageItem(props: MessageItemProps) {
     onRecall: () => setRecallOpen(true),
   };
 
+  // Touch: a long press opens the same menu where the finger is.
   const startPress = (event: React.PointerEvent) => {
-    if (event.pointerType !== "touch" || isPlaceholder || pending) return;
-    pressTimer.current = setTimeout(() => setTouchOpen(true), 450);
+    if (event.pointerType !== "touch" || !menuEnabled) return;
+    const point = { x: event.clientX, y: event.clientY };
+    pressTimer.current = setTimeout(() => setMenuAt((current) => current ?? point), 450);
   };
   const endPress = () => {
     if (pressTimer.current) clearTimeout(pressTimer.current);
@@ -194,50 +242,83 @@ export function MessageItem(props: MessageItemProps) {
   const timeLabel = formatClock(message.created_at, locale);
   const fullTime = formatFullTime(message.created_at, locale);
   const showHeader = !grouped || message.meta?.via_agent === true;
+  const showAuthor = !mine && conversation?.kind !== "dm";
 
-  let content: React.ReactNode;
+  const time = (
+    <time dateTime={message.created_at} title={fullTime} className={META}>
+      {timeLabel}
+    </time>
+  );
+  const viaAgent = message.meta?.via_agent === true ? <span data-sent-by-agent className={META}>{tt("由智能体发送")}</span> : null;
+  const header = !showHeader ? null : showAuthor ? (
+    <div data-message-author="" className="flex min-w-0 max-w-[85%] items-center gap-1.5 text-[12px] text-stone-500">
+      <Avatar
+        size={20}
+        profile={isLeo ? { user_id: "leo", display_name: "leo", avatar_url: null } : senderProfile}
+        onClick={!isLeo && message.sender_id && !selectionMode ? () => handlers.onOpenProfile(message.sender_id!) : undefined}
+      />
+      <span data-sender-name="" className="min-w-0 truncate">{senderName}</span>
+      {external ? <span className={META}>{tt("外部")}</span> : null}
+      {time}
+      {viaAgent}
+    </div>
+  ) : (
+    <div className="flex items-center gap-1.5 px-1">
+      {time}
+      {viaAgent}
+    </div>
+  );
+
+  const placeholderClass = "px-1 text-[13px] italic text-stone-400";
+  let body: ReactNode = null;
+  let extras: ReactNode = null;
   if (recalled) {
-    content = (
-      <div className="text-[13px] italic text-neutral-400" data-placeholder="recalled">
+    body = (
+      <div className={placeholderClass} data-placeholder="recalled">
         {message.recalled_by === "admin"
           ? tt("管理员撤回了一条消息")
           : tt("{name} 撤回了一条消息", { name: mine ? tt("你") : senderName })}
       </div>
     );
   } else if (hidden) {
-    content = (
-      <div className="text-[13px] italic text-neutral-400" data-placeholder="hidden">
-        {tt("该消息因违反规则已隐藏")}
-      </div>
-    );
+    body = <div className={placeholderClass} data-placeholder="hidden">{tt("该消息因违反规则已隐藏")}</div>;
   } else if (blockedHidden) {
-    content = (
-      <div className="text-[13px] italic text-neutral-400" data-placeholder="blocked">
-        {tt("已屏蔽的消息")}
-      </div>
-    );
+    body = <div className={placeholderClass} data-placeholder="blocked">{tt("已屏蔽的消息")}</div>;
   } else if (isLeo) {
-    content = <LeoMessageBody message={message} streamingText={streamingText} />;
+    // leo answers like the agent on the task page: no bubble.
+    body = <div className="min-w-0 max-w-full px-1 text-[15px] leading-relaxed text-neutral-900"><LeoMessageBody message={message} streamingText={streamingText} /></div>;
+  } else if (cardNode) {
+    // A card is its own frame: no bubble around it, no fallback text.
+    body = <div className="min-w-0 max-w-[85%]" data-message-card={cardType ?? undefined}>{cardNode}</div>;
   } else {
-    content = (
-      <>
+    const hasText = Boolean(message.body) || Boolean(message.quote);
+    body = hasText ? (
+      <div data-message-bubble={mine ? "own" : "incoming"} className={mine ? OWN_BUBBLE : OTHER_BUBBLE}>
         {message.quote ? (
           <button
             type="button"
             onClick={() => handlers.onJumpToMessage(message.quote!.message_id)}
-            className="mb-1 block max-w-full truncate rounded-md border-l-2 border-neutral-300 bg-neutral-50 px-2 py-1 text-left text-[12.5px] text-neutral-500"
+            className="mb-1.5 block max-w-full truncate rounded-lg border-l-2 border-stone-300 bg-stone-50 px-2 py-1 text-left text-[12px] text-stone-500"
             data-quote=""
           >
-            <span className="mr-1 text-neutral-400">
+            <span className="mr-1 text-stone-400">
               {message.quote.sender_id ? nameOf(message.quote.sender_id) : "leo"}
             </span>
             {message.quote.recalled ? tt("该消息已撤回") : plainTextOf(message.quote.preview).replace(/\s+/g, " ")}
           </button>
         ) : null}
-        {/* A task card's body is the server's plain-text fallback for older apps ("[子任务] <title>"): the card says it. */}
-        {taskCard ? null : <MessageBody message={message} profiles={profiles} viewerId={viewerId} onOpenProfile={handlers.onOpenProfile} />}
+        <MessageBody message={message} profiles={profiles} viewerId={viewerId} onOpenProfile={handlers.onOpenProfile} />
+      </div>
+    ) : null;
+    const otherCard = message.card?.type === "artifact" ? <ArtifactCardView card={message.card} />
+      : message.card?.type === "replay" ? <ReplayCardView card={message.card} />
+        : (message.card as { type?: string } | null)?.type === "talent_order"
+          ? <BayOrderCard contractId={String((message.card as { id?: string }).id ?? "")} compact />
+          : null;
+    extras = (
+      <>
         {message.attachments.length > 0 ? (
-          <div className="mt-1 flex flex-col items-start gap-1.5">
+          <div data-message-attachments="" className={"flex max-w-[85%] flex-col gap-1.5 " + (mine ? "items-end" : "items-start")}>
             {message.attachments.map((attachment, index) => (
               <AttachmentView
                 key={`${attachment.url}-${index}`}
@@ -247,29 +328,7 @@ export function MessageItem(props: MessageItemProps) {
             ))}
           </div>
         ) : null}
-        {message.card?.type === "artifact" ? (
-          <div className="mt-1">
-            <ArtifactCardView card={message.card} />
-          </div>
-        ) : null}
-        {message.card?.type === "replay" ? (
-          <div className="mt-1">
-            <ReplayCardView card={message.card} />
-          </div>
-        ) : null}
-        {taskCard ? (
-          <div className="mt-1">
-            <TaskCardView message={message} conversationId={message.conversation_id} />
-          </div>
-        ) : null}
-        {(message.card as { type?: string; id?: string } | undefined)?.type === "talent_order" ? (
-          <div className="mt-1">
-            <BayOrderCard
-              contractId={String((message.card as { id?: string }).id ?? "")}
-              compact
-            />
-          </div>
-        ) : null}
+        {otherCard ? <div className="min-w-0 max-w-[85%]">{otherCard}</div> : null}
       </>
     );
   }
@@ -281,112 +340,61 @@ export function MessageItem(props: MessageItemProps) {
       data-seq={message.seq}
       data-message-id={message.id}
       data-highlighted={highlighted ? "true" : undefined}
+      data-selected={selectionMode ? (selected ? "true" : "false") : undefined}
+      data-message-select-row={selectionMode ? "" : undefined}
       onPointerDown={startPress}
       onPointerUp={endPress}
       onPointerCancel={endPress}
       onPointerMove={endPress}
       onContextMenu={(event) => {
-        if (isPlaceholder || pending) return;
+        if (!menuEnabled) return;
         event.preventDefault();
-        setTouchOpen(true);
+        endPress();
+        setMenuAt({ x: event.clientX, y: event.clientY });
       }}
-      onMouseLeave={() => setTouchOpen(false)}
+      onClick={selectionMode ? () => onToggleSelected?.(message) : undefined}
       data-sending={pending?.status === "sending" ? "" : undefined}
       data-im-enter={enterRef.current || undefined}
       data-message-row={mine ? "own" : "incoming"}
       className={
-        "group relative flex w-full min-w-0 items-start gap-2.5 px-4 " +
-        (showHeader ? "pt-4 " : "pt-2 ") +
-        (highlighted ? "bg-neutral-100/80 dark:bg-white/5 " : "")
+        "group/message flex w-full min-w-0 gap-2.5 rounded-xl px-1.5 py-1 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] " +
+        (showHeader ? "mt-2 " : "") +
+        (selectionMode ? "cursor-pointer hover:bg-stone-50 " : "") +
+        (selected && selectionMode ? "bg-stone-100/70 " : highlighted ? "bg-stone-100/80 " : "")
       }
-      style={{ flexDirection: mine ? "row-reverse" : "row" }}
     >
-      <div className="w-9 shrink-0">
-          <Avatar
-            profile={isLeo ? { user_id: "leo", display_name: "leo", avatar_url: null } : senderProfile}
-            onClick={!isLeo && message.sender_id ? () => handlers.onOpenProfile(message.sender_id!) : undefined}
-          />
-      </div>
-      <div className={"flex min-w-0 flex-col pb-0.5 " + (mine ? "items-end" : "items-start")} style={{ maxWidth: "min(78%, 680px)" }}>
-        {selectionMode ? (
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={selected}
-            aria-label={selected ? tt("取消选择") : tt("选择消息")}
-            onClick={() => onToggleSelected?.(message)}
-            className="min-h-11 min-w-11 mb-1 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 text-xs"
-          >{selected ? "✓" : ""}</button>
-        ) : null}
-        {showHeader ? (
-          <div className="flex items-baseline gap-2">
-            {!mine && conversation?.kind !== "dm" ? (
-              <span data-sender-name="" className="truncate text-[12px] text-neutral-500 dark:text-neutral-400">{senderName}</span>
-            ) : null}
-            {external ? <span className="text-[11px] text-neutral-400">{tt("外部")}</span> : null}
-            <time dateTime={message.created_at} title={fullTime} className="text-[12px] text-neutral-400">
-              {timeLabel}
-            </time>
-            {message.meta?.via_agent === true ? <span data-sent-by-agent className="text-[11px] text-neutral-400">{tt("由智能体发送")}</span> : null}
-          </div>
-        ) : null}
-        <div
-          data-message-bubble={mine ? "own" : "incoming"}
-          className={"min-w-0 max-w-full rounded-xl px-3 py-2 text-left " +
-            (mine ? "rounded-tr-sm bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100" : "rounded-tl-sm bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100")}
-          style={{ overflowWrap: "anywhere" }}
-        >
-          {content}
-        </div>
-        {mark && !isPlaceholder ? (
-          <span data-message-mark="" className="ml-1.5 mt-0.5 max-w-full truncate text-[11px] text-neutral-400">{mark}</span>
-        ) : null}
-        {!isPlaceholder && message.edited_at ? (
-          <span className="ml-1.5 text-[11px] text-neutral-400">{tt("已编辑")}</span>
-        ) : null}
+      {selectionMode ? (
+        <ShareCheckbox checked={selected} onToggle={() => onToggleSelected?.(message)} label={tt("选择这条消息")} />
+      ) : null}
+      <div className={"flex min-w-0 flex-1 flex-col gap-1 " + (mine ? "items-end " : "items-start ") + (selectionMode ? "pointer-events-none" : "")}>
+        {header}
+        {body}
+        {extras}
+        {mark && !isPlaceholder ? <span data-message-mark="" className={`max-w-full truncate px-1 ${META}`}>{mark}</span> : null}
+        {!isPlaceholder && message.edited_at ? <span className={`px-1 ${META}`}>{tt("已编辑")}</span> : null}
         {translation || translationError ? (
-          <div className="mt-2 max-w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200" data-message-translation="">
+          <div className="max-w-[85%] rounded-xl border border-stone-200 bg-white px-3 py-2 text-[13px] text-stone-700" data-message-translation="">
             {translationError ? tt("翻译失败，请稍后重试。") : translation}
           </div>
         ) : null}
         {pending?.status === "failed" ? (
-          <div className="mt-1 flex items-center gap-2 text-[12px] text-red-600" data-send-failed="">
+          <div className="flex items-center gap-2 px-1 text-[12px] text-rose-600" data-send-failed="">
             <span>{tt("发送失败")}</span>
-            <button type="button" className="underline" onClick={() => handlers.onRetry(pending.clientId)}>
+            <button type="button" className="rounded-lg px-1.5 py-0.5 font-medium hover:bg-rose-50" onClick={() => handlers.onRetry(pending.clientId)}>
               {tt("重试")}
             </button>
-            <button type="button" className="text-neutral-400 underline" onClick={() => handlers.onDiscard(pending.clientId)}>
+            <button type="button" className="rounded-lg px-1.5 py-0.5 text-stone-500 hover:bg-stone-100" onClick={() => handlers.onDiscard(pending.clientId)}>
               {tt("删除")}
             </button>
           </div>
         ) : null}
-        {pending?.status === "sending" ? (
-          <div className="mt-0.5 text-[11.5px] text-neutral-400" data-sending="">
-            {tt("发送中")}
-          </div>
-        ) : null}
+        {pending?.status === "sending" ? <div className={`px-1 ${META}`} data-sending="">{tt("发送中")}</div> : null}
         {!pending && dmRead ? <DmReadReceipt read={dmRead === "read"} /> : null}
         {!pending && mentionReads ? <MentionReadReceipt reads={message.mention_reads!} nameOf={nameOf} /> : null}
-        {notice ? (
-          <div className="mt-1">
-            <LeoNoticeLine code={notice} />
-          </div>
-        ) : null}
+        {notice ? <LeoNoticeLine code={notice} /> : null}
       </div>
-      {!isPlaceholder && !pending ? (
-        <div
-          className={
-            "absolute -top-3 right-4 z-10 " +
-            (touchOpen ? "block" : "hidden group-hover:block group-focus-within:block")
-          }
-        >
-          <MessageActions
-            message={message}
-            permissions={permissions}
-            handlers={actionHandlers}
-            open={touchOpen}
-          />
-        </div>
+      {menuEnabled ? (
+        <MessageContextMenu message={message} permissions={permissions} handlers={actionHandlers} at={menuAt} onClose={() => setMenuAt(null)} />
       ) : null}
       {recallOpen ? (
         <ConfirmDialog
@@ -434,12 +442,8 @@ export function useMessageHandlers(options: {
 
   const copy = useCallback(
     async (value: string, done: string) => {
-      try {
-        await navigator.clipboard.writeText(value);
-        toast.success(done);
-      } catch {
-        toast.error(tt("复制失败"));
-      }
+      if (await writeClipboardText(value)) toast.success(done);
+      else toast.error(tt("复制失败"));
     },
     [toast, tt],
   );

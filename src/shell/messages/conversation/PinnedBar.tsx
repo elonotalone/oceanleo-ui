@@ -33,7 +33,7 @@ export function PinnedBar({
   const fallback = tt("[消息]");
   return (
     <div className="relative border-b border-neutral-200/80" data-pinned-bar="">
-      <div className="flex items-center gap-2 px-3 py-1.5 text-[12.5px]">
+      <div className="flex items-center gap-2 px-3 py-1.5 text-[12px]">
         <button
           type="button"
           onClick={() => onJump(latest)}
@@ -56,7 +56,7 @@ export function PinnedBar({
       {open ? (
         <ul className="max-h-56 overflow-y-auto border-t border-neutral-100 bg-white dark:border-white/10 dark:bg-neutral-900">
           {[...pins].reverse().map((pin) => (
-            <li key={pin.id} className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] hover:bg-neutral-50">
+            <li key={pin.id} className="flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-neutral-50">
               <button
                 type="button"
                 onClick={() => {
@@ -72,7 +72,7 @@ export function PinnedBar({
                 <button
                   type="button"
                   onClick={() => onUnpin(pin)}
-                  className="shrink-0 text-[11.5px] text-neutral-400 hover:text-neutral-700"
+                  className="shrink-0 text-[11px] text-neutral-400 hover:text-neutral-700"
                 >
                   {tt("取消置顶")}
                 </button>

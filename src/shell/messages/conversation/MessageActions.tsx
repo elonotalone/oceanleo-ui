@@ -1,10 +1,13 @@
 "use client";
 
-// 消息上下文菜单：复制、翻译、转发、多选、引用、删除。
-import { useEffect, useState } from "react";
+// The per-message menu: Copy, Translate, Forward, Select multiple, Quote, Delete. It opens ONLY on a right click (or a
+// long press on touch) at the pointer — no hover toolbar, no "…" button (operator 2026-11-20 (i)). Same FloatingMenu as
+// the task page's "…" and Share menus.
+import { useRef } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { SS_UC_COPY as copy } from "../../../i18n/ui/messages/ss-uc-copy";
 import type { ImMessage } from "../../../lib/im/types";
-import { ImMoreIcon } from "../messages-surface";
+import { FloatingMenu, FloatingMenuItem, FloatingMenuSeparator } from "../../../ui/menu/FloatingMenu";
 
 export interface MessageActionPermissions {
   canQuote: boolean;
@@ -35,73 +38,84 @@ export interface MessageActionHandlers {
   onRecall: () => void;
 }
 
-const buttonClass =
-  "flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900";
+export interface MenuPoint {
+  x: number;
+  y: number;
+}
 
-export function MessageActions({
+const ICONS = {
+  copy: "M9 9h11v11H9zM5 15V5h10",
+  translate: "M4 5h8M8 3v2m2 0c-1 4-3.5 7-6 8m2.5-4.5C7.5 10 9.5 12 12 13m1 8 4-9 4 9m-6.8-3h5.6",
+  forward: "M4 12v-1a7 7 0 0 1 7-7h8m0 0-4-4m4 4-4 4",
+  select: "M4 12l5 5L20 6",
+  quote: "M7 7h4v4H8a1 1 0 0 0-1 1v5M13 7h4v4h-3a1 1 0 0 0-1 1v5",
+  delete: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+} as const;
+
+function MenuIcon({ name }: { name: keyof typeof ICONS }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d={ICONS[name]} />
+    </svg>
+  );
+}
+
+/** The menu at `at` (viewport coordinates of the right click / long press); closed when `at` is null. */
+export function MessageContextMenu({
   message,
   permissions,
   handlers,
-  open = false,
+  at,
+  onClose,
 }: {
   message: ImMessage;
   permissions: MessageActionPermissions;
   handlers: MessageActionHandlers;
-  open?: boolean;
+  at: MenuPoint | null;
+  onClose: () => void;
 }) {
   const tt = useUI();
-  const [menuOpen, setMenuOpen] = useState(false);
-  useEffect(() => { if (open) setMenuOpen(true); }, [open]);
-  const close = () => {
-    setMenuOpen(false);
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const run = (action: () => void) => () => {
+    onClose();
+    action();
   };
-  const item = (label: string, run: () => void, danger = false) => (
-    <button
-      key={label}
-      type="button"
-      role="menuitem"
-      onClick={() => {
-        close();
-        run();
-      }}
-      className={
-        "block w-full whitespace-nowrap px-3 py-1.5 text-left text-[12.5px] hover:bg-neutral-50 " +
-        (danger ? "text-neutral-600" : "text-neutral-700")
-      }
-    >
-      {label}
-    </button>
-  );
-
+  const hasText = Boolean(message.body);
   return (
-    <div
-      className="relative flex items-center gap-0.5"
-      data-message-actions=""
-    >
-      <div className="relative">
-        <button
-          type="button"
-          className={"min-h-11 min-w-11 " + (buttonClass)}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          aria-label={tt("更多操作")}
-          onClick={() => {
-            setMenuOpen((value) => !value);
-          }}
-        >
-          <ImMoreIcon />
-        </button>
-        {menuOpen ? (
-          <div role="menu" className="absolute right-0 top-8 z-30 min-w-[132px] overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
-            {message.body ? item(tt("复制"), handlers.onCopyText) : null}
-            {message.body ? item(tt("翻译"), handlers.onTranslate) : null}
-            {message.card?.type !== "task" && message.kind !== "task" ? item(tt("转发"), handlers.onForward) : null}
-            {item(tt("多选"), handlers.onMultiSelect)}
-            {permissions.canQuote ? item(tt("引用"), handlers.onQuote) : null}
-            {permissions.canDelete ? item(tt("删除"), handlers.onRecall, true) : null}
-          </div>
+    <>
+      {/* A 1 px point at the pointer is the menu's anchor; the menu flips when there is no room. */}
+      {at ? (
+        <span
+          ref={anchorRef}
+          aria-hidden="true"
+          data-message-menu-anchor=""
+          className="pointer-events-none fixed h-px w-px"
+          style={{ left: at.x, top: at.y }}
+        />
+      ) : null}
+      <FloatingMenu
+        key={at ? `${at.x}:${at.y}` : "closed"}
+        open={Boolean(at)}
+        anchorRef={anchorRef}
+        onClose={onClose}
+        align="start"
+        preferredPlacement="below"
+        width={200}
+        ariaLabel={tt(copy.messageActions)}
+        attributes={{ "data-message-actions": "" }}
+      >
+        {hasText ? <FloatingMenuItem icon={<MenuIcon name="copy" />} label={tt("复制")} onSelect={run(handlers.onCopyText)} /> : null}
+        {hasText ? <FloatingMenuItem icon={<MenuIcon name="translate" />} label={tt("翻译")} onSelect={run(handlers.onTranslate)} /> : null}
+        <FloatingMenuItem icon={<MenuIcon name="forward" />} label={tt("转发")} onSelect={run(handlers.onForward)} />
+        <FloatingMenuItem icon={<MenuIcon name="select" />} label={tt("多选")} onSelect={run(handlers.onMultiSelect)} />
+        {permissions.canQuote ? <FloatingMenuItem icon={<MenuIcon name="quote" />} label={tt("引用")} onSelect={run(handlers.onQuote)} /> : null}
+        {permissions.canDelete ? (
+          <>
+            <FloatingMenuSeparator />
+            <FloatingMenuItem icon={<MenuIcon name="delete" />} label={tt("删除")} danger onSelect={run(handlers.onRecall)} />
+          </>
         ) : null}
-      </div>
-    </div>
+      </FloatingMenu>
+    </>
   );
 }

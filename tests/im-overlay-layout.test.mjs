@@ -121,7 +121,7 @@ test("MessagesHost：切页关掉浮层；栏目顺序是消息、联系人；�
   assert.doesNotMatch(people, /SearchView/);
 
   const conversation = src("shell/messages/conversation/ConversationView.tsx");
-  assert.match(conversation, /ImSearchIcon/);
+  assert.match(conversation, /data-conversation-search=""/);
   assert.match(conversation, /SearchView/);
 });
 

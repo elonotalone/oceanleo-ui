@@ -6,7 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
-import { MessageItem, type MessageItemHandlers } from "./MessageItem";
+import { MessageItem, type MessageCardOpeners, type MessageItemHandlers } from "./MessageItem";
 import { dmReadState } from "./ReadReceipt";
 import { useImEvent } from "../realtime/hooks";
 import { buildRows, type ConversationSnapshot, type ConversationStore } from "./conversation-store";
@@ -38,6 +38,8 @@ export interface MessageListProps {
   onToggleSelected?: (message: ImMessage) => void;
   /** One short line under a message, by message id (a task: "Given to …"). */
   messageMarks?: Readonly<Record<string, string>>;
+  /** Passed to task / quote cards when the host handles opening them itself. */
+  cardOpeners?: MessageCardOpeners;
 }
 
 export function MessageList(props: MessageListProps) {
@@ -58,6 +60,7 @@ export function MessageList(props: MessageListProps) {
     selectedMessageIds = new Set<string>(),
     onToggleSelected,
     messageMarks,
+    cardOpeners,
   } = props;
   const tt = useUI();
   const locale = useLocale();
@@ -199,10 +202,12 @@ export function MessageList(props: MessageListProps) {
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={containerRef} onScroll={onScroll} className="h-full overflow-y-auto overscroll-contain pb-2" style={{ overflowAnchor: "none" }} data-message-list="">
+      <div ref={containerRef} onScroll={onScroll} className="h-full overflow-y-auto overscroll-contain pb-2 [overflow-anchor:none]" data-message-list="">
+        {/* The task page's column: centred, at most 52rem (agent-conversation-layout.ts). */}
+        <div className="mx-auto w-full max-w-[52rem] px-3" data-message-column="">
         <OlderHistoryTop hasMore={snapshot.hasMoreBefore} spinnerVisible={history.spinnerVisible} sentinelRef={history.sentinelRef} />
         {snapshot.loaded && snapshot.messages.length === 0 && snapshot.pending.length === 0 ? (
-          <div className="px-6 py-16 text-center text-[13px] text-neutral-400">
+          <div className="px-6 py-16 text-center text-[13px] text-stone-400">
             {snapshot.error ? tt("消息加载失败，请稍后重试。") : tt("还没有消息，说点什么吧。")}
           </div>
         ) : null}
@@ -210,8 +215,10 @@ export function MessageList(props: MessageListProps) {
           if (row.type === "time") return <ChatTimeSeparator key={row.key} at={row.at} locale={locale} />;
           if (row.type === "unread") {
             return (
-              <div key={row.key} className="my-2 px-4 text-center text-[12px] text-neutral-400" data-unread-divider="">
-                {tt("以下为未读消息")}
+              <div key={row.key} className="flex items-center gap-3 px-1.5 pb-1 pt-3 text-[12px] leading-none text-stone-400" data-unread-divider="">
+                <span aria-hidden="true" className="h-px flex-1 bg-stone-200" />
+                <span className="shrink-0">{tt("以下为未读消息")}</span>
+                <span aria-hidden="true" className="h-px flex-1 bg-stone-200" />
               </div>
             );
           }
@@ -235,13 +242,15 @@ export function MessageList(props: MessageListProps) {
                 selected={selectedMessageIds.has(message.id)}
                 onToggleSelected={onToggleSelected}
                 mark={messageMarks?.[message.id]}
+                cardOpeners={cardOpeners}
               />
             </div>
           );
         })}
         {snapshot.hasMoreAfter ? (
-          <div className="py-2 text-center text-[12px] text-neutral-400">{tt("正在加载更新的消息…")}</div>
+          <div className="py-2 text-center text-[12px] text-stone-400">{tt("正在加载更新的消息…")}</div>
         ) : null}
+        </div>
       </div>
       {newCount > 0 || snapshot.hasMoreAfter ? (
         <button
@@ -250,7 +259,7 @@ export function MessageList(props: MessageListProps) {
             if (snapshot.hasMoreAfter) void store.loadLatest().then(scrollToBottom);
             else scrollToBottom();
           }}
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-neutral-900 px-3 py-1 text-[12px] text-white dark:bg-white dark:text-neutral-900"
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-neutral-900 px-3 py-1 text-[12px] text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 active:scale-95"
           data-new-messages=""
         >
           {newCount > 0 ? tt("{n} 条新消息", { n: newCount }) : tt("回到最新消息")}

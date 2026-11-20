@@ -358,7 +358,7 @@ test("会话顶栏：◉ 会议按钮与 openMeeting 已移除；通话按钮只
     view,
     /const showCallButton = Boolean\(conversation\) && conversation\?\.kind !== "talent" && !dissolved && !notMember && !blocked;/,
   );
-  assert.match(view, /\{showCallButton && conversation \? \(\s*<CallButton conversationId=\{conversationId\} title=\{title\} kind=\{conversation\.kind\} disabled=\{policy\?\.awaiting_reply\} \/>/);
+  assert.match(view, /\{showCallButton \? \(\s*<CallButton conversationId=\{conversationId\} title=\{title\} kind=\{conversation\.kind\} disabled=\{policy\?\.awaiting_reply\} \/>/);
 });
 
 test("全局宿主（A20）：没有会议面板与会议邀请处理；可用时挂 CallHost / IncomingCallHost / CallControlHost；不可用时只挂登录框宿主", () => {

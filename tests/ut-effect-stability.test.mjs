@@ -238,22 +238,24 @@ test('attachment fallback error changes language without fetching again',async()
   });} finally {globalThis.fetch=oldFetch;}
 });
 
-for(const failure of [false,true]) test(`forward target ${failure?'error':'list'} loads once across translator changes`,async()=>{
-  const request=bounded(()=>{if(failure) throw Error('offline');return {items:[{id:'target',title:'Target conversation'}]};});
-  globalThis.__utForwardRequest=()=>request.read();
-  await mounted(ConversationView,{conversationId:'current',layout:'docked'},async view=>{
-    assert.equal(request.count,0,'forward targets load only when forwarding is opened');
-    await act(async()=>view.host.querySelector('[data-ut-forward]').click());await settle();
-    assert.equal(request.count,1);
-    if(failure) assert.match(view.host.querySelector('[role=dialog]').textContent,/en:暂时无法加载会话列表。/);
-    else assert.match(view.host.querySelector('[role=dialog]').textContent,/Target conversation/);
-    await churn(view);
-    assert.equal(request.count,1,'locale and render changes must not refetch forward targets');
-    if(failure) assert.match(view.host.querySelector('[role=dialog]').textContent,/fr:暂时无法加载会话列表。/);
-    const heading=view.host.querySelector('[role=dialog] [data-message-settings-header] h2');
-    assert.ok(heading,'forward dialog uses the shared Settings title row');
-    assert.match(heading.textContent,/^fr:/);
-  });
+// Session / sites wave 2026-11-21: a message's "Forward" no longer opens a conversation-list dialog; it opens the
+// Forward page of the header's Forward / Copy menu (the ForwardPicker loads its own targets).
+test('message Forward opens the Forward page of the header menu without loading a conversation list',async()=>{
+  let reads=0;
+  globalThis.__utForwardRequest=()=>{reads++;return {items:[]};};
+  // Opening the menu mounts the shared popover, whose motion styles jsdom 20 cannot parse (as device-settings-dialog).
+  const oldError=console.error;const errors=[];
+  console.error=(...args)=>{const first=String(args[0]);if(first.startsWith('Error: Could not parse CSS stylesheet')||first.startsWith('Error: Not implemented: window.scrollTo')) return;errors.push(args.map(String).join(' '));};
+  const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+  try {
+    await act(async()=>root.render(React.createElement(LocaleContext.Provider,{value:'en'},React.createElement(ConversationView,{conversationId:'current',layout:'docked'}))));
+    await settle();
+    await act(async()=>host.querySelector('[data-ut-forward]').click());await settle();
+    assert.equal(reads,0);
+    assert.ok(document.querySelector('[data-forward-copy-page="forward"]'),'forward page of the header menu');
+    assert.equal(host.querySelector('[data-forward-copy-entry]').getAttribute('data-forward-copy-entry'),'active');
+  } finally {await act(async()=>root.unmount());host.remove();console.error=oldError;delete globalThis.__utForwardRequest;}
+  assert.deepEqual(errors,[]);
 });
 
 const recovery=new Map();

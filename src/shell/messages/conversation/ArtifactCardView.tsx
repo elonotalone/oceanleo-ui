@@ -89,13 +89,13 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
       </span>
       <span className="flex min-w-0 flex-1 flex-col justify-between">
         <span>
-          <span className="block truncate text-[13.5px] font-medium text-neutral-900">{card.title}</span>
+          <span className="block truncate text-[13px] font-medium text-neutral-900">{card.title}</span>
           <span className="block truncate text-[12px] text-neutral-500">
             {kindLabel}
             {card.subtitle ? ` · ${card.subtitle}` : ""}
           </span>
         </span>
-        <span className="mt-1 flex items-center gap-2 text-[11.5px] text-neutral-400">
+        <span className="mt-1 flex items-center gap-2 text-[11px] text-neutral-400">
           {card.coedit ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">{tt("可以一起改")}</span> : null}
           {coedit && coedit !== "no_access" && coedit.count > 0 ? (
             <span>{tt("{n} 人正在改", { n: coedit.count })}</span>
@@ -110,7 +110,7 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
             href={target.href}
             onClick={(event) => { if (openWorkspaceHref(target.href)) event.preventDefault(); }}
             {...(inWorkspace ? {} : { target: "_blank", rel: "noopener noreferrer" })}
-            className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12.5px] text-white hover:bg-neutral-700"
+            className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white hover:bg-neutral-700"
           >
             {tt("打开")}
           </a>

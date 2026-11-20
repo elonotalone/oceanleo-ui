@@ -163,13 +163,16 @@ test('conversation search hides composer, preserves its draft, and fills availab
     assert.match(v.host.textContent,/1 member/);
     await v.click('button[aria-label="搜索消息"]');
     assert.equal(v.q('[data-conversation-composer]').hidden,true);
-    assert.equal(v.q('[data-conversation-composer]').style.display,'none');
     assert.ok(v.q('[data-search-view]'));
+    // One header row: the conversation header itself reads "<chat> / Search messages"; no second title row.
+    assert.ok(v.q('[data-conversation-header] [data-conversation-search-trail] [data-breadcrumb]'));
+    assert.equal(v.q('[data-conversation-search-trail] [data-breadcrumb-current]').textContent,'搜索消息');
+    assert.equal(v.q('[data-search-view] [data-message-settings-header]'),null);
     assert.ok(v.q('input[type="search"]').classList.contains('w-full'));
     assert.ok(!v.q('[data-search-filters]').classList.contains('flex-wrap'));
     assert.ok(v.q('[data-search-results]').classList.contains('flex-1'));
     assert.equal(v.q('[data-message-settings-frame]'),null);
-    await v.click('[data-search-back]');
+    await v.click('[data-conversation-search-trail] [data-breadcrumb-item] button');
     assert.equal(v.q('[data-conversation-composer]').hidden,false);
     assert.equal(v.q('[data-real-draft]'),draft); assert.equal(draft.value,'keep this draft');
   }finally{await v.unmount()}
@@ -181,7 +184,8 @@ test('inbox-wide search with hideInput still filters, renders and opens results'
   const opened=[];
   const v=await mount(React.createElement(SearchView,{query:'needle',hideInput:true,onOpenResult:(...args)=>opened.push(args)}));
   try {
-    assert.equal(v.q('input[type="search"]'),null); assert.equal(v.q('[data-search-filters] select').getAttribute('aria-label'),'会话');
+    assert.equal(v.q('input[type="search"]'),null); assert.equal(v.q('[data-search-filters] [data-collection-filter="conversation"]').getAttribute('aria-label'),'会话');
+    assert.equal(v.q('[data-search-filters] select'),null);
     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,340))});
     assert.equal(globalThis.__csSearchCalls.length,1);
     await v.click('[data-search-result]'); assert.deepEqual(opened,[['conv',4]]);
@@ -261,7 +265,7 @@ const { MessageItem }=await import(await compileModule('src/shell/messages/conve
   '../leo/LeoMessageBody':no('LeoMessageBody','LeoNoticeLine'),
   './ArtifactCardView':no('ArtifactCardView'),
   './AttachmentView':dataModule('export function AttachmentView(){return null}export function safeMediaUrl(u){return u}'),
-  './MessageActions':dataModule('export function MessageActions(){return null}export function actionPermissions(){return {}}'),
+  './MessageActions':dataModule('export function MessageContextMenu(){return null}export function actionPermissions(){return {}}'),
   './MessageBody':no('MessageBody'),'../../bay/orders/BayOrderCard':no('BayOrderCard'),
   './ReplayCardView':no('ReplayCardView'),'./SystemLine':no('SystemLine'),
   '../../../lib/im/people-api':dataModule('export function visiblePersonName(p){return p.display_name}'),
