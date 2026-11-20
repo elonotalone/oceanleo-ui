@@ -6,10 +6,11 @@
 // what the other people get. The summoner owns a new sub task (their computer, their credits).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import type { ImAttachment, ImConversationSummary, ImMessage } from "../../lib/im/types";
+import type { ImConversationSummary, ImMessage } from "../../lib/im/types";
 import {
   taskRoomsApi,
   type ImportedMessages,
+  type SummonAttachment,
   type SummonPreview,
   type SummonResult,
   type SummonTarget,
@@ -21,7 +22,6 @@ import { fetchConversations } from "../../lib/im/inbox-api";
 import { messagesApi } from "../../lib/im/messages-api";
 import { conversationDisplayTitle } from "../../lib/im/people-api";
 import { MessageSettingsDialog, PRIMARY, QUIET } from "../messages/MessageSettingsFrame";
-import { uploadAttachment } from "../messages/composer/upload";
 import { plainTextOf } from "../messages/conversation/message-format";
 import { ComputerDock } from "../cloud-computer/ComputerDock";
 import { useAcpCatalogPicker } from "../acp-task/useAcpCatalogPicker";
@@ -36,7 +36,8 @@ export interface SummonDraft {
   priorTaskIds: string[];
   imported: (ImportedMessages & { title: string })[];
   text: string;
-  attachments: ImAttachment[];
+  /** Private Library uploads by reference (what an agent accepts), not chat uploads. */
+  attachments: SummonAttachment[];
   mode: TaskChildMode;
   conversation?: ConversationTarget;
 }
@@ -56,6 +57,21 @@ export interface SummonDialogProps {
 }
 
 const PREVIEW_DELAY_MS = 250;
+/** The request text limit of the summon route (and of a typed agent message). */
+export const SUMMON_TEXT_MAX = 32_000;
+
+/**
+ * A file for the agent goes to the person's private Library, like a file added in the task composer; the agent's
+ * send path accepts only such references. Loaded on demand so the task page does not pull the upload stack in.
+ */
+async function uploadForAgent(file: File, siteId = "oceanleo"): Promise<SummonAttachment | null> {
+  const { uploadComposerFile } = await import("../composer-upload");
+  const result = await uploadComposerFile(file, { siteId });
+  if (!result.ok) return null;
+  const attachment = result.upload.attachment;
+  if (!attachment.artifact_id || !attachment.revision_id) return null;
+  return { ...attachment, artifact_id: attachment.artifact_id, revision_id: attachment.revision_id };
+}
 
 function failureText(tt: ReturnType<typeof useUI>, failure: TaskRoomsFailure): string {
   if (failure.unavailable) return tt("任务功能暂未开放。");
@@ -177,8 +193,11 @@ export function SummonDialog({ room, draft, onDraftChange, onChooseMessages, onC
   const addFiles = (files: FileList | null) => {
     for (const file of Array.from(files ?? [])) {
       setUploading((n) => n + 1);
-      void uploadAttachment(file)
-        .then((attachment) => update({ attachments: [...draftRef.current.attachments, attachment] }))
+      void uploadForAgent(file)
+        .then((attachment) => {
+          if (attachment) update({ attachments: [...draftRef.current.attachments, attachment] });
+          else setError(tt("文件没能上传，请重试。"));
+        })
         .catch(() => setError(tt("文件没能上传，请重试。")))
         .finally(() => setUploading((n) => n - 1));
     }
@@ -283,6 +302,7 @@ export function SummonDialog({ room, draft, onDraftChange, onChooseMessages, onC
             id={`summon-text-${room.id}`}
             value={draft.text}
             rows={3}
+            maxLength={SUMMON_TEXT_MAX}
             onChange={(event) => update({ text: event.target.value })}
             placeholder={tt("写下你的要求")}
             className="w-full resize-y rounded-lg border border-neutral-200 px-3 py-2 text-[13px] dark:border-neutral-700 dark:bg-neutral-900"
@@ -292,7 +312,7 @@ export function SummonDialog({ room, draft, onDraftChange, onChooseMessages, onC
             <input ref={fileRef} type="file" multiple hidden onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
             {uploading ? <span className="text-[12px] text-neutral-500">{tt("正在上传…")}</span> : null}
             {draft.attachments.map((attachment, index) => (
-              <span key={`${attachment.url}-${index}`} className="flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-0.5 text-[12px] dark:bg-neutral-800">
+              <span key={`${attachment.artifact_id}-${index}`} className="flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-0.5 text-[12px] dark:bg-neutral-800">
                 <span className="max-w-[160px] truncate">{attachment.name}</span>
                 <button type="button" aria-label={tt("移除")} onClick={() => update({ attachments: draft.attachments.filter((_, i) => i !== index) })}>×</button>
               </span>

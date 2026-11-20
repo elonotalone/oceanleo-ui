@@ -6,6 +6,7 @@
 import { GATEWAY_BASE } from "./auth/config";
 import { accessToken } from "./auth/client";
 import type { ImAttachment } from "./im/types";
+import type { AgentAttachment } from "./agent";
 
 export type TaskRoomOrigin = "new" | "wrapped" | "spun_off" | "project";
 export type TaskChildKind = "agent_task" | "room";
@@ -101,13 +102,20 @@ export interface SummonCreate {
   config?: Record<string, string | boolean>;
 }
 
+/**
+ * A file for the agent: a private Library upload by reference (`url: ""` + `artifact_id` / `revision_id`), the same
+ * shape the task composer sends. The agent's send path refuses anything else (`invalid_attachment`); chat (IM)
+ * uploads are not accepted here.
+ */
+export type SummonAttachment = AgentAttachment & { artifact_id: string; revision_id: string };
+
 export interface SummonRequest {
   target: SummonTarget;
   message_ids: string[];
   prior_task_ids: string[];
   imported: ImportedMessages[];
   text: string;
-  attachments?: ImAttachment[];
+  attachments?: SummonAttachment[];
   create?: SummonCreate;
   mode?: TaskChildMode;
   client_id: string;

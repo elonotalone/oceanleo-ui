@@ -64,7 +64,7 @@ export function SpinOffDialog({ roomId, messageIds, members, viewerId, onClose, 
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            maxLength={120}
+            maxLength={80}
             placeholder={tt("不填则自动命名")}
             className="rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
           />
