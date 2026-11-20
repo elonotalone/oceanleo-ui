@@ -87,7 +87,7 @@ test("openTaskChild: a cancelable request; true only when a listener took it; ne
     assert.deepEqual(seen, [{ kind: "room", id: "r1", title: "B" }]);
   } finally { window.removeEventListener(child.OPEN_TASK_CHILD_EVENT, take); }
   assert.equal(child.taskChildHref({ kind: "agent_task", id: "a b" }), "/tasks/a%20b");
-  assert.equal(child.taskChildHref({ kind: "room", id: "r1" }), null);
+  assert.equal(child.taskChildHref({ kind: "room", id: "r1" }), "/tasks/r1");
 });
 
 test("@ list extras: filtered by the typed words, case-insensitive", () => {

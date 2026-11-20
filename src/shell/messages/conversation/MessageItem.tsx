@@ -234,7 +234,8 @@ export function MessageItem(props: MessageItemProps) {
             {message.quote.recalled ? tt("该消息已撤回") : plainTextOf(message.quote.preview).replace(/\s+/g, " ")}
           </button>
         ) : null}
-        <MessageBody message={message} profiles={profiles} viewerId={viewerId} onOpenProfile={handlers.onOpenProfile} />
+        {/* A task card's body is the server's plain-text fallback for older apps ("[子任务] <title>"): the card says it. */}
+        {taskCard ? null : <MessageBody message={message} profiles={profiles} viewerId={viewerId} onOpenProfile={handlers.onOpenProfile} />}
         {message.attachments.length > 0 ? (
           <div className="mt-1 flex flex-col items-start gap-1.5">
             {message.attachments.map((attachment, index) => (

@@ -29,8 +29,8 @@ export interface WorkspaceTaskEntry {
   title: string;
 }
 
-/** Opening a child from anywhere (`openTaskChild` in `task-room/open-child.ts` dispatches it, cancelable). */
-export const OPEN_TASK_CHILD_EVENT = "oceanleo:open-task-child";
+/** Opening a child from anywhere (`openTaskChild` in `task-room/open-child.ts` dispatches it, cancelable). One name, defined there. */
+export { OPEN_TASK_CHILD_EVENT } from "./task-room/open-child";
 
 /** The event detail as trusted UI data: a known kind, an id, a bounded title. Anything else is ignored. */
 export function normalizeTaskEntry(value: unknown): WorkspaceTaskEntry | null {

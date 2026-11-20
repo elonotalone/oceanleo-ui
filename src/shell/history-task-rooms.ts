@@ -40,7 +40,8 @@ export function useMyTaskRooms(enabled = true): HistoryTaskRoom[] | null {
       } else if (result.unavailable || result.status === 401) {
         setRooms(null);
       }
-      timer = setTimeout(() => void read(), ROOMS_POLL_MS);
+      // Not available on this server (before the database change): no polling; a window focus asks again.
+      if (result.ok || !result.unavailable) timer = setTimeout(() => void read(), ROOMS_POLL_MS);
     };
     void read();
     const onFocus = () => {

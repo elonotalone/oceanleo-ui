@@ -5,7 +5,12 @@
 // read it again (a missed event never leaves a stale card for long).
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { taskRoomsApi, type TaskRoom, type TaskRoomChild } from "../../lib/task-rooms-api";
+import type { ImMessage } from "../../lib/im/types";
 import { useImEvent, useImResync } from "../messages/realtime/hooks";
+
+function isTaskCard(message: ImMessage | null | undefined): boolean {
+  return Boolean(message && (message.kind === "task" || message.card?.type === "task"));
+}
 
 export type TaskRoomState = "loading" | "ready" | "unavailable" | "not_member" | "error";
 
@@ -40,6 +45,9 @@ export function readTaskRoom(roomId: string, force = false): Promise<void> {
   const entry = entryFor(roomId);
   if (entry.inflight) return entry.inflight;
   if (!force && entry.readAt && Date.now() - entry.readAt < FOCUS_REREAD_MS) return Promise.resolve();
+  // Not a task (a card in an ordinary chat reads its chat once) or no task rooms on this server: a focus does not
+  // ask again; membership changes and reconnects still do (forced).
+  if (!force && entry.readAt && (entry.state === "not_member" || entry.state === "unavailable")) return Promise.resolve();
   entry.inflight = taskRoomsApi.getRoom(roomId).then((result) => {
     entry.inflight = null;
     entry.readAt = Date.now();
@@ -111,6 +119,16 @@ export function useTaskRoom(roomId: string | null): { room: TaskRoom | null; sta
 
   useImEvent("task.card.updated", (event) => {
     if (roomId && event.conversation_id === roomId && event.child) patchTaskRoomChild(roomId, event.child);
+  });
+  // A child was attached (its card arrives as a new message) or removed (its card is recalled): the server sends no
+  // `task.card.updated` for those, so the children list is read again.
+  useImEvent("message.created", (event) => {
+    if (roomId && event.conversation_id === roomId && isTaskCard(event.message)) void readTaskRoom(roomId, true);
+  });
+  useImEvent("message.updated", (event) => {
+    if (roomId && event.conversation_id === roomId && isTaskCard(event.message) && event.message.recalled_at) {
+      void readTaskRoom(roomId, true);
+    }
   });
   useImResync(() => {
     if (roomId) void readTaskRoom(roomId, true);

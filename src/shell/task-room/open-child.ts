@@ -19,7 +19,7 @@ export function openTaskChild(detail: OpenTaskChildDetail): boolean {
   return !window.dispatchEvent(event);
 }
 
-/** Where a child opens when no panel took the request: a sub task's page, or the task in LeoChat. */
+/** Where a child opens when no panel took the request: its own page (a task or a sub task: both live on `/tasks/{id}`). */
 export function taskChildHref(detail: Pick<OpenTaskChildDetail, "kind" | "id">): string | null {
-  return detail.kind === "agent_task" ? `/tasks/${encodeURIComponent(detail.id)}` : null;
+  return detail.id ? `/tasks/${encodeURIComponent(detail.id)}` : null;
 }

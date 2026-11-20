@@ -1,11 +1,10 @@
 // 从 LeoChat / 我的任务打开一个任务（人的会话）。规则见 host-state.ts `conversationOpenAction`：
-//   - 右侧栏：发 `oceanleo:open-task-child`（合同 §2.3；与 TU1 的 `openTaskChild` 同一个可取消事件，合并时可直接换成它）；
+//   - 右侧栏：`openTaskChild`（合同 §2.3 的同一个可取消事件 `oceanleo:open-task-child`，定义只在 task-room/open-child.ts）；
 //     侧栏任务栈没接（没人 preventDefault）就退回任务页；
 //   - 小窗 / 整页：站内跳到门户的 `/tasks/{id}`（与通知里站内链接同一个导航入口），小窗先收起。
 import { portalHref } from "../../../contracts/domain-family";
 import { closeMessages, conversationOpenAction, hostState, type ConversationOpenAction, type MessagesSurface } from "../host-state";
-
-export const OPEN_TASK_CHILD_EVENT = "oceanleo:open-task-child";
+import { openTaskChild } from "../../task-room/open-child";
 
 export interface TaskOpenEffects {
   /** 返回侧栏是否接住了（监听方调了 preventDefault）。 */
@@ -17,10 +16,7 @@ export interface TaskOpenEffects {
 
 function browserTaskOpenEffects(): TaskOpenEffects {
   return {
-    openChild(detail) {
-      if (typeof window === "undefined") return false;
-      return !window.dispatchEvent(new CustomEvent(OPEN_TASK_CHILD_EVENT, { detail, cancelable: true }));
-    },
+    openChild: (detail) => openTaskChild(detail),
     navigate(href) {
       const target = portalHref(href);
       if (!target.startsWith("/")) {
@@ -63,4 +59,17 @@ export function runConversationOpen(
 /** 打开一个任务（已知是任务）。`surface` 缺省读 LeoChat 当前在哪一处显示。 */
 export function openTaskRoom(id: string, title = "", surface: MessagesSurface = hostState().getSnapshot().surface): void {
   runConversationOpen(conversationOpenAction({ id, kind: "task", title }, surface), null);
+}
+
+/**
+ * A sub task or task nobody beside took (no right panel listening): its own page `/tasks/{id}` (the page shows a
+ * task, or a sub task beside its parent task), through the same in-app navigation; the LeoChat window closes first.
+ */
+export function openTaskPage(
+  id: string,
+  surface: MessagesSurface = hostState().getSnapshot().surface,
+  effects: TaskOpenEffects = browserTaskOpenEffects(),
+): void {
+  if (surface === "window") effects.closeWindow();
+  effects.navigate(`/tasks/${encodeURIComponent(id)}`);
 }

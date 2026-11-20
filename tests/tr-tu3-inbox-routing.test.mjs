@@ -101,45 +101,52 @@ test("composer extra @ rows (task rooms) filter by label and picking removes the
   assert.deepEqual(removeMentionQuery("ask @cod now", 8, { start: 4, query: "cod" }), { text: "ask  now", caret: 4 });
 });
 
-test("task-room calls: 503 / task_rooms_unavailable / missing route read as unavailable; others carry their code", async () => {
-  const client = dataModule(`
-    export class ImApiError extends Error {
-      constructor(status, code, message) { super(message); this.status = status; this.code = code; }
-    }
-    export async function imFetch(path, init) {
+test("task-room calls ride the one client: unavailable / missing route read as unavailable; others carry their code", async () => {
+  // The real client with a fake transport: the thin LeoChat calls add no second fetch path.
+  const transport = dataModule(`
+    export async function gatewayTransport(path, init) {
       globalThis.__tu3Calls.push([path, init?.method || "GET", init?.json]);
-      const next = globalThis.__tu3Next;
-      if (next instanceof Error) throw next;
-      return next;
+      return globalThis.__tu3Next;
     }
   `);
-  const calls = await import(await compileModule("src/shell/messages/tasks/task-room-calls.ts", { "../../../lib/im/client": client }));
-  const { ImApiError } = await import(client);
+  const api = await compileModule("src/lib/task-rooms-api.ts", {
+    "./auth/config": dataModule("export const GATEWAY_BASE = '';"),
+    "./auth/client": dataModule("export async function accessToken() { return 't'; }"),
+  });
+  const apiStub = dataModule(`
+    import { createTaskRoomsApi } from ${JSON.stringify(api)};
+    import { gatewayTransport } from ${JSON.stringify(transport)};
+    export const taskRoomsApi = createTaskRoomsApi(gatewayTransport);
+  `);
+  const calls = await import(await compileModule("src/shell/messages/tasks/task-room-calls.ts", { "../../../lib/task-rooms-api": apiStub }));
   globalThis.__tu3Calls = [];
 
-  globalThis.__tu3Next = new ImApiError(503, "task_rooms_unavailable", "");
+  globalThis.__tu3Next = { status: 503, body: { detail: { code: "task_rooms_unavailable", message: "" } } };
   assert.deepEqual(await calls.listMyTaskRooms(), { ok: false, unavailable: true });
-  globalThis.__tu3Next = new ImApiError(404, "http_404", "");
+  globalThis.__tu3Next = { status: 404, body: { detail: "Not Found" } };
   assert.deepEqual(await calls.listMyTaskRooms(), { ok: false, unavailable: true });
-  globalThis.__tu3Next = new ImApiError(404, "not_member", "no");
+  globalThis.__tu3Next = { status: 404, body: { detail: { code: "not_member", message: "no" } } };
   assert.deepEqual(await calls.listMyTaskRooms(), { ok: false, unavailable: false, status: 404, code: "not_member", message: "no" });
 
-  globalThis.__tu3Next = { rooms: [{ id: "r1", title: "T", project: { id: "p1", name: "P" }, last_message_at: "2026-11-20T10:00:00Z", unread: 2, children_count: 3 }, { title: "no id" }] };
+  globalThis.__tu3Next = { status: 200, body: { rooms: [{ id: "r1", title: "T", project: { id: "p1", name: "P" }, last_message_at: "2026-11-20T10:00:00Z", unread: 2, children_count: 3 }, { title: "no id" }] } };
   const listed = await calls.listMyTaskRooms();
   assert.equal(listed.ok, true);
   assert.deepEqual(listed.data, [{ id: "r1", title: "T", project: { id: "p1", name: "P" }, last_message_at: "2026-11-20T10:00:00Z", last_preview: null, unread: 2, children_count: 3 }]);
+  assert.deepEqual(globalThis.__tu3Calls.at(-1).slice(0, 2), ["/v1/task-rooms?scope=mine", "GET"]);
 
   globalThis.__tu3Calls = [];
-  globalThis.__tu3Next = { room_id: "r9", card_message_id: "m9" };
+  globalThis.__tu3Next = { status: 200, body: { room_id: "r9", card_message_id: "m9" } };
   const started = await calls.startTaskFromConversation("conv 1", { message_ids: ["m1", "m2"], member_ids: ["u2"], title: "T", client_id: "c1" });
   assert.deepEqual(started, { ok: true, data: { room_id: "r9", card_message_id: "m9" } });
   assert.deepEqual(globalThis.__tu3Calls[0], ["/v1/im/conversations/conv%201/start-task", "POST", { message_ids: ["m1", "m2"], member_ids: ["u2"], title: "T", client_id: "c1" }]);
 
   globalThis.__tu3Calls = [];
-  globalThis.__tu3Next = { room: { id: "r10", title: "Hello" } };
+  globalThis.__tu3Next = { status: 200, body: { room: { id: "r10", title: "Hello" } } };
   const created = await calls.createTaskRoom({ member_ids: ["u2"], first_message: { body: "Hello" }, client_id: "c2" });
   assert.deepEqual(created, { ok: true, data: { id: "r10", title: "Hello" } });
   assert.deepEqual(globalThis.__tu3Calls[0].slice(0, 2), ["/v1/task-rooms", "POST"]);
+  globalThis.__tu3Next = { status: 200, body: { room: {} } };
+  assert.equal((await calls.createTaskRoom({ member_ids: [], client_id: "c3" })).ok, false);
 });
 
 test("start-task defaults: title from the first selected message, members = conversation members except me", async () => {

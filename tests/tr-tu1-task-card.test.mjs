@@ -17,7 +17,7 @@ const ui = dataModule("export function useUI(){return (text, params={}) => text.
 const { TaskCardView } = await import(await compileModule("src/shell/task-room/TaskCardView.tsx", {
   "../../i18n/ui/useUI": ui,
   "./useTaskRoom": dataModule("export function useTaskRoom(){ return { room: globalThis.__tu1Room, state: 'ready', reload(){} }; }"),
-  "../messages/host-state": dataModule("export function openMessages(t){ globalThis.__tu1Opened.push(['messages', t]); }"),
+  "../messages/tasks/open-task": dataModule("export function openTaskPage(id){ globalThis.__tu1Opened.push(['page', id]); }"),
 }));
 
 const child = (extra = {}) => ({ kind: "agent_task", id: "t1", title: "Fix the login page", card_message_id: "m1", mode: "view", owner: { id: "u1", name: "Ann" }, program: "codex", status: "working", updated_at: "", my_access: "view", ...extra });
@@ -70,19 +70,19 @@ test("room unknown (older server, other conversation): the card's own title, sti
     assert.equal(button.getAttribute("data-task-card-status"), null, "no run state for a task");
     await act(async () => button.click());
     assert.deepEqual(requests, [{ kind: "room", id: "r2", title: "Plan the trip" }]);
-    assert.deepEqual(globalThis.__tu1Opened, [], "the panel took it: no LeoChat fallback");
+    assert.deepEqual(globalThis.__tu1Opened, [], "the panel took it: no page fallback");
   } finally {
     window.removeEventListener("oceanleo:open-task-child", take);
     await view.close();
   }
 });
 
-test("nobody takes the request: a task opens in LeoChat", async () => {
+test("nobody takes the request: a task opens on its own page (/tasks/{id}, like a task row in LeoChat)", async () => {
   globalThis.__tu1Room = null;
   globalThis.__tu1Opened = [];
   const view = await mount({ message: message({ type: "task", id: "r2", child_kind: "room", child_id: "r2", title: "Plan" }), conversationId: "c9" });
   try {
     await act(async () => view.host.querySelector("[data-task-card]").click());
-    assert.deepEqual(globalThis.__tu1Opened, [["messages", { conversationId: "r2" }]]);
+    assert.deepEqual(globalThis.__tu1Opened, [["page", "r2"]]);
   } finally { await view.close(); }
 });

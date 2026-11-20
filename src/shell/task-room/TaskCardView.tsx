@@ -7,10 +7,10 @@ import type { ImMessage } from "../../lib/im/types";
 import type { TaskRoomChild } from "../../lib/task-rooms-api";
 import { useUI } from "../../i18n/ui/useUI";
 import { useTaskChildOpener } from "./card-context";
-import { openTaskChild, taskChildHref, type OpenTaskChildDetail } from "./open-child";
+import { openTaskChild, type OpenTaskChildDetail } from "./open-child";
 import { canOpenChild, programName, taskCardStatus, type TaskCardStatus } from "./room-model";
 import { useTaskRoom } from "./useTaskRoom";
-import { openMessages } from "../messages/host-state";
+import { openTaskPage } from "../messages/tasks/open-task";
 
 export interface TaskCardViewProps {
   /** `message.card = { type: "task", child_kind, child_id, title }`. */
@@ -27,15 +27,13 @@ const STATUS_DOT: Record<TaskCardStatus, string> = {
   failed: "bg-rose-500",
 };
 
-/** Open a child where the page can: a listening panel, otherwise its own page / LeoChat. */
+/**
+ * Open a child where the page can: a listening right panel, otherwise its own page `/tasks/{id}` (a task there is
+ * the full task page, the same place a task row in LeoChat opens; a sub task opens beside its parent task).
+ */
 export function openTaskChildAnywhere(detail: OpenTaskChildDetail): void {
   if (openTaskChild(detail)) return;
-  if (detail.kind === "room") {
-    openMessages({ conversationId: detail.id });
-    return;
-  }
-  const href = taskChildHref(detail);
-  if (href) window.location.assign(href);
+  openTaskPage(detail.id);
 }
 
 export function TaskCardView({ message, conversationId, onOpen }: TaskCardViewProps) {
