@@ -22,13 +22,13 @@ export function ReplayCardView({ card }: { card: ImCard }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[11px] text-neutral-400">{tt("工作回放")}</span>
-        <span className="block truncate text-[13.5px] font-medium text-neutral-900">{card.title}</span>
+        <span className="block truncate text-[13px] font-medium text-neutral-900">{card.title}</span>
         {card.subtitle ? <span className="block truncate text-[12px] text-neutral-500">{card.subtitle}</span> : null}
       </span>
       <button
         type="button"
         onClick={() => openWorkReplay(card.id)}
-        className="shrink-0 rounded-lg bg-neutral-900 px-3 py-1.5 text-[12.5px] text-white hover:bg-neutral-700"
+        className="shrink-0 rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white hover:bg-neutral-700"
       >
         {tt("播放")}
       </button>

@@ -64,7 +64,7 @@ export function AttachmentView({
   const url = safeMediaUrl(attachment.url);
   if (!url) {
     return (
-      <div className="rounded-lg border border-neutral-200 px-3 py-2 text-[12.5px] text-neutral-400">
+      <div className="rounded-lg border border-neutral-200 px-3 py-2 text-[12px] text-neutral-400">
         {tt("附件不可用")}
       </div>
     );
@@ -105,11 +105,11 @@ export function AttachmentView({
         <div className="flex items-center gap-2">
           <audio src={url} controls preload="metadata" className="h-9 w-full min-w-[200px]" />
           {isVoice && attachment.duration_ms ? (
-            <span className="shrink-0 text-[11.5px] tabular-nums text-neutral-400">{formatDuration(attachment.duration_ms)}</span>
+            <span className="shrink-0 text-[11px] tabular-nums text-neutral-400">{formatDuration(attachment.duration_ms)}</span>
           ) : null}
         </div>
         {isVoice && transcript ? (
-          <div className="rounded-md bg-neutral-50 px-2 py-1 text-[12.5px] text-neutral-600" data-transcript={transcript.status}>
+          <div className="rounded-md bg-neutral-50 px-2 py-1 text-[12px] text-neutral-600" data-transcript={transcript.status}>
             {transcript.status === "pending" ? tt("正在转成文字…") : null}
             {transcript.status === "done" ? <span className="whitespace-pre-wrap break-words">{transcript.text}</span> : null}
             {transcript.status === "failed" ? tt("没能转成文字") : null}
@@ -132,7 +132,7 @@ export function AttachmentView({
       </span>
       <span className="min-w-0">
         <span className="block truncate text-[13px] text-neutral-800">{attachment.name}</span>
-        <span className="block text-[11.5px] text-neutral-400">{formatBytes(attachment.size)} · {tt("下载")}</span>
+        <span className="block text-[11px] text-neutral-400">{formatBytes(attachment.size)} · {tt("下载")}</span>
       </span>
     </a>
   );

@@ -362,7 +362,7 @@ function renderBlocks(blocks: BlockNode[], options: RenderOptions, keyPrefix: st
           {
             key,
             className:
-              "my-1 max-w-full overflow-x-auto rounded-lg bg-neutral-900 p-3 font-mono text-[12.5px] leading-relaxed text-neutral-100",
+              "my-1 max-w-full overflow-x-auto rounded-lg bg-neutral-900 p-3 font-mono text-[12px] leading-relaxed text-neutral-100",
           },
           createElement("code", null, block.text),
         );

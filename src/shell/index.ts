@@ -720,7 +720,6 @@ export {
   TaskRoomView, TaskCardView, openTaskChild, OPEN_TASK_CHILD_EVENT, useTaskRoom, SummonDialog,
   type TaskRoomViewProps, type TaskCardViewProps, type OpenTaskChildDetail, type TaskRoomState,
 } from "./task-room";
-export { registerMessageSelectionAction, type MessageSelectionAction, type MessageSelectionContext } from "./messages/conversation/selection-actions";
 export {
   taskRoomsApi, createTaskRoomsApi, TASK_ROOMS_UNAVAILABLE,
   type TaskRoom, type TaskRoomChild, type TaskRoomSummary, type TaskRoomChainItem, type TaskHandoff,

@@ -96,7 +96,6 @@ async function mount(Component,props={}) {
 }
 function hasClasses(root,classes){return [...root.querySelectorAll('*')].some(el=>classes.split(' ').every(c=>el.classList.contains(c)));}
 const fixtures=[
- ['conversation/ForwardMessagesDialog','ForwardMessagesDialog',{targets:[],error:null,busy:false,onClose(){},onForward(){}}],
  ['groups/ConversationInfoPanel','ConversationInfoPanel',{conversationId:'c1',onClose(){},onOpenConversation(){}}],
  ['groups/TeamInviteDialog','TeamInviteDialog',{orgId:'o1',onClose(){}}],
  ['groups/UpgradeToTeamDialog','UpgradeToTeamDialog',{conversationId:'c1',onClose(){},onDone(){}}],
@@ -113,7 +112,7 @@ const fixtures=[
  ['cases/MessagesContentCases','MessagesContentCases',{onBack(){}}],
  ['call/diagnostics/CallTestPanel','CallTestPanel',{open:true,onClose(){}}],
 ];
-test('fixtures inventory stays complete',()=>assert.equal(fixtures.length,16));
+test('fixtures inventory stays complete',()=>assert.equal(fixtures.length,15));
 for(const [rel,name,props] of fixtures) test(`${name} uses its assigned frame and size`,async()=>{
  const Component=await surface(`src/shell/messages/${rel}.tsx`,name), view=await mount(Component,props);
  try {

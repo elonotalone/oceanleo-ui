@@ -34,10 +34,9 @@ export function CallButton({ conversationId, title, kind, disabled = false }: Ca
           title={inThisCall ? tt("通话中，点击展开小窗") : label}
           disabled={disabled || entry.state === "busy" || entry.pending}
           className={
-            "inline-flex h-[30px] shrink-0 items-center gap-1 rounded-[10px] px-2 text-[12.5px] font-medium transition-colors duration-[var(--leo-dur-2)] disabled:cursor-default disabled:opacity-50 " +
-            (inThisCall
-              ? "bg-neutral-50 text-neutral-700 hover:bg-neutral-100 dark:bg-neutral-900/15 dark:text-neutral-300 dark:hover:bg-neutral-900/25"
-              : "text-neutral-500 hover:bg-black/5 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-100")
+            // The task page's header button family (AgentChat HEADER_ICON_BUTTON_CLASS) with a short label.
+            "inline-flex shrink-0 items-center gap-1 rounded-lg p-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent " +
+            (inThisCall ? "bg-stone-100 text-stone-800" : "text-stone-500")
           }
         >
           <HeadphonesIcon size={16} />
