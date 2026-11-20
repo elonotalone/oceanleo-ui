@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ConfirmDialog } from "../../../ui";
 import { signOutEverywhere } from "../../../lib/auth";
-import { deleteOceanLeoAccount, updateAvatar, updateDisplayName } from "../../../lib/auth/account-identity";
+import { deleteOceanLeoAccount, updateAvatar } from "../../../lib/auth/account-identity";
 import { formatMoney } from "../../../lib/money";
 import { writeClipboardText } from "../../../shell/share/share-clipboard";
+import { AccountNameField } from "./AccountNameField";
 import { ChangeEmailDialog } from "./ChangeEmailDialog";
 import {
   avatarInitial,
@@ -14,7 +15,6 @@ import {
   fileToAvatarDataUrl,
   identityCallResult,
   sessionContactDisplay,
-  trimmedDisplayName,
   type AccountHomeProfile,
   type AccountHomeProps,
 } from "./account-home-model";
@@ -74,21 +74,17 @@ export function AccountHome({
   onDeleteAccount,
 }: AccountHomeProps) {
   const tt = useUI();
-  const nameId = useId();
   const [name, setName] = useState(profile.displayName);
-  const committedName = useRef(profile.displayName);
   const [copied, setCopied] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteNotice, setDeleteNotice] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
-  const [nameError, setNameError] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const avatarFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setName(profile.displayName);
-    committedName.current = profile.displayName;
   }, [profile.displayName]);
 
   const contactText = sessionContactDisplay(profile.sessionContact);
@@ -100,26 +96,7 @@ export function AccountHome({
     onProfileChange?.(next);
   }
 
-  function onNameInput(value: string) {
-    setName(value);
-    setNameError(null);
-    emitProfile({ ...profile, displayName: value });
-  }
-
-  async function commitName() {
-    const next = trimmedDisplayName(name);
-    if (next === committedName.current) {
-      if (name !== next) setName(next);
-      return;
-    }
-    const result = identityCallResult(await updateDisplayName(next));
-    if (result.error) {
-      setName(committedName.current);
-      emitProfile({ ...profile, displayName: committedName.current });
-      setNameError(result.error);
-      return;
-    }
-    committedName.current = next;
+  function onNameSaved(next: string) {
     setName(next);
     emitProfile({ ...profile, displayName: next });
   }
@@ -237,29 +214,7 @@ export function AccountHome({
           }}
         />
         <div className="min-w-0 flex-1">
-          <label htmlFor={nameId} className="block text-[12px] text-neutral-500">
-            {tt("全名")}
-          </label>
-          <input
-            id={nameId}
-            data-account-full-name=""
-            type="text"
-            value={name}
-            onChange={(event) => onNameInput(event.target.value)}
-            onBlur={() => void commitName()}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                event.currentTarget.blur();
-              }
-            }}
-            className={`mt-1 w-full max-w-xs rounded-lg bg-neutral-100 px-3 py-2 text-[14px] text-neutral-900 ${RING}`}
-          />
-          {nameError ? (
-            <p role="alert" className="mt-1 text-[12px] text-red-600">
-              {tt(nameError)}
-            </p>
-          ) : null}
+          <AccountNameField initialName={profile.displayName} onNameChange={onNameSaved} />
           {avatarError ? (
             <p role="alert" data-account-avatar-error="" className="mt-1 text-[12px] text-red-600">
               {tt(avatarError)}

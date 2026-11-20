@@ -303,17 +303,6 @@ test("updateAvatar 写入 avatar_url", async () => {
   assert.equal(update[1].data.avatar_url, "data:image/png;base64,abc");
 });
 
-test("updateDisplayName 同时写入 full_name 和 name", async () => {
-  const mod = await loadIdentityModule();
-  const calls = installAuth();
-  const result = await mod.updateDisplayName("Ada Lovelace");
-  assert.equal(result.error, undefined);
-  const update = calls.find((row) => row[0] === "updateUser");
-  assert.ok(update);
-  assert.equal(update[1].data.full_name, "Ada Lovelace");
-  assert.equal(update[1].data.name, "Ada Lovelace");
-});
-
 test("linkSignInMethod microsoft 带 skipBrowserRedirect 与 scopes，返回 url", async () => {
   const mod = await loadIdentityModule();
   const calls = installAuth();
@@ -387,4 +376,30 @@ test("GoTrue 英文错误翻成中文，不甩原文", async () => {
   assert.equal(unlinked.error, "至少保留一种登录方式。");
   const changed = await mod.completeEmailChange("new@example.com", "000000");
   assert.equal(changed.error, "验证码不正确或已过期，请重新获取。");
+});
+
+async function loadIdentityWithName(answer) {
+  globalThis.__nmAccountName = answer;
+  const url = await compileModule("src/lib/auth/account-identity.ts", {
+    "./client": clientStubUrl,
+    "./config": dataModule(`export const GATEWAY_BASE = "https://api.test.oceanleo.com";`),
+    "../account/name-api": dataModule(`export async function getAccountName() { return globalThis.__nmAccountName; }`),
+  });
+  return import(url);
+}
+
+test("getAccountProfile 的名字取网关的账户名称（侧栏与账户页同一个值）", async () => {
+  const mod = await loadIdentityWithName({ ok: true, state: { name: "Elon Lee", canChangeAt: null } });
+  installAuth();
+  globalThis.__W1_AUTH__.user.user_metadata = { full_name: "elon" };
+  const box = await mod.getAccountProfile();
+  assert.equal(box.profile.displayName, "Elon Lee");
+});
+
+test("网关暂不能回答名称时退回账户资料里的名字", async () => {
+  const mod = await loadIdentityWithName({ ok: false, code: "name_unavailable", canChangeAt: null });
+  installAuth();
+  globalThis.__W1_AUTH__.user.user_metadata = { full_name: "Ada" };
+  const box = await mod.getAccountProfile();
+  assert.equal(box.profile.displayName, "Ada");
 });

@@ -17,6 +17,7 @@ import {
   type OauthProvider,
 } from "./client";
 import { GATEWAY_BASE } from "./config";
+import { getAccountName } from "../account/name-api";
 
 /** 微信扫码用户在 GoTrue 里的合成邮箱，账户页 Email 行不准出现。 */
 const WECHAT_EMAIL_HOST = "@wechat.oceanleo.com";
@@ -371,7 +372,11 @@ export async function getAccountProfile(): Promise<{ profile?: AccountProfile; e
   if (!got.user) return { error: got.error || SESSION_GONE };
   const userId = str(got.user.id) || (await getUserId()) || "";
   if (!userId) return { error: SESSION_GONE };
-  const profile = profileFromUser(got.user, userId);
+  const named = await getAccountName();
+  // The account name (contract §1.1) is the one name every surface shows; the Auth
+  // metadata is only the fallback while the gateway cannot answer yet.
+  const base = profileFromUser(got.user, userId);
+  const profile = named.ok ? { ...base, displayName: named.state.name } : base;
   if (!str(got.user.phone) && profile.sessionContact.kind === "none") {
     const phoneBox = await getAuthPhoneUser().catch(() => ({ user: null as { phone?: string | null } | null }));
     const phoneUser = phoneBox && "user" in phoneBox ? phoneBox.user : phoneBox;
@@ -402,24 +407,6 @@ export async function updateAvatar(url: string): Promise<{ error?: string }> {
     data: {
       ...metadataRecord(got.user),
       avatar_url: next,
-    },
-  });
-  if (error) return { error: mapAuthError(error.message, SAVE_FAILED) };
-  announceAuthState();
-  return {};
-}
-
-export async function updateDisplayName(name: string): Promise<{ error?: string }> {
-  const client = browserClient();
-  if (!client) return { error: CONFIG_UNAVAILABLE };
-  const got = await currentUser();
-  if (!got.user) return { error: got.error || SESSION_GONE };
-  const next = String(name ?? "").trim();
-  const { error } = await client.auth.updateUser({
-    data: {
-      ...metadataRecord(got.user),
-      full_name: next,
-      name: next,
     },
   });
   if (error) return { error: mapAuthError(error.message, SAVE_FAILED) };

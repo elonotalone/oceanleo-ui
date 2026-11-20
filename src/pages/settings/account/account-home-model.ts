@@ -76,10 +76,6 @@ export function isUsableEmail(value: string): boolean {
   return EMAIL_RE.test((value || "").trim());
 }
 
-export function trimmedDisplayName(value: string): string {
-  return (value || "").trim();
-}
-
 export function isAvatarImageFile(file: { type?: string; name?: string } | null | undefined): boolean {
   if (!file) return false;
   const type = String(file.type || "").toLowerCase();

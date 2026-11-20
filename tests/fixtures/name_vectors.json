@@ -1,0 +1,33 @@
+{
+  "_doc": "One-name rules (0610). Same vectors for SQL (user_name_key/clean/problem), backend/app/account_names.py and oceanleo-ui src/lib/account/name-rules.ts.",
+  "key": [
+    ["ＥＬＯＮ　Ｌｅｅ", "elon lee"],
+    ["Elon​ Lee", "elon lee"],
+    ["  elon   LEE ", "elon lee"],
+    ["Elon", "elon"],
+    ["ELON", "elon"],
+    ["测试甲", "测试甲"],
+    ["測試甲", "測試甲"],
+    ["a­b", "ab"],
+    ["x\t\ny", "x y"],
+    ["﻿Leo⁠ Fan", "leo fan"]
+  ],
+  "clean": [
+    ["  Elon 　 Lee ", "Elon Lee"],
+    ["Elon\t\tLee", "Elon Lee"],
+    ["测试甲", "测试甲"]
+  ],
+  "problem": [
+    ["Elon​Lee", "name_invalid"],
+    ["甲", "name_invalid"],
+    ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "name_invalid"],
+    ["测试甲", null],
+    ["Elon Lee", null],
+    ["OceanLeo 官方", "name_reserved"],
+    ["ADMIN", "name_reserved"],
+    ["Ｏｃｅａｎｌｅｏ team", "name_reserved"],
+    ["官方客服", "name_reserved"],
+    ["客服", "name_reserved"],
+    ["Leo Fan", null]
+  ]
+}

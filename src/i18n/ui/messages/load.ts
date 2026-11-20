@@ -29,6 +29,7 @@ import { swNuCopy } from "./sw-nu-copy";
 import { taskLiveCopy } from "./task-live-copy";
 import { swTwCopy } from "./sw-tw-copy";
 import { rwMcCopy } from "./rw-mc-copy";
+import { rwNmCopy } from "./rw-nm-copy";
 import { swSTCopy } from "./sw-st-copy";
 import { swPfCopy } from "./sw-pf-copy";
 import { swHuCopy } from "./sw-hu-copy";
@@ -156,6 +157,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...swBrCopy(locale),
     ...swTwCopy(locale),
     ...rwMcCopy(locale),
+    ...rwNmCopy(locale),
     ...swSTCopy(locale),
     ...swPfCopy(locale),
     ...swHuCopy(locale),

@@ -101,9 +101,14 @@ const STUBS = {
       s().signedOut += 1;
     }
   `),
+  "../../../lib/account/name-api": dataModule(`
+    const n = () => globalThis.__nmName;
+    export async function getAccountName() { return n().get(); }
+    export async function saveAccountName(name) { n().saved.push(name); return n().save(name); }
+    export async function checkNameAvailable(name) { n().checked.push(name); return n().available(name); }
+  `),
   "../../../lib/auth/account-identity": dataModule(`
     const s = () => globalThis.__w2Identity;
-    export async function updateDisplayName(name) { return s().updateDisplayName(name); }
     export async function updateAvatar(url) { return s().updateAvatar(url); }
     export async function requestEmailChange() { return s().requestEmailChange(); }
     export async function verifyEmailChange(code) { return s().verifyEmailChange(code); }
@@ -162,7 +167,15 @@ function fixture(overrides = {}) {
   };
 }
 
-function resetStubs() {
+function resetStubs(name = {}) {
+  globalThis.__nmName = {
+    saved: [],
+    checked: [],
+    async get() { return { ok: true, state: { name: "Elon Lee", canChangeAt: null } }; },
+    async save(next) { return { ok: true, state: { name: next, canChangeAt: "2099-01-08T00:00:00Z" } }; },
+    async available() { return { ok: true, available: true, code: null }; },
+    ...name,
+  };
   globalThis.__w2Copied = "";
   globalThis.__w2Auth = { signedOut: 0 };
   globalThis.__w2Identity = {
@@ -171,10 +184,6 @@ function resetStubs() {
     emailsRequested: 0,
     codes: [],
     completed: [],
-    async updateDisplayName(name) {
-      this.names.push(name);
-      return {};
-    },
     async updateAvatar(url) {
       this.avatars.push(url);
       return {};
@@ -307,16 +316,17 @@ test("sessionContactDisplay：邮箱 / 手机 / 微信合成邮箱不上屏", ()
   assert.equal(avatarInitial(fixture({ displayName: "Elon Lee" })), "E");
 });
 
-test("渲染后能找到全名、Email 更改、用户 ID 复制、登录方式、设备、删除、退出", async () => {
+test("渲染后能找到名称、Email 更改、用户 ID 复制、登录方式、设备、删除、退出", async () => {
   resetStubs();
   const { host, unmount } = await mount();
   try {
     const pane = host.querySelector('[data-settings-pane="account"]');
     assert.ok(pane);
-    const nameInput = host.querySelector("[data-account-full-name]");
+    const nameInput = host.querySelector("[data-account-name]");
     assert.ok(nameInput);
     assert.equal(nameInput.value, "Elon Lee");
-    assert.match(host.textContent, /全名/);
+    assert.match(host.textContent, /名称/);
+    assert.equal(host.textContent.includes("全名"), false);
     assert.match(host.textContent, /邮箱/);
     assert.match(host.textContent, /elonlee63@gmail.com/);
     const avatar = host.querySelector("[data-account-avatar]");
@@ -389,17 +399,150 @@ test("点管理会调对应 callback；充值走 onOpenTopup", async () => {
   }
 });
 
-test("改名即时 onProfileChange，blur 调 updateDisplayName", async () => {
+async function waitDebounce() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 340));
+  });
+  await flush();
+}
+
+function nameStatus(host) {
+  return host.querySelector("[data-account-name-field]").getAttribute("data-account-name-status");
+}
+
+function nameMessage(host) {
+  return host.querySelector("[data-account-name-message]")?.textContent ?? "";
+}
+
+test("名称：输入时防抖查可用性，blur 经网关保存并回写 profile（不再写 Auth metadata）", async () => {
   resetStubs();
   const { host, calls, unmount } = await mount();
   try {
-    const input = host.querySelector("[data-account-full-name]");
+    const input = host.querySelector("[data-account-name]");
     await typeInto(input, "Elon L");
-    assert.ok(calls.profiles.length >= 1);
-    assert.equal(calls.profiles.at(-1).displayName, "Elon L");
-    assert.equal(globalThis.__w2Identity.names.length, 0);
+    assert.equal(nameStatus(host), "checking");
+    assert.deepEqual(globalThis.__nmName.checked, []);
+    await waitDebounce();
+    assert.deepEqual(globalThis.__nmName.checked, ["Elon L"]);
+    assert.equal(nameStatus(host), "available");
+    assert.match(nameMessage(host), /这个名称可以使用。/);
+    assert.deepEqual(globalThis.__nmName.saved, []);
     await blur(input);
-    assert.deepEqual(globalThis.__w2Identity.names, ["Elon L"]);
+    assert.deepEqual(globalThis.__nmName.saved, ["Elon L"]);
+    assert.equal(nameStatus(host), "saved");
+    assert.equal(calls.profiles.at(-1).displayName, "Elon L");
+    assert.equal(host.querySelector("[data-account-avatar]").textContent, "E");
+    assert.ok(host.querySelector("[data-account-name-next-change]"), "shows when the name can next change");
+    assert.match(host.querySelector("[data-account-name-next-change]").textContent, /之后才能再次修改名称。/);
+  } finally {
+    await unmount();
+  }
+});
+
+test("名称：大小写不同的同一名称不查也不算冲突", async () => {
+  resetStubs();
+  const { host, unmount } = await mount();
+  try {
+    await typeInto(host.querySelector("[data-account-name]"), "ELON  LEE");
+    await waitDebounce();
+    assert.deepEqual(globalThis.__nmName.checked, []);
+    assert.equal(nameStatus(host), "idle");
+  } finally {
+    await unmount();
+  }
+});
+
+for (const [label, code, text] of [
+  ["已被占用", "name_taken", /这个名称已被别人使用。/],
+  ["保留名", "name_reserved", /这个名称不能使用。/],
+]) {
+  test(`名称：可用性检查回「${label}」，保存被拒时保留输入`, async () => {
+    resetStubs({
+      async available() { return { ok: true, available: false, code }; },
+      async save() { return { ok: false, code, canChangeAt: null }; },
+    });
+    const { host, calls, unmount } = await mount();
+    try {
+      const input = host.querySelector("[data-account-name]");
+      await typeInto(input, "Grace Hopper");
+      await waitDebounce();
+      assert.equal(nameStatus(host), code);
+      assert.match(nameMessage(host), text);
+      await blur(input);
+      assert.deepEqual(globalThis.__nmName.saved, ["Grace Hopper"]);
+      assert.equal(input.value, "Grace Hopper", "typed text stays");
+      assert.equal(nameStatus(host), code);
+      assert.equal(host.querySelector("[data-account-name-message]").getAttribute("role"), "alert");
+      assert.notEqual(calls.profiles.at(-1)?.displayName, "Grace Hopper");
+    } finally {
+      await unmount();
+    }
+  });
+}
+
+test("名称：本地规则先挡不合规与保留名，不调网关", async () => {
+  resetStubs();
+  const { host, unmount } = await mount();
+  try {
+    const input = host.querySelector("[data-account-name]");
+    await typeInto(input, "甲");
+    assert.equal(nameStatus(host), "name_invalid");
+    assert.match(nameMessage(host), /名称需为 2–30 个字符/);
+    await blur(input);
+    assert.deepEqual(globalThis.__nmName.saved, []);
+    assert.equal(input.value, "甲");
+    await typeInto(input, "OceanLeo 官方");
+    assert.equal(nameStatus(host), "name_reserved");
+    await waitDebounce();
+    assert.deepEqual(globalThis.__nmName.checked, []);
+  } finally {
+    await unmount();
+  }
+});
+
+test("名称：改得太频繁时说明下次可改的日期", async () => {
+  resetStubs({
+    async save() { return { ok: false, code: "name_change_too_soon", canChangeAt: "2099-03-04T00:00:00Z" }; },
+  });
+  const { host, unmount } = await mount();
+  try {
+    const input = host.querySelector("[data-account-name]");
+    await typeInto(input, "Ada Lovelace");
+    await blur(input);
+    assert.equal(nameStatus(host), "name_change_too_soon");
+    assert.match(nameMessage(host), /2099/);
+    assert.match(nameMessage(host), /之后才能再次修改名称。/);
+    assert.equal(input.value, "Ada Lovelace");
+  } finally {
+    await unmount();
+  }
+});
+
+test("名称：网关还没有名称功能时明确标注，不假装成功", async () => {
+  resetStubs({
+    async get() { return { ok: false, code: "name_unavailable", canChangeAt: null }; },
+  });
+  const { host, unmount } = await mount();
+  try {
+    const input = host.querySelector("[data-account-name]");
+    assert.equal(nameStatus(host), "name_unavailable");
+    assert.match(nameMessage(host), /名称修改暂未开放。/);
+    assert.equal(input.disabled, true);
+    assert.equal(input.value, "Elon Lee");
+  } finally {
+    await unmount();
+  }
+});
+
+test("名称：载入时以网关的名称为准，并带出下次可改时间", async () => {
+  resetStubs({
+    async get() { return { ok: true, state: { name: "测试甲", canChangeAt: "2099-05-06T00:00:00Z" } }; },
+  });
+  const { host, calls, unmount } = await mount();
+  try {
+    assert.equal(host.querySelector("[data-account-name]").value, "测试甲");
+    assert.equal(calls.profiles.at(-1).displayName, "测试甲");
+    assert.ok(host.querySelector("[data-account-name-next-change]"));
   } finally {
     await unmount();
   }
