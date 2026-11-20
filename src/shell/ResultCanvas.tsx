@@ -58,6 +58,7 @@ import {
   type LeoChatPanelRequestDetail,
 } from "./leochat/LeoChatButton";
 import { WorkspaceHome, WorkspaceViewHeader } from "./result-canvas-home";
+import { useInspirationContext } from "./inspirations/inspiration-context";
 import { getWorkspacePanel } from "./workspace-panels/registry";
 import {
   useActiveAppCapability,
@@ -314,6 +315,10 @@ export function ResultCanvas({
   const runtimeHydration = useWorkspaceRuntimeHydration();
   const rightSlot = useRightPaneSlot();
   const workspacePane = useWorkspacePane();
+  const inspirationScope = useInspirationContext();
+  const appEntryKey = inspirationScope?.siteKey && inspirationScope.appId
+    ? JSON.stringify([inspirationScope.siteKey, inspirationScope.appId]) : null;
+  const previousAppEntryKey = useRef<string | null>(null);
   const libraryPanelInstanceId = useId();
   const instanceId = workspaceInstanceId || libraryPanelInstanceId;
   const [tasksVisited, setTasksVisited] = useState(false);
@@ -700,10 +705,16 @@ export function ResultCanvas({
     window.addEventListener(LEOCHAT_PANEL_REQUEST_EVENT, receive);
     return () => window.removeEventListener(LEOCHAT_PANEL_REQUEST_EVENT, receive);
   }, [goHome, imOn, openPanel, rightSlot, view, workspaceOpen, showLeoChat]);
+  const consumedAppChatNonce = useRef<string | null>(null);
   useEffect(() => {
-    if (!showLeoChat || !imOn || !leoChatRequestNonce || view === "leochat") return;
-    openPanel("leochat");
-  }, [imOn, leoChatRequestNonce, openPanel, view, showLeoChat]);
+    if (!showLeoChat || !imOn || !leoChatRequestNonce) return;
+    // App hosts retain requests across navigation; an old request must not undo app entry or Back.
+    if (appEntryKey) {
+      if (consumedAppChatNonce.current === leoChatRequestNonce) return;
+      consumedAppChatNonce.current = leoChatRequestNonce;
+    }
+    if (view !== "leochat") openPanel("leochat");
+  }, [appEntryKey, imOn, leoChatRequestNonce, openPanel, view, showLeoChat]);
   // Navigation hides a foreground editor instead of destroying its mounted session.
   currentViewRef.current = view;
   const previousNavigation = useRef({ view, nonce: externalAction?.nonce, focusNonce, active });
@@ -737,7 +748,32 @@ export function ResultCanvas({
     latestEntryRequest.current.item = openItem?.nonce;
     if (openItem) latestEntryRequest.current.request = null;
   }
-  const entryRequest = useWorkspaceEntryRequest(taskEntryRequest || latestEntryRequest.current.request, openResolvedEntry);
+  const enteringApp = Boolean(appEntryKey && previousAppEntryKey.current !== appEntryKey);
+  const entryRequest = useWorkspaceEntryRequest(enteringApp ? null : taskEntryRequest || latestEntryRequest.current.request, openResolvedEntry);
+  useEffect(() => {
+    if (previousAppEntryKey.current === appEntryKey) return;
+    previousAppEntryKey.current = appEntryKey;
+    if (!appEntryKey) return;
+    // App entry selects its home-owned Inspirations, replacing any retained slot, task or file.
+    // Changes inside the same app (including Back) do not run this reset again.
+    closeTask();
+    setActiveCanvasEntry(null);
+    setActiveActionContext(undefined);
+    setForegroundSuspended(true);
+    setTaskEntryRequest(null);
+    latestEntryRequest.current.request = null;
+    taskPageReturnRef.current = null;
+    taskMaximizedRef.current = false;
+    rightSlot?.setRightMaximized(false);
+    workspacePane?.closeLibraryPanel();
+    if (activeCapability) capabilityControls.close();
+    if (!narrowScreen()) {
+      // The split's listener is a parent effect and may not be registered at first mount yet.
+      queueMicrotask(() => {
+        if (previousAppEntryKey.current === appEntryKey) revealWorkspacePane(instanceId);
+      });
+    }
+  }, [appEntryKey, closeTask, rightSlot, workspacePane, activeCapability, capabilityControls, instanceId]);
   const returnToTask = useCallback(() => {
     const returnView = taskPageReturnRef.current;
     if (!returnView) return false;

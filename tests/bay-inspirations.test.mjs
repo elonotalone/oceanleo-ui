@@ -171,7 +171,7 @@ test("catalog request uses exact site/app/page filters and no credentials", asyn
   } finally { globalThis.fetch = original; }
 });
 
-test("restored card requests its app and reveals/fills its own left agent", async () => {
+test("app-entry Inspirations requests its app and reveals/fills its own left agent", async () => {
   const f = composerFixture();
   f.left.hidden = true;
   f.right.replaceChildren();
@@ -194,9 +194,8 @@ test("restored card requests its app and reveals/fills its own left agent", asyn
       onOpenSlot: () => assert.fail("restored card must not open the legacy guide slot"),
       onOpenPanel() {},
     })));
-    assert.ok(f.right.querySelector('[data-workspace-card="template"]'), "main app context restores the card despite legacy template=false");
-    await act(async () => f.right.querySelector('[data-workspace-card="template"]').click());
     await waitForPanel(f.right);
+    assert.ok(f.right.querySelector('[data-workspace-inspirations]'), "app entry opens Inspirations despite legacy template=false");
     assert.equal(urls.length, 1);
     const params = new URL(urls[0]).searchParams;
     assert.equal(params.get("siteKey"), "website");
@@ -209,6 +208,9 @@ test("restored card requests its app and reveals/fills its own left agent", asyn
     assert.match(f.right.textContent, /已填入对话输入框/);
     await act(async () => f.right.querySelector('button[data-back-button][aria-label="返回"]').click());
     assert.ok(f.right.querySelector('[data-workspace-card="template"]'));
+    await act(async () => f.right.querySelector('[data-workspace-card="template"]').click());
+    await waitForPanel(f.right);
+    assert.equal(new URL(urls.at(-1)).searchParams.get("appId"), "landing");
   } finally {
     await act(async () => root.unmount());
     f.split.remove();

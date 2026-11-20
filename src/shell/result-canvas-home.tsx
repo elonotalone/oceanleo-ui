@@ -163,8 +163,9 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
   const provided = useInspirationContext();
   const scope = provided?.siteKey && provided.appId ? provided : null;
   const scopeKey = JSON.stringify([scope?.siteKey, scope?.appId]);
-  const [inspirationView, setInspirationView] = useState({ scope: scopeKey, open: false });
-  if (inspirationView.scope !== scopeKey) setInspirationView({ scope: scopeKey, open: false });
+  const [inspirationView, setInspirationView] = useState({ scope: scopeKey, open: Boolean(scope) });
+  // Entering an app starts with its Inspirations. Back stays on cards until the scope changes again.
+  if (inspirationView.scope !== scopeKey) setInspirationView({ scope: scopeKey, open: Boolean(scope) });
   const inspirationOpen = inspirationView.scope === scopeKey && inspirationView.open;
   // The card owns its API-backed view, independent of legacy GuideProvider tabs, on every pack's app console.
   const slots = scope?.siteKey && scope.appId && !props.slots.includes("template")
