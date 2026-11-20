@@ -8,6 +8,7 @@
 // the task already shows from its earlier session rows: they render nothing (parent update 1, no dedupe).
 
 import { parseRow } from "./parse";
+import { chunkNotice, noticeCode, type AcpNoticeFields } from "./notices";
 import type {
   AcpBackgroundTask,
   AcpEvent,
@@ -231,13 +232,27 @@ export function reduceRows(rows: readonly AcpFrameRow[], _program = ""): AcpView
     entry.updatedAt = row.received_at;
   };
 
+  /** A program status line: its own item, never part of the assistant's reply (B5). */
+  const notice = (row: AcpFrameRow, fields: AcpNoticeFields) => {
+    const retryText = `${fields.title} ${fields.description}`.toLowerCase();
+    if (!fields.code && (retryText.includes("retry") || retryText.includes("重试") || retryText.includes("reconnect") || retryText.includes("重新连接"))) view.retrying = true;
+    push({ type: "notice", key: `notice-${row.id}`, ...fields, rowId: row.id });
+  };
+
   const sessionUpdate = (row: AcpFrameRow, sessionId: string, update: SessionUpdate) => {
     if (sessionId && mainSessions.size === 0) mainSessions.add(sessionId);
     switch (update.sessionUpdate) {
-      case "agent_message_chunk":
+      case "agent_message_chunk": {
+        // Last guard: a status line an adapter still sent as message text is a notice, not reply text.
+        const fallback = chunkNotice(update);
+        if (fallback) {
+          notice(row, fallback);
+          return;
+        }
         view.retrying = false;
         chunk(row, sessionId, update);
         return;
+      }
       case "agent_thought_chunk":
         view.retrying = false;
         chunk(row, sessionId, update);
@@ -278,16 +293,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], _program = ""): AcpView
       case "notice": {
         const title = str(update.title);
         const description = str(update.description);
-        const retryText = `${title} ${description}`.toLowerCase();
-        if (retryText.includes("retry") || retryText.includes("重试") || retryText.includes("reconnect") || retryText.includes("重新连接")) view.retrying = true;
-        push({
-          type: "notice",
-          key: `notice-${row.id}`,
-          severity: str(update.severity),
-          title,
-          description,
-          rowId: row.id,
-        });
+        notice(row, { severity: str(update.severity), title, description, code: noticeCode(title, description) });
         return;
       }
       case "async_task_spawned":

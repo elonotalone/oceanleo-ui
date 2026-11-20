@@ -5,6 +5,7 @@
 import type { AgentAttachment, AgentMessage } from "../lib/agent";
 import type { AcpItem, AcpPermission, AcpToolCall, AcpTurn, AcpView, ContentBlock, JsonRpcError, ToolCallStatus } from "./types";
 import { frameFileLocator, frameLocationRow } from "./frame-attachments";
+import { noticeText } from "./notices";
 
 type Json = Record<string, unknown>;
 
@@ -43,6 +44,8 @@ export type AcpLabels = {
   settingRefused?: (message: string) => string;
   permissionPrompt: string;
   backgroundTask?: (name: string, state: string) => string;
+  /** A notice that the task's OceanLeo tools did not connect, in plain words. */
+  toolsUnavailable?: string;
 };
 
 const TIMELINE_STATUS: Record<ToolCallStatus, string> = {
@@ -295,10 +298,17 @@ export function itemBlocks(items: readonly AcpItem[], live: boolean, labels: Acp
           blocks.push({ type: "raw-request", key: item.key, request: item.request });
         }
         break;
-      case "notice":
+      case "notice": {
         flush();
-        blocks.push(bubble(item.key, item.rowId, item.severity === "error" ? "error" : "notice", [item.title, item.description].filter(Boolean).join("\n")));
+        if (item.code === "hidden") break;
+        if (item.code === "tools_unavailable") {
+          blocks.push(bubble(item.key, item.rowId, "notice", labels.toolsUnavailable ?? "", { native_notice: "tools_unavailable" }));
+          break;
+        }
+        const text = noticeText(item.title, item.description);
+        if (text) blocks.push(bubble(item.key, item.rowId, item.severity === "error" ? "error" : "notice", text));
         break;
+      }
       case "error":
         flush();
         if (labels.settingRefused && ["session/set_config_option", "session/set_model", "session/set_mode"].includes(item.method)) {

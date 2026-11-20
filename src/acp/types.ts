@@ -1,4 +1,5 @@
 import type { MessageAuthor } from "../lib/agent";
+import type { AcpNoticeCode } from "./notices";
 
 // ACP wire types the page renders, and the view model built from them.
 //
@@ -228,7 +229,8 @@ export type AcpItem =
   | { type: "tool"; key: string; tool: AcpToolCall }
   | { type: "plan"; key: string; entries: PlanEntry[]; rowId: number }
   | { type: "request"; key: string; request: AcpPermission }
-  | { type: "notice"; key: string; severity: string; title: string; description: string; rowId: number }
+  /** `code` (`./notices`): `tools_unavailable` renders as a plain-words line, `hidden` renders nothing. */
+  | { type: "notice"; key: string; severity: string; title: string; description: string; code?: AcpNoticeCode; rowId: number }
   /** An agent error response to a client request other than the prompt (shown verbatim). */
   | { type: "error"; key: string; method: string; error: JsonRpcError; rowId: number }
   | { type: "gap"; key: string; from: number; to: number; count: number; rowId: number }

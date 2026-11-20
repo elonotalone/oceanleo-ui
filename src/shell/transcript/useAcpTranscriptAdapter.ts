@@ -19,6 +19,7 @@ export function useAcpTranscriptAdapter(view: AcpView, taskId?: string, provided
       settingRefused: (message) => tt("设置没有生效：{message}", { message }),
       modelRetry: tt("模型连接中断，正在重试"),
       permissionPrompt: tt("请确认后继续。"),
+      toolsUnavailable: tt("OceanLeo 工具暂时无法在这个任务中使用。"),
       backgroundTask: (name, state) => {
         const stateText = state === "completed" || state === "complete" ? tt("已完成")
           : state === "failed" ? tt("已失败")
