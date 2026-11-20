@@ -11,6 +11,7 @@ import type { ImConversationSummary } from "../../lib/im/types";
 import { useUI } from "../../i18n/ui/useUI";
 import { formatBadge } from "./realtime/store";
 import { GroupAvatar } from "./groups/GroupAvatar";
+import { isTaskConversation } from "./inbox-view";
 
 /** 通话装饰（`call/chat` 的 InboxCallDecor）：part=slot 画在行按钮右列里占位，part=badge 画在行外叠上去。 */
 export type InboxRowCallDecor = ComponentType<{ conversationId: string; activeCall: unknown; part: "slot" | "badge" }>;
@@ -85,6 +86,19 @@ export function Avatar({ item, size = 40 }: { item: ImConversationSummary; size?
   );
 }
 
+/** 任务（人的会话）的标记：一个小勾选框，跟在标题后面。 */
+function TaskMark({ label }: { label: string }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] text-black/45 dark:text-white/45" data-inbox-task-mark="" title={label}>
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="4" y="4" width="16" height="16" rx="4" />
+        <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+      </svg>
+      {label}
+    </span>
+  );
+}
+
 function MutedIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
@@ -128,6 +142,7 @@ export function InboxRow({
   const unread = formatBadge(item.unread_count);
   const mention = item.mention_count > 0;
   const last = item.last_message;
+  const task = isTaskConversation(item);
   let preview = "";
   if (item.dissolved) preview = tt("群已解散");
   else if (last) preview = tt(last.preview);
@@ -137,6 +152,7 @@ export function InboxRow({
         type="button"
         data-testid="inbox-row"
         data-conversation-id={item.id}
+        data-conversation-kind={task ? "task" : undefined}
         data-pinned={item.pinned ? "true" : undefined}
         aria-current={active ? "true" : undefined}
         onClick={() => onOpen(item.id)}
@@ -160,6 +176,7 @@ export function InboxRow({
           {item.work ? <span className="block truncate text-[11px] text-neutral-500" data-work-label="">{item.work.label}</span> : null}
           <span className="flex items-center gap-1.5">
             <span className="truncate text-[13px] font-semibold tracking-tight">{title}</span>
+            {task ? <TaskMark label={tt("任务")} /> : null}
             {mention ? (
               <span className="shrink-0 text-[11px] font-semibold text-orange-500" aria-label={tt("有人@你")}>
                 @

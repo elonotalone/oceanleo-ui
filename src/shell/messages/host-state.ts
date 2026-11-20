@@ -43,6 +43,27 @@ export type MessagesLayoutKind = "docked" | "full" | "mobile";
 /** LeoChat 现在归哪一处显示。没有认领时是小窗。 */
 export type MessagesSurface = "window" | "page" | "panel";
 
+/** 打开收件箱里的一行（或任务卡片指向的任务）要去哪里。 */
+export type ConversationOpenAction =
+  | { kind: "conversation"; conversationId: string }
+  /** 右侧栏里的 LeoChat：在侧栏的任务栈里打开（`openTaskChild({ kind: "room", … })`）。 */
+  | { kind: "task-panel"; detail: { kind: "room"; id: string; title: string } }
+  /** 小窗 / 整页：到门户的任务页 `/tasks/{会话 id}`（小窗先收起）。 */
+  | { kind: "task-page"; path: string; closeWindow: boolean };
+
+/**
+ * 任务（`kind === "task"` 的会话）不在普通会话视图里打开，而是去任务本身；其余会话照旧。
+ * 纯函数：路由规则只在这里，收件箱、搜索结果、测试共用。
+ */
+export function conversationOpenAction(
+  item: { id: string; kind?: string | null; title?: string | null },
+  surface: MessagesSurface,
+): ConversationOpenAction {
+  if (item.kind !== "task") return { kind: "conversation", conversationId: item.id };
+  if (surface === "panel") return { kind: "task-panel", detail: { kind: "room", id: item.id, title: item.title || "" } };
+  return { kind: "task-page", path: `/tasks/${encodeURIComponent(item.id)}`, closeWindow: surface === "window" };
+}
+
 export interface MessagesTarget {
   conversationId?: string;
   seq?: number;

@@ -19,6 +19,9 @@ import { InboxNoticesRow } from "./notices/InboxNoticesRow";
 import { NewConversationDialog } from "./groups/NewConversationDialog";
 import { imStore, useImConnection, useImInbox, useImResync } from "./realtime/hooks";
 import { SearchView } from "./search/SearchView";
+import { conversationOpenAction, useMessagesHost } from "./host-state";
+import { inboxRowsFor, type InboxView } from "./inbox-view";
+import { runConversationOpen } from "./tasks/open-task";
 
 export interface InboxProps {
   activeConversationId: string | null;
@@ -42,6 +45,9 @@ export function Inbox(props: InboxProps) {
   const [menuBusy, setMenuBusy] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const filter = "all";
+  // 「全部 / 任务」：任务只是同一份收件箱里 kind === "task" 的那几行，不另起一份列表。
+  const [view, setView] = useState<InboxView>("all");
+  const surface = useMessagesHost().surface;
   const searching = searchQueryReady(search);
 
   useEffect(() => {
@@ -77,7 +83,18 @@ export function Inbox(props: InboxProps) {
     void fetchDraftConversationIds().then(setDrafts);
   });
 
-  const rows = useMemo(() => inbox.items, [inbox.items]);
+  const rows = useMemo(() => inboxRowsFor(inbox.items, view), [inbox.items, view]);
+  // 只看任务、已加载的这几页里一个都没有、后面还有：自己往下翻一页（直到有或翻完）。
+  const needMoreTasks = view === "task" && rows.length === 0 && Boolean(inbox.nextCursor) && !inbox.loading && !inbox.error;
+  useEffect(() => {
+    if (needMoreTasks) void imStore().loadMoreInbox();
+  }, [needMoreTasks, inbox.items.length]);
+  const openRow = (id: string) => {
+    const item = inbox.items.find((row) => row.id === id);
+    const action = conversationOpenAction({ id, kind: item?.kind, title: item?.title }, surface);
+    if (action.kind === "conversation") props.onOpenConversation(id);
+    else runConversationOpen(action, null);
+  };
 
   useEffect(() => {
     if (!menu) return;
@@ -134,6 +151,21 @@ export function Inbox(props: InboxProps) {
       ) : (
       <>
       <InboxNoticesRow active={props.noticesActive === true} onOpen={props.onOpenNotices} />
+      <div role="tablist" aria-label={tt("聊天筛选")} data-inbox-filter={view} className="flex shrink-0 gap-1 px-3 pb-1.5 pt-1">
+        {([["all", tt("全部")], ["task", tt("任务（列表筛选）")]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={view === id}
+            data-inbox-filter-option={id}
+            onClick={() => setView(id)}
+            className={`rounded-full px-2.5 py-0.5 text-[12px] ${view === id ? "bg-neutral-900 text-white" : "text-black/50 hover:bg-black/5 dark:text-white/50"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div
         className="min-h-0 flex-1 overflow-y-auto"
         onScroll={(event) => {
@@ -152,7 +184,7 @@ export function Inbox(props: InboxProps) {
             item={item}
             active={item.id === props.activeConversationId}
             hasDraft={drafts.has(item.id) && item.id !== props.activeConversationId}
-            onOpen={props.onOpenConversation}
+            onOpen={openRow}
             callDecor={InboxCallDecor}
             onContextMenu={(event, item) => {
               if (item.kind === "talent") return;
@@ -162,9 +194,9 @@ export function Inbox(props: InboxProps) {
             }}
           />
         ))}
-        {rows.length === 0 && inbox.loaded && !inbox.loading ? (
-          <div className="px-4 py-10 text-center text-sm text-black/45 dark:text-white/45">
-            {tt("还没有会话")}
+        {rows.length === 0 && inbox.loaded && !inbox.loading && !needMoreTasks ? (
+          <div className="px-4 py-10 text-center text-sm text-black/45 dark:text-white/45" data-inbox-empty={view}>
+            {view === "task" ? tt("还没有任务") : tt("还没有会话")}
           </div>
         ) : null}
         {rows.length === 0 && (inbox.loading || (!inbox.loaded && !inbox.error)) ? (

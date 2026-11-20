@@ -548,6 +548,9 @@ const inboxHooksStub = dataModule(`
 const nullComponent = (name) => dataModule(`export function ${name}(){ return null; }`);
 const { Inbox } = await import(
   await compileModule("src/shell/messages/Inbox.tsx", {
+    // Task rooms wave TU3: start-task registration and task opening are covered by tr-tu3-inbox-routing.
+    "./tasks/StartTaskSelectionAction": dataModule(`export function ensureStartTaskSelectionAction(){}`),
+    "./tasks/open-task": dataModule(`export function runConversationOpen(){}`),
     "../../i18n/ui/useUI": uiStub,
     "./realtime/hooks": inboxHooksStub,
     "../../lib/im/inbox-api": dataModule(`export async function fetchDraftConversationIds(){ return new Set(); }`),
