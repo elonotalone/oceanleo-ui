@@ -1338,7 +1338,7 @@ function propsStub(name) {
   `);
 }
 const nullStub = (name) => dataModule(`export function ${name}(){ return null; }`);
-const imOnStub = dataModule(`export function useImEnabled(){ return globalThis.__w08ImOn !== false; }`);
+const imOnStub = dataModule(`export function useImEnabled(){ return globalThis.__w08ImOn !== false; } export async function imFetch(){ return {}; } export class ImApiError extends Error {}`);
 globalThis.__w08ImOn = true;
 const stylesStub = dataModule(`export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImSearchIcon(){return null;} export function ImMoreIcon(){return null;} export function ensureMessagesSurfaceStyles(){}`);
 const signInStub = dataModule(`
@@ -1578,7 +1578,7 @@ const buttonMod = await import(
     "../messages/host-state": hostStub,
     "../messages/messages-surface": stylesStub,
     // 会话未读由 IM 状态仓给；这里给个可控的假的。通知那一份走真实的 use-notices + 上面的假网络。
-    "../messages/realtime/hooks": dataModule(`export function useImUnread(){ return globalThis.__w08.im; }`),
+    "../messages/realtime/hooks": dataModule(`export function useImUnread(){ return globalThis.__w08.im; } export function setImNotificationTranslator(){}`),
     "../../../api/notifications": apiStub,
   })
 );
@@ -1720,6 +1720,7 @@ const { MessagesHost } = await import(
     "./PrivacyNotice": nullStub("PrivacyNotice"),
     "../realtime-call/RealtimeCallHost": nullStub("RealtimeCallHost"),
     "./realtime/hooks": dataModule(`
+      export function setImNotificationTranslator(){}
       export function attachImRealtime(){ return () => {}; }
       export function publishImDisabled(){}
       export function imStore(){
@@ -1848,6 +1849,7 @@ const { Inbox } = await import(
   await compileModule("src/shell/messages/Inbox.tsx", {
     "../../i18n/ui/useUI": uiStub,
     "./realtime/hooks": dataModule(`
+      export function setImNotificationTranslator(){}
       export function useImInbox(){ return { items: [], filter: "all", loaded: true, loading: false, error: null, nextCursor: null }; }
       export function useImConnection(){ return "open"; }
       export function useImResync(){}
