@@ -1,3 +1,4 @@
+import { swFx2Copy } from "./sw-fx2-copy";
 import { swBdCopy } from "./sw-bd-copy";
 import { UF1_MISSING_COPY_A } from "./uf1-missing-copy-a";
 import { UF1_MISSING_COPY_B } from "./uf1-missing-copy-b";
@@ -542,6 +543,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...swSTCopy(language),
       ...swPfCopy(language),
       ...swHuCopy(language),
+      ...swFx2Copy(language),
       ...swCsCopy(language),
       ...swNuCopy(language),
       ...taskStateCopy(language),

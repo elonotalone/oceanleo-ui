@@ -9,7 +9,7 @@ const messages = new URL("../src/i18n/ui/messages/", import.meta.url);
 const copies = readdirSync(messages).filter(file => /^sw-.*-copy\.ts$/.test(file));
 
 test("every social copy is registered once in both static and runtime dictionaries", async () => {
-  assert.equal(copies.length, 9);
+  assert.equal(copies.length, 10);
   const keys = new Set();
   for (const file of copies) {
     const module = await import(new URL(file, messages));

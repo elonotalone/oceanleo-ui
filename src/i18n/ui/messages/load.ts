@@ -1,3 +1,4 @@
+import { swFx2Copy } from "./sw-fx2-copy";
 import { swBdCopy } from "./sw-bd-copy";
 import { STEP_UP_MESSAGES } from "./step-up-copy";
 import { UF1_MISSING_COPY_A } from "./uf1-missing-copy-a";
@@ -156,6 +157,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...swSTCopy(locale),
     ...swPfCopy(locale),
     ...swHuCopy(locale),
+    ...swFx2Copy(locale),
     ...swCsCopy(locale),
     ...swNuCopy(locale),
     ...taskStateCopy(locale),
