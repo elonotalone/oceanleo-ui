@@ -10,6 +10,7 @@ import { knownComputer, lastKnownComputer } from "../../lib/computer-task-api";
 import type { ConversationTarget, NativeProgram } from "../native-thread/types";
 import type { PendingAttachment } from "../useAttachments";
 import { ACP_REQUEST_TIMEOUT_ERROR } from "./reliable-request";
+import { sendCopy, sendFailureText } from "./send-failure";
 import { PENDING_STORAGE_ERROR } from "./pending-send";
 import type { PendingSend } from "./pending-send";
 
@@ -66,8 +67,9 @@ export function PendingSendBubble({
   const tt = useUI();
   const statusText = pending.status === "sending" ? tt("发送中")
     : pending.status === "retrying" ? tt("正在重试")
-    : pending.status === "queued" ? tt("已排队") : pending.status === "failed" ? tt("没有发出") : "";
-  const detail = (errorText === PENDING_STORAGE_ERROR || errorText === ACP_REQUEST_TIMEOUT_ERROR) ? tt(errorText) : errorText;
+    : pending.status === "queued" ? tt("已排队") : pending.status === "failed" ? sendCopy("未发出", tt) : "";
+  const failure = errorText || (pending.status === "failed" ? sendFailureText(pending.error, tt) : "");
+  const detail = (failure === PENDING_STORAGE_ERROR || failure === ACP_REQUEST_TIMEOUT_ERROR) ? tt(failure) : failure;
   return (
     <div className="space-y-1.5" data-acp-pending-send={pending.id} data-acp-pending-status={pending.status}>
       <AgentTranscriptBubble message={pendingMessage(pending)} onOpenAttachment={onOpenAttachment} />
@@ -81,7 +83,7 @@ export function PendingSendBubble({
             onClick={onRetry}
             className="shrink-0 rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] text-stone-600 hover:bg-stone-50"
           >
-            {tt("重发")}
+            {sendCopy("重新发送", tt)}
           </button>
         )}
       </div>}

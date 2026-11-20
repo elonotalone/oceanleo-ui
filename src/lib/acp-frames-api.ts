@@ -97,7 +97,11 @@ export async function request<T>(path: string, init: RequestInit = {}, allowAnon
   } catch (caught) {
     throw new AcpSendError(0, caught instanceof Error ? caught.message : String(caught), null, null);
   }
-  const text = await res.text();
+  let text: string;
+  try { text = await res.text(); } catch {
+    // An HTTP response was received: never replay this POST because its body failed.
+    throw new AcpSendError(res.status, `HTTP ${res.status}`, null, null);
+  }
   let payload: unknown = text;
   try { payload = text ? JSON.parse(text) : null; } catch { /* a non-JSON body stays text */ }
   if (!res.ok) throw routeError(res.status, payload);
@@ -173,6 +177,7 @@ export type AcpSendResult = {
 export function send(taskId: string, body: AcpSendBody, options: { signal?: AbortSignal } = {}): Promise<AcpSendResult> {
   return reliableRequest<AcpSendResult>(`send:${taskId}`, body.client_message_id,
     (signal) => post<AcpSendResult>(taskPath(taskId, "send"), body, signal), {
+      retry: "network-once",
       signal: options.signal,
       timeoutMs: body.attachments?.length ? ACP_ATTACHMENT_DEADLINE_MS : ACP_SEND_DEADLINE_MS,
       receipt: (rowId) => ({ row_id: rowId, duplicate: true }),

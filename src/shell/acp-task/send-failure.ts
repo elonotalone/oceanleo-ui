@@ -26,19 +26,32 @@ const SENTENCES: Record<string, string> = {
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
+/** Reuse the UI dictionary's existing translations; only ACP's Chinese labels change. */
+export function sendCopy(key: "未发出" | "重新发送" | "发送失败，请重试", tt: (key: string) => string): string {
+  const aliases = { "未发出": "没有发出", "重新发送": "重发", "发送失败，请重试": "发送失败，请重试。" };
+  const translated = tt(aliases[key]);
+  return translated === aliases[key] ? key : translated;
+}
+
 export function sendFailureText(error: unknown, tt: (key: string) => string): string {
   const value = record(error);
   const payload = record(value?.payload);
   const detail = payload?.detail;
+  const rpc = record(payload?.error);
+  // Gateway explanations are already user-facing. Preserve them ahead of any code mapping.
+  const reason = record(detail)?.message ?? rpc?.message;
+  if (typeof reason === "string" && reason.trim()) return reason;
+  if (typeof detail === "string" && detail.trim()) return tt(SENTENCES[detail] || detail);
   let code = value?.code ?? record(detail)?.code;
   // FastAPI validation errors identify the rejected field even on older gateways.
   if (!code && Array.isArray(detail)) {
     if (detail.some((item) => record(item)?.type === "string_too_long" && (record(item)?.loc as unknown[])?.includes("text"))) code = "message_too_long";
     else if (detail.some((item) => (record(item)?.loc as unknown[])?.includes("attachments"))) code = "invalid_attachment";
   }
-  if (code !== undefined && code !== null && code !== "") return tt(SENTENCES[String(code)] || String(code));
+  if (code !== undefined && SENTENCES[String(code)]) return tt(SENTENCES[String(code)]);
   if (value?.status === 401 || value?.status === 403) return tt(SENTENCES.permission_denied);
+  if (typeof value?.payload === "string") return sendCopy("发送失败，请重试", tt);
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  if (message && !/^HTTP\s+\d+$/i.test(message)) return tt(SENTENCES[message] || message);
-  return tt("消息未能发送，请稍后重发。");
+  if (value?.status !== 0 && message && !/^HTTP\s+\d+$/i.test(message)) return tt(SENTENCES[message] || message);
+  return sendCopy("发送失败，请重试", tt);
 }

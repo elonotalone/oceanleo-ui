@@ -3,7 +3,7 @@ import test from "node:test";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { setCacheUser, clearUserScopedCaches } from "../src/lib/user-scoped-cache.ts";
 import { putPending, readPending, forgetPending, settlePending, pendingForMessage, markPendingRetry } from "../src/shell/acp-task/pending-send.ts";
-import { reliableRequest, ACP_SEND_DEADLINE_MS, ACP_CREATE_DEADLINE_MS } from "../src/shell/acp-task/reliable-request.ts";
+import { reliableRequest, ACP_SEND_DEADLINE_MS, ACP_ATTACHMENT_DEADLINE_MS, ACP_CREATE_DEADLINE_MS } from "../src/shell/acp-task/reliable-request.ts";
 
 class Storage {
   data = new Map();
@@ -21,25 +21,26 @@ const flush = async () => { for (let i = 0; i < 20; i += 1) await Promise.resolv
 const input = (overrides = {}) => ({ clientMessageId: crypto.randomUUID(), computerId: "cc_test", program: "claude", text: "Please keep this message", attachments: [], choice: { model: "opus" }, taskId: "task-1", ...overrides });
 const keys = () => [...storage.data.keys()].filter((key) => key.includes("acp-outbox:"));
 const pending = (overrides = {}) => { const value = input(overrides); return { value, id: putPending(value) }; };
-const run = (value, fn, options = {}) => reliableRequest("send:test", value.clientMessageId, fn, { timeoutMs: ACP_SEND_DEADLINE_MS, ...options });
+const run = (value, fn, options = {}) => reliableRequest("send:test", value.clientMessageId, fn, { timeoutMs: ACP_SEND_DEADLINE_MS, retry: "network-once", ...options });
 test.beforeEach(async () => { clearUserScopedCaches(); storage.data.clear(); setCacheUser("user-1"); await flush(); });
 test.afterEach(() => clearUserScopedCaches());
 
-test("POST silence has a deadline, retries twice with one identity, then keeps the failed message", async (t) => {
+test("POST silence has a long deadline, then keeps the failed message without replaying it", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { value, id } = pending();
   let calls = 0;
   const signals = [];
   const request = run(value, (signal) => { calls++; signals.push(signal); assert.equal(keys().length, 1); return new Promise(() => {}); });
   const failure = assert.rejects(request, /超时/);
-  for (let attempt = 0; attempt < 3; attempt++) {
-    assert.equal(calls, attempt + 1);
-    t.mock.timers.tick(ACP_SEND_DEADLINE_MS);
-    await flush();
-    if (attempt < 2) assert.equal(readPending(id).status, "retrying");
-  }
+  assert.ok(ACP_SEND_DEADLINE_MS > 130_000, "the backend's pool wait can take 130 seconds");
+  assert.ok(ACP_ATTACHMENT_DEADLINE_MS > 130_000, "messages with attachments allow the same pool wait");
+  t.mock.timers.tick(130_000);
+  await flush();
+  assert.equal(calls, 1);
+  assert.equal(readPending(id).status, "sending");
+  t.mock.timers.tick(ACP_SEND_DEADLINE_MS - 130_000);
   await failure;
-  assert.equal(calls, 3);
+  assert.equal(calls, 1, "a local timeout cannot start a second server send");
   assert.ok(signals.every((signal) => signal.aborted));
   assert.equal(readPending(id).status, "failed");
   assert.equal(readPending(id).text, value.text);
@@ -63,8 +64,7 @@ test("a stream row during a retry ends the request and no late failure recreates
   const { value, id } = pending();
   let calls = 0;
   let rejectLate;
-  const request = run(value, async () => { calls++; return new Promise((_, reject) => { rejectLate = reject; }); }, { receipt: (rowId) => ({ row_id: rowId, duplicate: true }) });
-  t.mock.timers.tick(ACP_SEND_DEADLINE_MS);
+  const request = run(value, async () => { if (++calls === 1) throw Object.assign(new Error("network"), { status: 0 }); return new Promise((_, reject) => { rejectLate = reject; }); }, { receipt: (rowId) => ({ row_id: rowId, duplicate: true }) });
   await flush();
   assert.equal(calls, 2);
   forgetPending(id);
@@ -85,7 +85,7 @@ test("duplicate or row-id receipt removes disk outbox; repeated caller settlemen
   }));
   const { value, id } = pending();
   const bodies = [];
-  globalThis.fetch = async (_, init) => { bodies.push(JSON.parse(init.body)); return new Response(JSON.stringify({ duplicate: true }), { status: 200 }); };
+  globalThis.fetch = async (_, init) => { bodies.push(JSON.parse(init.body)); return new Response(JSON.stringify({ row_id: 11, duplicate: true }), { status: 200 }); };
   const result = await api.send("task-1", { client_message_id: value.clientMessageId, text: value.text });
   assert.equal(result.duplicate, true);
   assert.equal(bodies[0].client_message_id, value.clientMessageId);
@@ -98,7 +98,7 @@ test("duplicate or row-id receipt removes disk outbox; repeated caller settlemen
   assert.equal(keys().length, 0);
 });
 
-test("reload restores task sends, choices and attachment references, but never URLs or error payloads", async () => {
+test("reload keeps task sends failed for explicit resend, with choices and attachment references but no URLs or error payloads", async () => {
   const { value, id } = pending({ projectId: "project-1", attachments: [{ artifact_id: "artifact-1", revision_id: "revision-1", name: "photo.jpg", mime: "image/jpeg", url: "https://private.invalid/?token=secret" }] });
   markPendingRetry(value.clientMessageId);
   const disk = storage.data.get(keys()[0]);
@@ -108,7 +108,7 @@ test("reload restores task sends, choices and attachment references, but never U
   const restored = fresh.readPending(id);
   assert.ok(restored);
   assert.equal(restored.restored, true);
-  assert.equal(restored.status, "sending");
+  assert.equal(restored.status, "failed");
   assert.equal(restored.taskId, value.taskId);
   assert.equal(restored.clientMessageId, value.clientMessageId);
   assert.deepEqual(restored.choice, value.choice);
@@ -194,17 +194,69 @@ test("storage refusal leaves the text and makes no request", async () => {
 });
 
 
-test("a message the 2026-11-19 page kept locally as held restores as sending and goes out, keeping attachments and choices", async () => {
+test("a legacy held message restores as failed for explicit resend, keeping attachments and choices", async () => {
   const one = pending({ text: "first", attachments: [{ name: "a.txt", artifact_id: "a", url: "signed" }] });
   const two = pending({ text: "second" });
   // What that page wrote to disk for a message it held while a turn was open.
   for (const key of keys()) storage.setItem(key, JSON.stringify({ ...JSON.parse(storage.getItem(key)), status: "held", held: true }));
   const fresh = await import(new URL("../src/shell/acp-task/pending-send.ts?held=" + crypto.randomUUID(), import.meta.url));
   for (const entry of [one, two]) {
-    assert.equal(fresh.readPending(entry.id).status, "sending", "no local hold any more: it is sent on restore");
+    assert.equal(fresh.readPending(entry.id).status, "failed", "reload does not automatically replay an unfinished send");
     assert.equal(fresh.readPending(entry.id).restored, true);
   }
   assert.equal(fresh.readPending(one.id).attachments[0].artifact_id, "a");
   assert.equal(fresh.readPending(one.id).attachments[0].url, "");
   assert.deepEqual(fresh.readPending(one.id).choice, { model: "opus" });
+});
+
+
+test("a network retry followed by HTTP failure stops immediately, including 5xx and throttling", async () => {
+  for (const status of [408, 409, 425, 429, 500, 503]) {
+    const { value, id } = pending();
+    let calls = 0;
+    await assert.rejects(run(value, async () => {
+      if (++calls === 1) throw Object.assign(new Error("network"), { status: 0 });
+      throw Object.assign(new Error(`HTTP ${status}`), { status });
+    }), new RegExp(`HTTP ${status}`));
+    assert.equal(calls, 2, `no third attempt after HTTP ${status}`);
+    assert.equal(readPending(id).status, "failed");
+    forgetPending(id);
+  }
+});
+
+test("a slow 130-second result can succeed or fail without an automatic replay", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const fails of [false, true]) {
+    const { value, id } = pending();
+    let calls = 0;
+    let finish;
+    const request = run(value, () => { calls++; return new Promise((resolve, reject) => { finish = () => fails ? reject(Object.assign(new Error("busy"), { status: 409 })) : resolve({ row_id: 34 }); }); });
+    const result = fails ? assert.rejects(request, /busy/) : request;
+    t.mock.timers.tick(130_000);
+    await flush();
+    assert.equal(calls, 1);
+    assert.equal(readPending(id).status, "sending");
+    finish();
+    const outcome = await result;
+    if (!fails) assert.equal(outcome.row_id, 34);
+    else assert.equal(readPending(id).status, "failed");
+    assert.equal(calls, 1);
+    forgetPending(id);
+  }
+});
+
+test("response body failure after HTTP headers is terminal and keeps the message", async () => {
+  const api = await import(await compileModule("src/lib/acp-frames-api.ts", {
+    "./auth/client": dataModule("export async function accessToken(){return 'test-token';}"),
+    "./auth/config": dataModule("export function gatewayBase(){return 'https://gateway.test';}"),
+  }));
+  for (const status of [200, 503]) {
+    const { value, id } = pending();
+    let calls = 0;
+    globalThis.fetch = async () => { calls++; return { status, ok: status === 200, async text() { throw new TypeError("body disconnected"); } }; };
+    await assert.rejects(api.send("task-1", { client_message_id: value.clientMessageId, text: value.text }), (error) => error.status === status);
+    assert.equal(calls, 1, "headers were received; this is not eligible for a network retry");
+    assert.equal(readPending(id).status, "failed");
+    forgetPending(id);
+  }
 });

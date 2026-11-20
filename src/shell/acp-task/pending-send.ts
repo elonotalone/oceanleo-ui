@@ -95,7 +95,8 @@ function restore(value: unknown): PendingSend | null {
     typeof item.text !== "string" || typeof item.computerId !== "string" || typeof item.program !== "string" ||
     !Array.isArray(item.attachments) || !item.choice || typeof item.choice !== "object") return null;
   return { ...item, session: item.session?.task_id === item.taskId ? item.session : null, rowId: item.rowId ?? null, taskId: item.taskId || null,
-    status: item.status === "failed" || !item.taskId ? "failed" : "sending",
+    // Reload cannot know whether the previous POST reached the gateway. Let the user resend.
+    status: "failed",
     error: null, restored: true };
 }
 function hydrate(): void {

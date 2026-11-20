@@ -137,7 +137,7 @@ test("a failed send: the gateway's words under the bubble, the text and file bac
     await connect();
     await act(async () => { settlePending(pendingId, { error: new AcpSendError(0, "Failed to fetch", null, null) }); });
     await settle();
-    assert.equal(view.host.querySelector("[data-acp-pending-error]").textContent, "Failed to fetch", "verbatim");
+    assert.equal(view.host.querySelector("[data-acp-pending-error]").textContent, "发送失败，请重试", "network failures without a gateway reason use the localized fallback");
     assert.ok(pendingBubble(view).contains(view.host.querySelector("[data-acp-pending-error]")), "under the bubble");
     assert.ok(pendingBubble(view).querySelector("[data-acp-pending-retry]"), "the home send also exposes retry");
     assert.equal(userBubbles(view).length, 1);
@@ -159,7 +159,7 @@ test("a failed send: the gateway's words under the bubble, the text and file bac
   } finally { await view.unmount(); }
 });
 
-test("a program's refusal (409 with its error) is said once, in its row; the text comes back and the retry is a new message", async () => {
+test("a program's refusal (409 with its error) stays beside Resend; the text comes back and the retry is a new message", async () => {
   const pendingId = put({ clientMessageId: "22222222-2222-4222-8222-222222222222" });
   const view = await mount({ pendingId }, { url: `/tasks/new?pending=${pendingId}` });
   try {
@@ -170,8 +170,8 @@ test("a program's refusal (409 with its error) is said once, in its row; the tex
     await deliver(row("client", { id: 5, method: "session/set_model", params: { sessionId: "s1", modelId: "opus" } }), row("agent", { id: 5, error: rpc }));
     await act(async () => { settlePending(pendingId, { error: new AcpSendError(409, "Invalid params", rpc, { error: rpc }) }); });
     await settle();
-    assert.equal(view.host.querySelector("[data-acp-pending-error]"), null, "not repeated under the bubble");
-    assert.equal((view.host.textContent.match(/Invalid params/g) || []).length, 1, "the program's row says it once");
+    assert.equal(view.host.querySelector("[data-acp-pending-error]")?.textContent, "Invalid params", "the failed message also explains its resend action");
+    assert.equal((view.host.textContent.match(/Invalid params/g) || []).length, 2, "the archived refusal and unsent message both retain the reason");
     assert.equal(view.composer("acp").__props.value, "修一下构建");
     await submit(view, "acp");
     const sent = posts("/v1/tasks/t1/send");
@@ -216,14 +216,18 @@ async function reloadOutbox(pendingId) {
   localStorage.setItem(key, saved);
 }
 
-test("reopening a task resumes its saved send with the same id, choices and files and shows one bubble", async () => {
+test("reopening a task requires Resend and preserves its id, choices, files and single bubble", async () => {
   const pendingId = put({ taskId: "t1" });
   await reloadOutbox(pendingId);
   const view = await mount({ taskId: "t1" }, { task: { id: "t1", mode: "computer", status: "created" }, sessions: [session("cts_home", "acp", "claude")] });
   try {
     await settle();
+    assert.equal(posts("/v1/tasks/t1/send").length, 0, "opening the task never blindly replays its POST");
+    assert.equal(pendingBubble(view).getAttribute("data-acp-pending-status"), "failed");
+    await act(async () => pendingBubble(view).querySelector("[data-acp-pending-retry]").click());
+    await settle();
     const sent = posts("/v1/tasks/t1/send");
-    assert.equal(sent.length, 1, "recovery resumes on opening the task");
+    assert.equal(sent.length, 1, "the person explicitly resends the saved message");
     assert.equal(sent[0].body.client_message_id, "11111111-1111-4111-8111-111111111111");
     assert.equal(sent[0].body.model, "opus");
     assert.equal(sent[0].body.attachments[0].artifact_id, SPEC.artifact_id);
@@ -241,8 +245,8 @@ test("home reopening without a created task shows the saved bubble and resend, w
   const view = await mount({}, { url: "/", sessions: [] });
   try {
     assert.equal(userBubbles(view).length, 1);
-    assert.match(pendingBubble(view).textContent, /没有发出/);
-    assert.match(pendingBubble(view).querySelector("[data-acp-pending-retry]").textContent, /重发/);
+    assert.match(pendingBubble(view).textContent, /未发出/);
+    assert.match(pendingBubble(view).querySelector("[data-acp-pending-retry]").textContent, /重新发送/);
     assert.equal(view.composer("acp").__props.value, "修一下构建");
     assert.equal(posts("/send").length, 0, "a missing task waits for the person's resend");
     await act(async () => { pendingBubble(view).querySelector("[data-acp-pending-retry]").click(); });
@@ -264,7 +268,7 @@ test("one pending bubble says sending, retrying, then not sent with resend", asy
     assert.match(pendingBubble(view).querySelector("[data-acp-pending-state]").textContent, /正在重试/);
     assert.equal(userBubbles(view).length, 1);
     await act(async () => { settlePending(pendingId, { error: new Error("offline") }); });
-    assert.match(pendingBubble(view).querySelector("[data-acp-pending-state]").textContent, /没有发出/);
+    assert.match(pendingBubble(view).querySelector("[data-acp-pending-state]").textContent, /未发出/);
     assert.equal(userBubbles(view).length, 1);
     assert.equal(view.composer("acp").__props.value, "修一下构建");
   } finally { await view.unmount(); }
@@ -282,7 +286,7 @@ test("a known receipt waits for its exact row when an earlier message has the sa
   } finally { await view.unmount(); }
 });
 
-test("refreshing the home task URL after create resumes send without creating the task again", async () => {
+test("refreshing after create waits for explicit Resend without creating the task again", async () => {
   const pendingId = put({ attachments: [] });
   settlePending(pendingId, { taskId: "t1", session: { ...claudeSession, task_id: "t1" } });
   await reloadOutbox(pendingId);
@@ -292,7 +296,11 @@ test("refreshing the home task URL after create resumes send without creating th
     await settle();
     assert.deepEqual(created, ["t1"]);
     assert.equal(globalThis.__gateway.filter((call) => call.method === "POST" && call.path.endsWith("/task-sessions")).length, 0);
+    assert.equal(posts("/v1/tasks/t1/send").length, 0, "refresh alone never replays the send");
+    await act(async () => pendingBubble(view).querySelector("[data-acp-pending-retry]").click());
+    await settle();
     assert.equal(posts("/v1/tasks/t1/send").length, 1);
+    assert.equal(globalThis.__gateway.filter((call) => call.method === "POST" && call.path.endsWith("/task-sessions")).length, 0);
     assert.equal(userBubbles(view).length, 1);
   } finally { await view.unmount(); }
 });

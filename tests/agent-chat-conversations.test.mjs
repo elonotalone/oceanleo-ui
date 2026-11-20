@@ -540,7 +540,7 @@ test("an ACP gateway failure keeps the optimistic bubble failed, restores empty 
     globalThis.__acpRoute = null;
     await act(async () => { view.host.querySelector("[data-acp-pending-retry]").click(); });
     await settle();
-    assert.equal(posts("/send").length, 4, "three bounded attempts, then the explicit resend");
+    assert.equal(posts("/send").length, 2, "one HTTP attempt, then the explicit resend");
     assert.ok(posts("/send").every((call) => call.body.client_message_id === firstId));
     assert.equal(view.host.querySelector("[data-acp-pending-send]").getAttribute("data-acp-pending-status"), "accepted");
     assert.equal(view.host.querySelector("[data-acp-pending-error]"), null);
@@ -575,7 +575,7 @@ test("a program's refusal (409 with its JSON-RPC error) is not repeated under th
       ? { status: 409, body: { detail: { code: "agent_not_running", message: "agent process is not running" } } } : null;
     await submit(view, "acp");
     assert.equal(view.host.querySelector("[data-acp-error]"), null);
-    assert.equal(view.host.querySelector("[data-acp-pending-error]")?.textContent, "智能体没有运行，请启动智能体后重发。");
+    assert.equal(view.host.querySelector("[data-acp-pending-error]")?.textContent, "agent process is not running");
     assert.equal(view.composer("acp").__props.value, "用 gpt-x");
     const ids = posts("/send").map((call) => call.body.client_message_id);
     assert.equal(ids.length, 2);

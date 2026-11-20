@@ -5,9 +5,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { sendFailureText } from "../src/shell/acp-task/send-failure.ts";
+import { rwFnCopy } from "../src/i18n/ui/messages/rw-fn-copy.ts";
 import { swTwCopy } from "../src/i18n/ui/messages/sw-tw-copy.ts";
 import { LOCALES } from "../src/i18n/config.ts";
-const english = { ...swTwCopy("en"), "重发": "Resend" };
+const english = { ...swTwCopy("en"), ...rwFnCopy("en"), "重发": "Resend" };
 const tt = (key) => english[key] || key;
 const useUI = dataModule(`export function useUI(){ return (key) => (${JSON.stringify(english)})[key] || key; }`);
 const { StreamWaitingLine } = await import(await compileModule("src/shell/transcript/TranscriptStream.tsx", {
@@ -26,7 +27,7 @@ test("working line reuses the animated My Tasks figure without a spinner or elap
   assert.doesNotMatch(readFileSync("src/acp/AcpTranscript.tsx", "utf8"), /等待模型回应|const elapsed =/);
 });
 
-test("each send refusal names the cause beside Resend; unknown errors retain their code", () => {
+test("each send refusal names the cause beside Resend; unknown errors use a localized fallback", () => {
   const cases = {
     computer_offline: /offline/,
     computer_reconnecting: /reconnecting/,
@@ -39,13 +40,13 @@ test("each send refusal names the cause beside Resend; unknown errors retain the
     attachment_storage_unavailable: /cannot be read/,
     permission_denied: /permission/,
     task_grant_revoked: /permission/,
-    unexpected_code: /^unexpected_code$/,
+    unexpected_code: /^Couldn't send. Try again.$/,
   };
   for (const [code, expected] of Object.entries(cases)) assert.match(sendFailureText({ code, status: 409 }, tt), expected, code);
   const validation = (loc, type) => ({ status: 422, payload: { detail: [{ loc: ["body", loc], type }] } });
   assert.match(sendFailureText(validation("text", "string_too_long"), tt), /too long/);
   assert.match(sendFailureText(validation("attachments", "list_type"), tt), /attachment cannot be used/);
-  assert.match(sendFailureText(Object.assign(new Error("HTTP 422"), { status: 422 }), tt), /could not be sent/);
+  assert.match(sendFailureText(Object.assign(new Error("HTTP 422"), { status: 422 }), tt), /Couldn't send. Try again./);
   assert.doesNotMatch(sendFailureText(new Error("HTTP 409"), tt), /HTTP|409/);
   assert.match(sendFailureText({ status: 403 }, tt), /permission/);
   assert.match(sendFailureText(Object.assign(new Error("task not found"), { status: 404 }), tt), /permission/);

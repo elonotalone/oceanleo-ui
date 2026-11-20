@@ -1694,9 +1694,7 @@ function AgentChatInner({
     ...acpView.preamble, ...acpView.turns.flatMap((turn) => turn.items),
   ].flatMap((item) => item.type === "error" ? [{ rowId: item.rowId, text: item.error.message }]
     : item.type === "notice" ? [{ rowId: item.rowId, text: [item.title, item.description].join("\n") }] : []), [acpView]);
-  const pendingErrorText = pendingShown && pendingShown.error != null && pendingRetried !== pendingShown.id
-    // The program's own refusal is its row in the stream (under this bubble): said once, there.
-    && !refusedByAgent(pendingShown.error) ? sendFailureText(pendingShown.error, tt) : "";
+  const pendingErrorText = pendingShown && pendingShown.error != null ? sendFailureText(pendingShown.error, tt) : "";
   const acpPendingShown = acpPendingSends.filter((entry) => !acpPromptRowVisible(entry, frames.rows));
   useEffect(() => {
     const settled = acpPendingSends.filter((entry) => acpPromptRowVisible(entry, frames.rows)).map((entry) => entry.id);
@@ -2229,7 +2227,7 @@ function AgentChatInner({
     const text = retry ? retry.text : providedText !== undefined ? providedText.trim() : forwardedMessageText(forwarded, input);
     const uploaded = retry ? retry.attachments : providedText !== undefined ? [] : toolsOn ? atts.ready() : [];
     if ((!text && uploaded.length === 0) || acpBusy || (pendingInFlight && !retry?.restored) || acpComposerDisabled || (!taskId && !retry && (!acpProgram || !acpComputerId))) return;
-    if (providedText === undefined && toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
+    if (!retry && providedText === undefined && toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
     const choice = canManageTask ? retry?.choice ?? acpPicker.forSend() : {};
     const key = acpMessageKey(text, uploaded);
     if (retry) acpMessageIdRef.current = refusedByAgent(retry.error) ? null : { key, id: retry.clientMessageId };
@@ -2310,9 +2308,7 @@ function AgentChatInner({
         setSessionsEpoch((epoch) => epoch + 1);
       }
     } catch (caught) {
-      const queued = acpQueuedValue(caught) || acpQueuedValue((caught as { payload?: unknown })?.payload);
-      if (queued && id) settlePending(optimisticId, { taskId: id, queued: true });
-      else settlePending(optimisticId, { error: caught });
+      settlePending(optimisticId, { error: caught });
       // Delivery failures belong to this message's bubble and its resend action.
       // A refused carried setting is a successful send with a separate plain line.
     } finally {
@@ -2320,16 +2316,6 @@ function AgentChatInner({
       if (created && adoptedTaskRef.current !== created.taskId) await adoptCreatedTask(created.taskId, created.session, text);
     }
   }
-
-  const resumedAcpRef = useRef(new Set<string>());
-  useEffect(() => {
-    if (readOnly || acpBusy || (pendingInFlight && !pending?.restored) || acpComposerDisabled) return;
-    const entry = [pending, ...acpPendingSends].find((item) => item?.restored && item.taskId &&
-      item.status === "sending" && !resumedAcpRef.current.has(item.id));
-    if (!entry) return;
-    resumedAcpRef.current.add(entry.id);
-    void sendAcpMessage(entry);
-  }, [pending, acpPendingSends, readOnly, acpBusy, pendingInFlight, acpComposerDisabled]);
 
   // A Stop while the page shows a turn the agent already finished (the page missed its end): read the stored rows
   // again; when the gateway then still says idle, nothing is running and the turns open at the Stop end on the page.
@@ -3641,7 +3627,7 @@ function AgentChatInner({
         <PendingSendBubble
           key={entry.id}
           pending={entry}
-          errorText={entry.error != null && !refusedByAgent(entry.error) ? sendFailureText(entry.error, tt) : ""}
+          errorText={entry.error != null ? sendFailureText(entry.error, tt) : ""}
           onRetry={() => void sendAcpMessage(entry)}
           onOpenAttachment={openTaskAttachment}
         />
