@@ -96,7 +96,6 @@ async function mount(Component,props={}) {
 }
 function hasClasses(root,classes){return [...root.querySelectorAll('*')].some(el=>classes.split(' ').every(c=>el.classList.contains(c)));}
 const fixtures=[
- ['conversation/ForwardMessagesDialog','ForwardMessagesDialog',{targets:[],error:null,busy:false,onClose(){},onForward(){}}],
  ['groups/ConversationInfoPanel','ConversationInfoPanel',{conversationId:'c1',onClose(){},onOpenConversation(){}}],
  ['groups/TeamInviteDialog','TeamInviteDialog',{orgId:'o1',onClose(){}}],
  ['groups/UpgradeToTeamDialog','UpgradeToTeamDialog',{conversationId:'c1',onClose(){},onDone(){}}],
@@ -113,7 +112,7 @@ const fixtures=[
  ['cases/MessagesContentCases','MessagesContentCases',{onBack(){}}],
  ['call/diagnostics/CallTestPanel','CallTestPanel',{open:true,onClose(){}}],
 ];
-test('fixtures inventory stays complete',()=>assert.equal(fixtures.length,16));
+test('fixtures inventory stays complete',()=>assert.equal(fixtures.length,15));
 for(const [rel,name,props] of fixtures) test(`${name} uses its assigned frame and size`,async()=>{
  const Component=await surface(`src/shell/messages/${rel}.tsx`,name), view=await mount(Component,props);
  try {
@@ -133,9 +132,15 @@ for(const [rel,name,props] of fixtures) test(`${name} uses its assigned frame an
    assert.ok(panel.closest('[role=dialog]').classList.contains('max-w-md'));
   }else{
    const column=panel.querySelector('[data-message-settings-content]');assert.ok(column.classList.contains('max-w-[800px]'));assert.ok(column.classList.contains('mx-auto'));
-   if(['ForwardMessagesDialog','TeamInviteDialog','ProfileCard','ReportDialog','ArtifactPickerDialog','InviteLinkDialog'].includes(name)){
+   if(['ReportDialog'].includes(name)){
     assert.ok(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT),`${name}: exact Settings height`);
     assert.ok(panel.parentElement.classList.contains('!w-[min(1040px,94vw)]'),`${name}: exact Settings width`);
+   }
+   // Session / sites wave (UL): pickers and short dialogs are a normal-size Modal, not the 1040×760 Settings frame.
+   if(['TeamInviteDialog','ArtifactPickerDialog','InviteLinkDialog'].includes(name)){
+    assert.ok(panel.parentElement.classList.contains('max-w-lg'),`${name}: normal-size modal`);
+    assert.equal(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT),false,`${name}: not the Settings height`);
+    assert.equal(panel.parentElement.classList.contains('!w-[min(1040px,94vw)]'),false,`${name}: not the Settings width`);
    }
    if(['NewConversationDialog'].includes(name)){
     assert.equal(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT),false,`${name}: follows content height`);
@@ -149,21 +154,23 @@ for(const [rel,name,props] of fixtures) test(`${name} uses its assigned frame an
    const back=panel.querySelector('[data-back-button]');assert.ok(back,`${name}: Library back button`);
    for(const value of ['h-8','w-8','rounded-lg','border'])assert.ok(back.classList.contains(value));
    assert.equal(back.textContent,'');assert.ok(back.getAttribute('aria-label'));
-  } else assert.ok(hasClasses(panel,frame.QUIET),`${name}: Settings button`);
+  } else assert.ok(hasClasses(panel,frame.QUIET)||panel.querySelector('[data-action="close-panel"]'),`${name}: Settings button`);
+  // Close is an icon button (no "×" text), with a label.
+  for(const close of panel.querySelectorAll('[data-action="close-panel"]')){assert.equal(close.textContent,'',`${name}: icon close`);assert.ok(close.getAttribute('aria-label'));assert.ok(close.querySelector('svg'));}
   assert.ok(hasClasses(panel,frame.CARD_TITLE),`${name}: Settings title`);
  } finally {await view.close();}
 });
 test('replay picker uses shared settings frame',async()=>{
  const Component=await surface('src/shell/replay/work/ReplayPickerDialog.tsx','ReplayPickerDialog');
  const view=await mount(Component,{open:true,onClose(){},onPick(){}});
- try{const panel=view.host.querySelector('[data-message-settings-frame]');assert.ok(panel);assert.ok(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT));assert.ok(panel.querySelector('[data-message-settings-content]').classList.contains('max-w-[800px]'));assert.ok(hasClasses(view.host,frame.CARD));}finally{await view.close();}
+ try{const panel=view.host.querySelector('[data-message-settings-frame]');assert.ok(panel);assert.ok(panel.parentElement.classList.contains('max-w-lg'));assert.equal(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT),false);assert.ok(panel.querySelector('[data-message-settings-content]').classList.contains('max-w-[800px]'));assert.ok(hasClasses(view.host,frame.CARD));}finally{await view.close();}
 });
 test('shared confirmation uses Settings controls and unlocks after completion',async()=>{
  let resolve;const pending=new Promise(r=>resolve=r);let calls=0;
  const view=await mount(frame.MessageConfirmDialog,{title:'确认',body:'说明',danger:true,onCancel(){},onConfirm(){calls++;return pending;}});
  try{
   assert.equal(view.host.querySelector('[data-message-settings-frame]'),null);assert.ok(view.host.querySelector('[role=dialog]').classList.contains('max-w-md'));
-  assert.ok(hasClasses(view.host,frame.CARD));assert.ok(hasClasses(view.host,frame.PRIMARY));assert.ok(hasClasses(view.host,frame.QUIET));
+  assert.ok(hasClasses(view.host,frame.CARD));assert.ok(hasClasses(view.host,frame.DANGER),'danger confirm is rose');assert.ok(hasClasses(view.host,frame.QUIET));
   const button=view.host.querySelector('[data-confirm-ok]');await act(async()=>button.click());assert.equal(button.disabled,true);assert.equal(calls,1);
   await act(async()=>resolve());assert.equal(button.disabled,false);
  }finally{await view.close();}
@@ -173,9 +180,11 @@ test('modal width follows the non-expanded Settings modal and panels fit their h
  assert.match(frame.MESSAGE_SETTINGS_WIDTH,/!w-\[min\(1040px,94vw\)\]/);
  assert.equal(frame.MESSAGE_SETTINGS_HEIGHT,'h-[min(760px,88vh)]');
 });
-test('LeoChat surface CSS has no gradients or previous accent hex colors',async()=>{
- const {MESSAGES_SURFACE_CSS}=await import(await compileModule('src/shell/messages/messages-surface.tsx'));
- assert.doesNotMatch(MESSAGES_SURFACE_CSS,/gradient|#(?:5b5bf6|3b82f6|7c5cff|a5b4fc|fafaff)|rgba\(91,\s*91,\s*246/i);
+test('LeoChat has no injected surface CSS, no private accent, no gradients',async()=>{
+ const surface=await import(await compileModule('src/shell/messages/messages-surface.tsx'));
+ assert.equal(surface.MESSAGES_SURFACE_CSS,undefined);assert.equal(surface.ensureMessagesSurfaceStyles,undefined);
+ const source=fs.readFileSync('src/shell/messages/messages-surface.tsx','utf8');
+ assert.doesNotMatch(source,/--im-accent|createElement\(["']style|gradient|#(?:5b5bf6|3b82f6|7c5cff|a5b4fc|fafaff|262626)/i);
  const avatar=fs.readFileSync('src/shell/messages/notices/notice-icons.tsx','utf8');assert.doesNotMatch(avatar,/gradient|from-amber|to-orange/);
 });
 test('both discarded add-contact explanation keys are absent in every locale',()=>{
@@ -227,10 +236,10 @@ test('conversation remark editor is a compact one-field prompt',async()=>{
  }finally{await view.close();}
 });
 
-test('group invite link keeps the full Settings height',async()=>{
+test('group invite link is a normal-size dialog',async()=>{
  const Component=await surface('src/shell/messages/people/InviteLinkDialog.tsx','InviteLinkDialog');
  const view=await mount(Component,{onClose(){},conversationId:'group1'});
- try{const panel=view.host.querySelector('[data-message-settings-frame]');assert.ok(panel);assert.ok(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT));assert.ok(panel.querySelector('[data-message-settings-content]').classList.contains('max-w-[800px]'));}finally{await view.close();}
+ try{const panel=view.host.querySelector('[data-message-settings-frame]');assert.ok(panel);assert.ok(panel.parentElement.classList.contains('max-w-lg'));assert.ok(panel.querySelector('[data-message-settings-content]').classList.contains('max-w-[800px]'));}finally{await view.close();}
 });
 
 test('personal invite entry delegates to Find people instead of a contact invite sheet',async()=>{

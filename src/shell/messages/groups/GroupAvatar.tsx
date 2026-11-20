@@ -1,17 +1,14 @@
 "use client";
 
 // 群头像、人头像、在线小圆点。名字与头像地址一律当纯文本 / 普通 <img> 渲染（契约 §10）。
+// LeoChat 里只有这一种头像：没有图时是灰底首字（与对话里、任务页作者小圆同一套 stone 色），不按名字取彩色。
+// 收件箱行、联系人、成员列表、信息面板、通话格子都用这里的 PersonAvatar / GroupAvatar。
 
 import { AVATAR_MEMBERS_MAX, avatarMembersOf, httpsAvatarUrl } from "../../../lib/im/types";
 import type { ImAvatarMember, ImPresence } from "../../../lib/im/types";
 
-const HUES = [262, 200, 160, 28, 340, 120, 210, 48];
-
-function hueOf(seed: string): number {
-  let h = 0;
-  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return HUES[h % HUES.length];
-}
+/** 没有头像图时的底色与字色：灰底首字，深色模式由全局 html.dark 层接管。 */
+const INITIAL_TILE = "bg-stone-200 font-medium text-stone-600";
 
 function initialOf(name: string): string {
   const t = name.trim();
@@ -28,13 +25,14 @@ interface AvatarProps {
   name: string;
   src?: string | null;
   size?: number;
+  /** 旧调用方还会传；颜色不再按它取（所有人同一种灰）。 */
   seed?: string;
   className?: string;
 }
 
-function Avatar({ name, src, size = 36, seed, className = "", round }: AvatarProps & { round: boolean }) {
+function Avatar({ name, src, size = 36, className = "", round }: AvatarProps & { round: boolean }) {
   const url = safeSrc(src);
-  const shape = round ? "rounded-full" : "rounded-xl";
+  const shape = round ? "rounded-full" : "rounded-lg";
   if (url) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
@@ -48,19 +46,19 @@ function Avatar({ name, src, size = 36, seed, className = "", round }: AvatarPro
       />
     );
   }
-  const hue = hueOf(seed ?? name);
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex shrink-0 select-none items-center justify-center font-medium text-white ${shape} ${className}`}
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42), background: `hsl(${hue} 55% 48%)` }}
+      data-avatar-initial=""
+      className={`inline-flex shrink-0 select-none items-center justify-center ${INITIAL_TILE} ${shape} ${className}`}
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.4) }}
     >
       {initialOf(name)}
     </span>
   );
 }
 
-/** 拼图里的一格：有 https 头像画图，否则画名字首字的色块。 */
+/** 拼图里的一格：有 https 头像画图，否则画名字首字（灰底）。 */
 function MosaicTile({ member, fontSize }: { member: ImAvatarMember; fontSize: number }) {
   const url = httpsAvatarUrl(member.avatar_url);
   if (url) {
@@ -76,13 +74,12 @@ function MosaicTile({ member, fontSize }: { member: ImAvatarMember; fontSize: nu
       />
     );
   }
-  const hue = hueOf(member.user_id || member.display_name);
   return (
     <span
       aria-hidden="true"
       data-avatar-tile="initial"
-      className="flex h-full w-full select-none items-center justify-center font-medium text-white"
-      style={{ fontSize, background: `hsl(${hue} 55% 48%)` }}
+      className={`flex h-full w-full select-none items-center justify-center ${INITIAL_TILE}`}
+      style={{ fontSize }}
     >
       {initialOf(member.display_name)}
     </span>
@@ -99,7 +96,7 @@ function MemberMosaic({ members, size, className }: { members: ImAvatarMember[];
     <span
       aria-hidden="true"
       data-avatar-mosaic={count}
-      className={`inline-grid shrink-0 overflow-hidden rounded-xl bg-neutral-100 ${className}`}
+      className={`inline-grid shrink-0 overflow-hidden rounded-lg bg-stone-100 ${className}`}
       style={{
         width: size,
         height: size,

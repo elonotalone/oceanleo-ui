@@ -88,7 +88,7 @@ const { LeoChatButton } = await import(
         return { chat: total, notices: 0, requests: 0, total };
       }
     `),
-    "../messages/messages-surface": dataModule(`export function ensureMessagesSurfaceStyles(){}`),
+    "../messages/messages-surface": dataModule(`export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImSearchIcon(){return null;} export function ImMoreIcon(){return null;} export function ensureMessagesSurfaceStyles(){}`),
   }),
 );
 

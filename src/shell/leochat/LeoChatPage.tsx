@@ -3,6 +3,8 @@
 // 各站 `/leochat` 整页。属性是合同定的，不许改。栏目和会话读写 host-state；挂上就认领 page 这一处。
 // 境内外同一页、同一条代码路径：这里不看域名家族，也不看 LeoBay 在不在本站（2026-10-23：此前境内显示「暂未开放」，与小窗不一致）。
 // 登录后左边是聊天列表（最上面固定一行「通知」），右边是会话 / 通知 / 内容处置。
+// 右侧栏：会话里的任务卡片、引用卡片、转发到任务（`oceanleo:open-task-panel` / `oceanleo:open-quote-panel`）由
+// TaskWorkspaceShell 自己接住并打开（US 的约定，signals/US-panel.md）；这一页只需保持会话在 shell 的 left 里、library 受控。
 import { useEffect, useSyncExternalStore, type ReactElement } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { accessToken } from "../../lib/auth/client";
@@ -12,7 +14,7 @@ import { TaskWorkspaceShell, useTaskWorkspaceState } from "../TaskWorkspaceShell
 import { BaySignInPrompt } from "../bay/shell/BayMine";
 import { setBaySiteKey } from "../bay/shell/bay-state";
 import { hostState, tabOfView, useMessagesHost } from "../messages/host-state";
-import { ensureMessagesSurfaceStyles } from "../messages/messages-surface";
+import { LEOCHAT_ICON_BUTTON } from "../messages/messages-surface";
 import { useLeoChatUnread } from "../messages/notices/use-notices";
 import { consumeCallDeepLink } from "../messages/call/incoming/deep-link";
 import { LeoChatBody } from "./leochat-body";
@@ -60,6 +62,8 @@ function useWide(): boolean {
 }
 
 const NO_CHAT_TABS = ["bay", "leochat"] as const;
+/** 页头标题：与任务页标题同一套字。 */
+const PAGE_TITLE = "truncate text-[13px] font-medium text-stone-700";
 
 export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
   const tt = useUI();
@@ -75,9 +79,6 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
     setBaySiteKey(siteKey);
   }, [siteKey]);
 
-  useEffect(() => {
-    ensureMessagesSurfaceStyles();
-  }, []);
 
   useEffect(() => hostState().claimSurface("page"), []);
 
@@ -99,15 +100,15 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
       aria-label={tt(workspace.rightOpen ? "收起" : "展开")}
       aria-expanded={workspace.rightOpen}
       title={tt(workspace.rightOpen ? "收起" : "展开")}
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-500 hover:bg-stone-100">
+      className={LEOCHAT_ICON_BUTTON}>
       <IconRightPanelToggle className="h-4 w-4" />
     </button>
   );
 
   const listHeader = (
-    <div data-leochat-list-header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-stone-200 px-3 py-2">
-      <h1 className="text-[15px] font-semibold text-stone-900">LeoChat</h1>
-      <div className="flex items-center gap-1">
+    <div data-leochat-list-header className="flex shrink-0 flex-nowrap items-center gap-1 px-3 py-2">
+      <h1 className={`${PAGE_TITLE} mr-auto min-w-0`}>LeoChat</h1>
+      <div className="flex shrink-0 items-center gap-1">
         <LeoChatTabs
           active={tabOfView(state.view)}
           onSelect={(view) => hostState().setView(view)}
@@ -134,8 +135,8 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
           <LeoChatBody wide={wide} listHeader={listHeader} />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center justify-between px-3 py-2">
-              <h1 className="text-[15px] font-semibold text-stone-900">LeoChat</h1>
+            <div className="flex items-center justify-between gap-1 px-3 py-2">
+              <h1 className={PAGE_TITLE}>LeoChat</h1>
               {sidebarToggle}
             </div>
             {pageState === "pending" ? <RoutePageSkeleton variant="list" label={tt("正在加载…")} /> : <BaySignInPrompt text={tt("登录后查看聊天和联系人")} />}

@@ -43,7 +43,7 @@ const stubs = {
   "./use-notice-resource": dataModule("export function noticesChanged(){} export const NOTICES_CHANGED='test:notices-changed'; export function useNoticeResource(){return null;}"),
   "../../../i18n/ui/useUI": ui,
   "./use-notices": dataModule(`export function activeNoticeSection(){} export function selectNoticeSection(){} export function useNoticeState(){return globalThis.__serverNotices.notices;} export function noticeStore(){return {refresh:async()=>{},markAllRead:async()=>{},loadMore:async()=>{}};}`),
-  "../messages-surface": dataModule('export function ImBackIcon(){return null;}'),
+  "../messages-surface": dataModule('export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImSearchIcon(){return null;} export function ImMoreIcon(){return null;} export function ImBackIcon(){return null;}'),
   "../cases/use-owner-cases": dataModule('export function useOwnerCases(){return {phase:"ready",cases:[]};}'),
   "../../bay/shell/bay-state": dataModule('export function bayEnabledHere(){return true;} export function openBay(){}'),
   "../host-state": dataModule('export function hostState(){return {open(value){globalThis.__serverNotices.opened=value;}};} export function closeMessages(){} export function openMessages(){} export function isCaseId(){return false;} export function parseImDeepLink(){return {kind:"none"};}'),

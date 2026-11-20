@@ -6,7 +6,6 @@ import { useUI } from "../../i18n/ui/useUI";
 import { useImEnabled } from "../../lib/im/client";
 import { BaySignInPrompt } from "../bay/shell/BayMine";
 import { hostState, isSubView, tabOfView, useMessagesHost } from "../messages/host-state";
-import { ensureMessagesSurfaceStyles } from "../messages/messages-surface";
 import { useLeoChatUnread } from "../messages/notices/use-notices";
 import type { WorkspaceChatRequest } from "../workspace-actions";
 import { LeoChatBody } from "./leochat-body";
@@ -41,10 +40,6 @@ export function LeoChatPanel({ active, request, onBackChange, onEvicted }: LeoCh
   const subView = isSubView(state.view);
   const detailOpen = threadOpen || subView;
   const view = state.view;
-
-  useEffect(() => {
-    ensureMessagesSurfaceStyles();
-  }, []);
 
   useEffect(() => {
     if (!imOn || !active) return undefined;
@@ -82,7 +77,7 @@ export function LeoChatPanel({ active, request, onBackChange, onEvicted }: LeoCh
   return (
     <div data-leochat-panel className="flex h-full min-h-0 flex-col bg-white">
       {detailOpen ? null : (
-        <div className="flex justify-center border-b border-stone-200 px-3 py-2">
+        <div className="flex justify-center px-3 py-2">
           <LeoChatTabs
             active={tabOfView(state.view)}
             onSelect={(tab) => hostState().setView(tab)}

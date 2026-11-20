@@ -10,10 +10,10 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+// Session / sites wave (UL, 2026-11-21): task rows, the Tasks filter and task routing left LeoChat; their tests moved to
+// ss-ul-leochat.test.mjs (no task rows, sessions excluded). The rest belongs to the units that own those files.
 import { LOCALES } from "../src/i18n/config.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
-import { conversationOpenAction } from "../src/shell/messages/host-state.ts";
-import { inboxRowsFor, isTaskConversation } from "../src/shell/messages/inbox-view.ts";
 import { insertLeoMention } from "../src/shell/messages/composer/leo-insert.ts";
 
 const mentionPicker = await import(await compileModule("src/shell/messages/composer/MentionPicker.tsx"));
@@ -23,23 +23,6 @@ const uiHookStub = dataModule(`
   const tt = (value, vars) => value.replace(/\\{(\\w+)\\}/g, (_, key) => String(vars?.[key] ?? "{" + key + "}"));
   export function useUI() { return tt; }
 `);
-
-test("open action: a task opens the task (page / window → /tasks/{id}, panel → task stack); others the conversation", () => {
-  const task = { id: "c-task-1", kind: "task", title: "Launch" };
-  assert.deepEqual(conversationOpenAction(task, "page"), { kind: "task-page", path: "/tasks/c-task-1", closeWindow: false });
-  assert.deepEqual(conversationOpenAction(task, "window"), { kind: "task-page", path: "/tasks/c-task-1", closeWindow: true });
-  assert.deepEqual(conversationOpenAction(task, "panel"), { kind: "task-panel", detail: { kind: "room", id: "c-task-1", title: "Launch" } });
-  for (const kind of ["dm", "group", "team", "project", "talent", undefined]) {
-    assert.deepEqual(conversationOpenAction({ id: "c2", kind }, "panel"), { kind: "conversation", conversationId: "c2" });
-  }
-});
-
-test("Tasks filter keeps only task rows; All keeps everything in order", () => {
-  const items = [{ id: "a", kind: "dm" }, { id: "b", kind: "task" }, { id: "c", kind: "group" }, { id: "d", kind: "task" }];
-  assert.deepEqual(inboxRowsFor(items, "task").map((item) => item.id), ["b", "d"]);
-  assert.equal(inboxRowsFor(items, "all"), items);
-  assert.equal(isTaskConversation({ kind: "project" }), false);
-});
 
 test("runConversationOpen: window closes then navigates; panel uses the stack, falls back to the page when unhandled", async () => {
   const { runConversationOpen } = await import(await compileModule("src/shell/messages/tasks/open-task.ts", {
@@ -61,24 +44,6 @@ test("runConversationOpen: window closes then navigates; panel uses the stack, f
   assert.deepEqual(log.splice(0), [["child", "r1"], ["nav", "/tasks/r1"]]);
   runConversationOpen(conversationOpenAction({ id: "g1", kind: "group" }, "page"), 7, effects(true));
   assert.deepEqual(log.splice(0), [["show", "g1", 7]]);
-});
-
-test("InboxRow: a task row has the task mark and kind attribute; a group row has neither", async () => {
-  const { InboxRow } = await import(await compileModule("src/shell/messages/InboxRow.tsx", {
-    "../../i18n/ui/useUI": uiHookStub,
-    "./realtime/store": dataModule(`export function formatBadge(n) { return n > 0 ? String(n) : ""; }`),
-  }));
-  const base = {
-    id: "c1", title: "Launch plan", avatar_url: null, peer: null, member_count: 3, last_message: null,
-    last_activity_at: "2026-11-20T10:00:00Z", unread_count: 0, mention_count: 0, muted: false, notify_level: "all",
-    org_id: null, project_id: null, has_external: false, my_role: "member", dissolved: false,
-  };
-  const task = renderToStaticMarkup(React.createElement(InboxRow, { item: { ...base, kind: "task" }, active: false, hasDraft: false, onOpen() {} }));
-  assert.match(task, /data-inbox-task-mark=""/);
-  assert.match(task, /data-conversation-kind="task"/);
-  const group = renderToStaticMarkup(React.createElement(InboxRow, { item: { ...base, kind: "group" }, active: false, hasDraft: false, onOpen() {} }));
-  assert.doesNotMatch(group, /data-inbox-task-mark/);
-  assert.doesNotMatch(group, /data-conversation-kind/);
 });
 
 test("@leo button inserts '@leo ' at the caret and the typed-mention rule recognises it", () => {

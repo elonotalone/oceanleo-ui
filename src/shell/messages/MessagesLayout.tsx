@@ -15,7 +15,7 @@ import {
 import { createPortal } from "react-dom";
 import { useUI } from "../../i18n/ui/useUI";
 import { DOCK_MAX, DOCK_MIN, clampDockWidth, type MessagesLayoutKind } from "./host-state";
-import { ImCloseIcon, ImCollapseIcon, ImExpandIcon, LeoChatMark, ensureMessagesSurfaceStyles } from "./messages-surface";
+import { ImCloseIcon, ImCollapseIcon, ImExpandIcon, LEOCHAT_ICON_BUTTON, LeoChatMark } from "./messages-surface";
 import {
   MESSAGES_DEFAULT_HEIGHT_PX,
   MESSAGES_OVERLAY_RADIUS_PX,
@@ -50,6 +50,19 @@ export interface MessagesLayoutProps {
 }
 
 const CLICK_SWALLOW_MS = 500;
+/** 浮层本体：进出场、拖动时停掉过渡，全部是类（原先在注入的样式表里）。 */
+const OVERLAY = [
+  "fixed flex origin-bottom-left flex-col overflow-hidden border border-stone-200 bg-white text-stone-900",
+  "shadow-[0_24px_64px_rgba(0,0,0,0.16)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-stone-300",
+  "transition-[opacity,transform] duration-[var(--leo-dur-4)] ease-[var(--leo-ease-decelerate)]",
+  "starting:translate-y-2 starting:scale-[0.96] starting:opacity-0",
+  "data-[im-overlay-state=closed]:pointer-events-none data-[im-overlay-state=closed]:translate-y-2 data-[im-overlay-state=closed]:scale-[0.96]",
+  "data-[im-overlay-state=closed]:opacity-0 data-[im-overlay-state=closed]:ease-[var(--leo-ease-accelerate)]",
+  "data-[im-dragging=true]:transition-none motion-reduce:transition-none",
+].join(" ");
+/** 小窗里列表 / 会话两块叠放，切换时横向推入。 */
+const PANE =
+  "absolute inset-x-0 inset-y-0 flex min-h-0 flex-col transition-[transform,opacity] duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] motion-reduce:transition-none";
 const CLICK_SWALLOW_SLOP_PX = 12;
 
 function readViewport() {
@@ -96,10 +109,6 @@ export function MessagesLayout(props: MessagesLayoutProps) {
   overlayOffsetCommitRef.current = onOverlayOffset;
   const suppressClickRef = useRef<{ x: number; y: number } | null>(null);
   const [viewport, setViewport] = useState(readViewport);
-
-  useEffect(() => {
-    ensureMessagesSurfaceStyles();
-  });
 
   useEffect(() => {
     rootRef.current?.focus({ preventScroll: true });
@@ -329,13 +338,13 @@ export function MessagesLayout(props: MessagesLayoutProps) {
       data-im-drag-handle
       onPointerDown={layout === "docked" ? onHeaderPointerDown : undefined}
       onDragStart={(event) => event.preventDefault()}
-      className={`flex shrink-0 select-none items-center gap-3 border-b border-black/10 px-3 dark:border-white/10 ${
+      className={`flex h-12 shrink-0 select-none items-center gap-3 border-b border-stone-200/70 px-3 ${
         layout === "docked" ? "cursor-grab touch-none active:cursor-grabbing" : ""
       }`}
     >
       <span className="flex shrink-0 items-center gap-2" data-im-brand>
         <LeoChatMark />
-        <span className="text-[14px] font-bold tracking-tight">{title}</span>
+        <span className="text-[13px] font-medium text-stone-800">{title}</span>
       </span>
       <div className="flex min-w-0 flex-1 justify-center">{tabs}</div>
       <div className="flex shrink-0 items-center gap-1">
@@ -343,7 +352,7 @@ export function MessagesLayout(props: MessagesLayoutProps) {
           <button
             type="button"
             data-im-no-drag
-            data-im-chrome-btn
+            className={LEOCHAT_ICON_BUTTON}
             data-leochat-expand={layout === "full" ? "collapse" : "expand"}
             onClick={onToggleExpand}
             aria-label={expandLabel}
@@ -352,7 +361,7 @@ export function MessagesLayout(props: MessagesLayoutProps) {
             {layout === "full" ? <ImCollapseIcon /> : <ImExpandIcon />}
           </button>
         ) : null}
-        <button type="button" data-im-no-drag data-im-chrome-btn onClick={onClose} aria-label={tt("关闭")} title={tt("关闭")}>
+        <button type="button" data-im-no-drag className={LEOCHAT_ICON_BUTTON} onClick={onClose} aria-label={tt("关闭")} title={tt("关闭")}>
           <ImCloseIcon />
         </button>
       </div>
@@ -363,27 +372,37 @@ export function MessagesLayout(props: MessagesLayoutProps) {
   if (layout === "full") {
     body = (
       <div className="flex min-h-0 flex-1">
-        <div data-im-side className="flex w-[340px] shrink-0 flex-col border-r border-black/10 dark:border-white/10">
+        <div data-im-side className="flex w-[340px] shrink-0 flex-col border-r border-stone-200">
           {list}
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           {detail ?? (
             <div data-im-empty className="m-auto flex max-w-xs flex-col items-center px-6 text-center">
               <LeoChatMark large />
-              <p className="mt-4 text-[15px] font-semibold tracking-tight">{tt("选一个会话开始聊天")}</p>
-              <p className="mt-1 text-[13px] text-black/45 dark:text-white/45">{tt("左边是你的聊天和联系人。在 LeoBay 里联系卖家，对话也会出现在这里。")}</p>
+              <p className="mt-4 text-[14px] font-medium text-stone-800">{tt("选一个会话开始聊天")}</p>
+              <p className="mt-1 text-[13px] text-stone-500">{tt("左边是你的聊天和联系人。在 LeoBay 里联系卖家，对话也会出现在这里。")}</p>
             </div>
           )}
         </div>
       </div>
     );
   } else {
+    const listActive = !showDetail;
+    const detailActive = showDetail && Boolean(detail);
     body = (
-      <div className="flex min-h-0 flex-1 flex-col" data-im-panes="">
-        <div data-im-pane="list" data-im-pane-active={showDetail ? "false" : "true"}>
+      <div className="relative min-h-0 flex-1 overflow-hidden" data-im-panes="">
+        <div
+          data-im-pane="list"
+          data-im-pane-active={listActive ? "true" : "false"}
+          className={`${PANE} ${listActive ? "translate-x-0 opacity-100" : "pointer-events-none -translate-x-[22%] opacity-0"}`}
+        >
           {list}
         </div>
-        <div data-im-pane="detail" data-im-pane-active={showDetail && detail ? "true" : "false"}>
+        <div
+          data-im-pane="detail"
+          data-im-pane-active={detailActive ? "true" : "false"}
+          className={`${PANE} ${detailActive ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"}`}
+        >
           {detail}
         </div>
       </div>
@@ -405,7 +424,7 @@ export function MessagesLayout(props: MessagesLayoutProps) {
         if (event.target !== event.currentTarget) return;
         if (overlayState === "closed") onExitComplete();
       }}
-      className="fixed flex flex-col overflow-hidden border border-black/10 bg-white text-black focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-neutral-400 dark:border-white/10 dark:bg-neutral-900 dark:text-white"
+      className={OVERLAY}
       style={{
         top: painted.top,
         left: painted.left,

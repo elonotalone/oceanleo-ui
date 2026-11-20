@@ -8,6 +8,7 @@ import { NoticeAvatar } from "./notice-icons";
 import { formatNoticeRowTime } from "./notice-present";
 import { unreadBadgeText } from "./notice-unread";
 import { useNoticeState } from "./use-notices";
+import { INBOX_ROW, INBOX_ROW_IDLE, INBOX_ROW_SELECTED, UnreadBadge } from "../inbox-row-look";
 import { noticeText } from "./notice-text";
 
 export interface InboxNoticesRowProps {
@@ -28,7 +29,7 @@ export function InboxNoticesRow({ active, onOpen }: InboxNoticesRowProps): React
   else if (error) preview = tt("通知正在自动恢复");
 
   return (
-    <div className="shrink-0 border-b border-black/[0.06] py-0.5 dark:border-white/10" data-inbox-notices-wrap="">
+    <div className="shrink-0 px-2 pb-1" data-inbox-notices-wrap="">
       <button
         type="button"
         data-testid="inbox-notices-row"
@@ -36,33 +37,24 @@ export function InboxNoticesRow({ active, onOpen }: InboxNoticesRowProps): React
         data-notices-unread={unread}
         aria-current={active ? "true" : undefined}
         onClick={onOpen}
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+        className={`${INBOX_ROW} ${active ? INBOX_ROW_SELECTED : INBOX_ROW_IDLE}`}
       >
         <span className="relative shrink-0">
           <NoticeAvatar />
-          {badge ? (
-            <span
-              data-im-unread=""
-              data-im-unread-count={badge}
-              aria-label={tt("未读 {count} 条", { count: badge })}
-              className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-neutral-900 px-1 text-[10px] font-medium leading-none text-white"
-            >
-              {badge}
-            </span>
-          ) : null}
+          {badge ? <UnreadBadge count={badge} label={tt("未读 {count} 条", { count: badge })} dotForOne={false} /> : null}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span className="truncate text-[13px] font-semibold tracking-tight">{tt("通知")}</span>
+            <span className="truncate text-[13px] font-medium text-stone-900">{tt("通知")}</span>
           </span>
-          <span className="mt-0.5 flex items-center gap-1 text-[12px] text-black/40 dark:text-white/40">
+          <span className="mt-0.5 flex items-center gap-1 text-[12px] text-stone-500">
             <span className="truncate" data-notices-latest="">
               {preview}
             </span>
           </span>
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1">
-          <span className="text-[12px] text-black/35 dark:text-white/35">
+          <span className="text-[11px] text-stone-400">
             {latest ? formatNoticeRowTime(latest.created_at, new Date(), tt("昨天")) : ""}
           </span>
         </span>

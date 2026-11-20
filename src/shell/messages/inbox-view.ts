@@ -1,14 +1,11 @@
-// 收件箱的「全部 / 任务」筛选：同一份已加载的会话里挑出 `kind === "task"` 的行（纯函数，测试直接跑）。
-// 网关的 `filter` 白名单里没有 task（老网关会回 422），所以在本地挑；翻页仍走同一个游标。
+// 哪些会话属于 LeoChat 收件箱（纯函数，测试直接跑）。
+// 项目里的会话（session，`kind === "project"`）只在项目页里；旧的任务会话（`kind === "task"`）已经取消。
+// 服务端的列表、未读、搜索都不再给这两种（合同 §2.1），这里再挡一次，旧服务端或实时推送漏进来也不显示。
 import type { ImConversationSummary } from "../../lib/im/types";
 
-export type InboxView = "all" | "task";
+const NOT_IN_LEOCHAT: ReadonlySet<string> = new Set(["project", "task"]);
 
-/** 这一行是不是任务（人的会话）。 */
-export function isTaskConversation(item: Pick<ImConversationSummary, "kind">): boolean {
-  return (item.kind as string) === "task";
-}
-
-export function inboxRowsFor<T extends Pick<ImConversationSummary, "kind">>(items: T[], view: InboxView): T[] {
-  return view === "task" ? items.filter(isTaskConversation) : items;
+/** 这一行能不能出现在 LeoChat 的列表里。 */
+export function isInboxConversation(item: Pick<ImConversationSummary, "kind">): boolean {
+  return !NOT_IN_LEOCHAT.has(String(item.kind ?? ""));
 }

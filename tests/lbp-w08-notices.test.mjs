@@ -1100,7 +1100,7 @@ const noticesViewStubs = {
     export function useOwnerCases(){ return globalThis.__w08Cases ?? { phase: "ready", cases: [] }; }
   `),
   "../../../i18n/ui/useUI": uiStub,
-  "../messages-surface": dataModule(`
+  "../messages-surface": dataModule(`export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImSearchIcon(){return null;} export function ImMoreIcon(){return null;} 
     import React from ${JSON.stringify(reactUrl)};
     export function ImBackIcon(){ return React.createElement("i", { "data-back-icon": "" }); }
   `),
@@ -1340,7 +1340,7 @@ function propsStub(name) {
 const nullStub = (name) => dataModule(`export function ${name}(){ return null; }`);
 const imOnStub = dataModule(`export function useImEnabled(){ return globalThis.__w08ImOn !== false; }`);
 globalThis.__w08ImOn = true;
-const stylesStub = dataModule(`export function ensureMessagesSurfaceStyles(){}`);
+const stylesStub = dataModule(`export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImSearchIcon(){return null;} export function ImMoreIcon(){return null;} export function ensureMessagesSurfaceStyles(){}`);
 const signInStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   export function BaySignInPrompt({ text }){ return React.createElement("div", { "data-bay-sign-in": "true" }, text); }
@@ -1522,10 +1522,10 @@ test("整页：境内外同一页；消息标签只显示消息未读；通知 /
   await flush();
   assert.equal(view.$("[data-leochat-page]").getAttribute("data-leochat-page"), "ready");
   assert.equal(host.getSnapshot().surface, "page");
-  const chat = () => view.$('[role="tab"][data-view="inbox"]');
-  const people = () => view.$('[role="tab"][data-view="people"]');
+  const chat = () => view.$('[role="tab"][data-value="inbox"]');
+  const people = () => view.$('[role="tab"][data-value="people"]');
   assert.equal(chat().textContent.replace(/\s/g, ""), "消息1");
-  assert.equal(people().querySelector("[data-im-tab-badge]"), null);
+  assert.equal(people().querySelector("[data-segmented-badge]"), null);
   assert.equal(chat().getAttribute("aria-selected"), "true");
 
   await act(() => {
@@ -1543,7 +1543,7 @@ test("整页：境内外同一页；消息标签只显示消息未读；通知 /
   assert.equal(people().getAttribute("aria-selected"), "true");
   assert.equal(chat().getAttribute("aria-selected"), "false");
   // 点「聊天」回到收件箱（不是停在通知上）
-  await view.click('[role="tab"][data-view="inbox"]');
+  await view.click('[role="tab"][data-value="inbox"]');
   assert.equal(host.getSnapshot().view, "inbox");
   await view.unmount();
 });

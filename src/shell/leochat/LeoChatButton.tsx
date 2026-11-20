@@ -6,7 +6,6 @@ import { useUI } from "../../i18n/ui/useUI";
 import { useImEnabled } from "../../lib/im/client";
 import { attachBayDeepLinks, useBayEnabled } from "../bay/shell/bay-state";
 import { openMessages, useMessagesHost } from "../messages/host-state";
-import { ensureMessagesSurfaceStyles } from "../messages/messages-surface";
 import { useLeoChatUnread } from "../messages/notices/use-notices";
 import { NoticeBellIcon } from "../messages/notices/notice-icons";
 import { dispatchWorkspaceAction } from "../workspace-actions";
@@ -68,9 +67,6 @@ export function LeoChatButton({ className = "" }: { className?: string }) {
 
   // 别的页面上的 `?bay=` 深链由 LeoBay 自己接（跳到 /bay），这里顺手挂上监听：每个页面都有这个图标。
   useEffect(() => (bayOn ? attachBayDeepLinks() : undefined), [bayOn]);
-  useEffect(() => {
-    ensureMessagesSurfaceStyles();
-  }, []);
 
   if (!imOn) return null;
 
@@ -89,11 +85,13 @@ export function LeoChatButton({ className = "" }: { className?: string }) {
         title={label}
         data-leochat-open={surfaceOpen ? "true" : "false"}
         data-leochat-surface={surfaceOpen ? surface : "none"}
-        className="leo-tap-target relative flex items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800"
+        className={`leo-tap-target relative flex items-center justify-center rounded-lg transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800 active:scale-95 ${
+          surfaceOpen ? "bg-neutral-100 text-neutral-800" : "text-neutral-500"
+        }`}
       >
         <NoticeBellIcon />
         {count > 0 ? (
-          <span data-leochat-badge className="absolute right-0.5 top-0.5 flex min-w-[16px] items-center justify-center rounded-full bg-neutral-900 px-1 text-[10px] font-semibold leading-4 text-white">
+          <span data-leochat-badge className="absolute right-0.5 top-0.5 flex min-w-4 items-center justify-center rounded-full bg-neutral-900 px-1 text-[10px] font-medium leading-4 text-white">
             {count > 99 ? "99+" : count}
           </span>
         ) : null}

@@ -35,11 +35,11 @@ const stubs = {
  '../../lib/im/client': dataModule('export function useImEnabled(){return globalThis.__nu.enabled;}'),
  '../realtime/hooks': dataModule('export function useImUnread(){return {total:88,requests:2}}'),
  '../bay/shell/bay-state': dataModule('export function useBayEnabled(){return false} export function attachBayDeepLinks(){}'),
- '../messages/messages-surface': dataModule('export function ensureMessagesSurfaceStyles(){}'),
+ '../messages/messages-surface': dataModule('export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImSearchIcon(){return null;} export function ImMoreIcon(){return null;} export function ensureMessagesSurfaceStyles(){}'),
  '../messages/host-state': dataModule(`export function useMessagesHost(){return globalThis.__nu.host??{open:false,surface:'window'}} export function openMessages(target){globalThis.__nu.opened.push(target)}`),
  '../workspace-actions': dataModule('export function dispatchWorkspaceAction(){}'),
  '../cases/use-owner-cases': dataModule('export function useOwnerCases(){return {phase:"ready",cases:[]}}'),
- '../messages-surface': dataModule('export function ImBackIcon(){return null}'),
+ '../messages-surface': dataModule('export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImSearchIcon(){return null;} export function ImMoreIcon(){return null;} export function ImBackIcon(){return null}'),
  './open-notice': dataModule(`export function noticeTargetOf(){return {kind:"none"}} export function browserNoticeActions(){return {}} export function runNoticeTarget(){} export function noticeActionable(){return false} export function openNoticeDetail(item,store){globalThis.__nu.detail=item;void store.markRead([item.id])}`),
 };
 const {NoticesView} = await import(await compileModule('src/shell/messages/notices/NoticesView.tsx', stubs));
@@ -84,7 +84,7 @@ test('independent badges read chat and notices from /v1/badges; bottom bell open
  assert.equal(bottom.host.querySelector('[data-leochat-badge]').textContent,'9');
  assert.deepEqual(leoChatUnread({total:7,requests:2},3),{chat:7,notices:3,requests:2});
  const tabs=await mount(LeoChatTabs,{active:'inbox',onSelect(){},badges:{inbox:7}});
- assert.equal(tabs.host.querySelector('[data-im-tab-badge]').textContent,'7');
+ assert.equal(tabs.host.querySelector('[data-segmented-badge]').textContent,'7');
  assert.match(tabs.host.textContent,/消息7/);
  let panelRequests=0;const receive=()=>panelRequests++;
  window.addEventListener(LEOCHAT_PANEL_REQUEST_EVENT,receive);

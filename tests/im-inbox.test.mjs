@@ -381,3 +381,33 @@ test("friend-request events and contact changes refresh the authoritative count"
   assert.equal(t.store.unread().requests, 0);
   t.store.stop();
 });
+
+// Session / sites wave (UL, 2026-11-21): project sessions and old task conversations never enter LeoChat.
+// Their events still reach subscribers (the session view), but not the inbox, the LeoChat unread or repeated reloads.
+test("sessions (kind project / task) stay out of the LeoChat inbox and unread; their events still reach subscribers", async () => {
+  const t = makeStore({ items: [conv("a"), conv("s1", { kind: "project" })] });
+  const seen = [];
+  t.store.onEvent("message.created", (e) => seen.push(e.conversation_id));
+  t.store.start();
+  t.socket.emit({ kind: "ready", userId: ME });
+  await settle();
+  await t.store.loadInbox("all");
+  assert.deepEqual(t.store.inbox().items.map((i) => i.id), ["a"], "a project row from an old server is dropped");
+
+  t.socket.emit({ kind: "event", event: { type: "conversation.updated", conversation: conv("s2", { kind: "project" }) } });
+  assert.deepEqual(t.store.inbox().items.map((i) => i.id), ["a"], "member sync of a session is ignored");
+  t.socket.emit({ kind: "event", event: created(msg("s2", 1)) });
+  assert.equal(t.store.unread().total, 0, "a known session's message is not LeoChat unread");
+  assert.deepEqual(seen, ["s2"], "the session view still gets the message");
+
+  // A message from a conversation the inbox does not know: one reload; still absent → never reloads for it again.
+  const before = t.fetched.conversations;
+  t.socket.emit({ kind: "event", event: created(msg("s3", 1)) });
+  await settle();
+  assert.equal(t.fetched.conversations, before + 1);
+  t.socket.emit({ kind: "event", event: created(msg("s3", 2)) });
+  await settle();
+  assert.equal(t.fetched.conversations, before + 1, "no reload per session message");
+  assert.deepEqual(t.store.inbox().items.map((i) => i.id), ["a"]);
+  assert.deepEqual(applyInboxEvent({ ...emptyInbox(), items: [conv("x", { kind: "task" })] }, { type: "conversation.updated", conversation: conv("x", { kind: "task" }) }, { selfId: ME, foregroundConversationId: null }).items, []);
+});

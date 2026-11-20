@@ -3,7 +3,8 @@
 import { AutoRecovery } from "../AutoRecovery";
 // 聊天列表：搜索、全部会话（按最近活动倒序，事件实时更新）、新建聊天。
 // 通话（calls-v2 W08）：每行读 `active_call`，实时 `call` 事件更新人数；标记组件 InboxCallDecor 注入给 InboxRow。
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { FloatingMenu, FloatingMenuItem, FloatingMenuSeparator } from "../../ui/menu/FloatingMenu";
 import { useUI } from "../../i18n/ui/useUI";
 import { RoutePageSkeleton } from "../nav-source/route-boundary";
 import { fetchDraftConversationIds } from "../../lib/im/inbox-api";
@@ -19,13 +20,7 @@ import { InboxNoticesRow } from "./notices/InboxNoticesRow";
 import { NewConversationDialog } from "./groups/NewConversationDialog";
 import { imStore, useImConnection, useImInbox, useImResync } from "./realtime/hooks";
 import { SearchView } from "./search/SearchView";
-import { conversationOpenAction, useMessagesHost } from "./host-state";
-import { inboxRowsFor, isTaskConversation, type InboxView } from "./inbox-view";
-import { runConversationOpen } from "./tasks/open-task";
-import { ensureStartTaskSelectionAction } from "./tasks/StartTaskSelectionAction";
-
-// 普通会话的多选栏里「用选中的消息开任务」：LeoChat 收件箱一加载就登记（TU1 的选择栏插槽）。
-ensureStartTaskSelectionAction();
+import { isInboxConversation } from "./inbox-view";
 
 export interface InboxProps {
   activeConversationId: string | null;
@@ -35,6 +30,11 @@ export interface InboxProps {
   onOpenNotices: () => void;
   /** 通知视图正开着（放大 / 整页里右边就是它）。 */
   noticesActive?: boolean;
+}
+
+/** 右键菜单的一项：外面包一层带 `data-inbox-action` 的 contents 节点，菜单本身仍是共用的 FloatingMenuItem。 */
+function MenuAction({ action, children }: { action: string; children: ReactNode }) {
+  return <div data-inbox-action={action} className="contents">{children}</div>;
 }
 
 export function Inbox(props: InboxProps) {
@@ -49,9 +49,7 @@ export function Inbox(props: InboxProps) {
   const [menuBusy, setMenuBusy] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const filter = "all";
-  // 「全部 / 任务」：任务只是同一份收件箱里 kind === "task" 的那几行，不另起一份列表。
-  const [view, setView] = useState<InboxView>("all");
-  const surface = useMessagesHost().surface;
+  const menuAnchorRef = useRef<HTMLSpanElement | null>(null);
   const searching = searchQueryReady(search);
 
   useEffect(() => {
@@ -87,33 +85,9 @@ export function Inbox(props: InboxProps) {
     void fetchDraftConversationIds().then(setDrafts);
   });
 
-  const rows = useMemo(() => inboxRowsFor(inbox.items, view), [inbox.items, view]);
-  const hasTaskRows = useMemo(() => inbox.items.some(isTaskConversation), [inbox.items]);
-  // 只看任务、已加载的这几页里一个都没有、后面还有：自己往下翻一页（直到有或翻完）。
-  const needMoreTasks = view === "task" && rows.length === 0 && Boolean(inbox.nextCursor) && !inbox.loading && !inbox.error;
-  useEffect(() => {
-    if (needMoreTasks) void imStore().loadMoreInbox();
-  }, [needMoreTasks, inbox.items.length]);
-  const openRow = (id: string) => {
-    const item = inbox.items.find((row) => row.id === id);
-    const action = conversationOpenAction({ id, kind: item?.kind, title: item?.title }, surface);
-    if (action.kind === "conversation") props.onOpenConversation(id);
-    else runConversationOpen(action, null);
-  };
-
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", escape);
-    window.addEventListener("resize", close);
-    return () => {
-      document.removeEventListener("pointerdown", close);
-      document.removeEventListener("keydown", escape);
-      window.removeEventListener("resize", close);
-    };
-  }, [menu]);
+  // 项目里的会话（session）与旧的任务会话不属于 LeoChat：服务端已经不给，这里再挡一次。
+  const rows = useMemo(() => inbox.items.filter(isInboxConversation), [inbox.items]);
+  const openRow = (id: string) => props.onOpenConversation(id);
 
   async function updateConversation(patch: Parameters<typeof patchMySettings>[1] | "unread") {
     if (!menu || menuBusy) return;
@@ -156,31 +130,15 @@ export function Inbox(props: InboxProps) {
       ) : (
       <>
       <InboxNoticesRow active={props.noticesActive === true} onOpen={props.onOpenNotices} />
-      {/* Only once there is a task in the list (none exist before the database change): today's inbox until then. */}
-      {hasTaskRows || view === "task" ? <div role="tablist" aria-label={tt("聊天筛选")} data-inbox-filter={view} className="flex shrink-0 gap-1 px-3 pb-1.5 pt-1">
-        {([["all", tt("全部")], ["task", tt("任务（列表筛选）")]] as const).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={view === id}
-            data-inbox-filter-option={id}
-            onClick={() => setView(id)}
-            className={`rounded-full px-2.5 py-0.5 text-[12px] ${view === id ? "bg-neutral-900 text-white" : "text-black/50 hover:bg-black/5 dark:text-white/50"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div> : null}
       <div
-        className="min-h-0 flex-1 overflow-y-auto"
+        className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
         onScroll={(event) => {
           const el = event.currentTarget;
           if (el.scrollHeight - el.scrollTop - el.clientHeight < 160) void imStore().loadMoreInbox();
         }}
       >
         {connection !== "open" && connection !== "disabled" ? (
-          <div className="px-3 py-1.5 text-center text-[12px] text-black/40 dark:text-white/40" role="status">
+          <div className="px-3 py-1.5 text-center text-[12px] text-stone-400" role="status">
             {tt("正在连接…")}
           </div>
         ) : null}
@@ -196,13 +154,13 @@ export function Inbox(props: InboxProps) {
               if (item.kind === "talent") return;
               event.preventDefault();
               setMenuError(null);
-              setMenu({ item, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 184)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 336)) });
+              setMenu({ item, x: event.clientX, y: event.clientY });
             }}
           />
         ))}
-        {rows.length === 0 && inbox.loaded && !inbox.loading && !needMoreTasks ? (
-          <div className="px-4 py-10 text-center text-sm text-black/45 dark:text-white/45" data-inbox-empty={view}>
-            {view === "task" ? tt("还没有任务") : tt("还没有会话")}
+        {rows.length === 0 && inbox.loaded && !inbox.loading ? (
+          <div className="px-4 py-10 text-center text-[13px] text-stone-400" data-inbox-empty="all">
+            {tt("还没有会话")}
           </div>
         ) : null}
         {rows.length === 0 && (inbox.loading || (!inbox.loaded && !inbox.error)) ? (
@@ -219,7 +177,7 @@ export function Inbox(props: InboxProps) {
           <button
             type="button"
             onClick={() => void imStore().loadMoreInbox()}
-            className="block w-full px-3 py-2 text-center text-xs text-black/45 hover:bg-black/5 dark:text-white/45"
+            className="mt-1 block w-full rounded-lg px-3 py-1.5 text-center text-[12px] text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
           >
             {inbox.loading ? tt("正在加载…") : tt("加载更多")}
           </button>
@@ -227,26 +185,41 @@ export function Inbox(props: InboxProps) {
       </div>
       </>
       )}
-      {menu && <div role="menu" aria-label={tt("会话设置")} data-inbox-context-menu className="fixed z-[100] max-h-[min(20rem,calc(100vh-1rem))] w-[min(11rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-1 text-[12px] text-neutral-800 shadow-xl ring-1 ring-black/5 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => {
-        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-        event.preventDefault();
-        const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]'));
-        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
-        buttons[(index + (event.key === "ArrowDown" ? 1 : buttons.length - 1) + buttons.length) % buttons.length]?.focus();
-      }}>
-        <button autoFocus role="menuitem" type="button" disabled={menuBusy} data-inbox-action="pin" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => void updateConversation({ pinned: !menu.item.pinned })}>{menu.item.pinned ? tt("取消置顶") : tt("置顶聊天")}</button>
-        <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="unread" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => void updateConversation("unread")}>{tt("标为未读")}</button>
-        <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="mute" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => void updateConversation({ muted: !menu.item.muted })}>{menu.item.muted ? tt("取消消息免打扰") : tt("消息免打扰")}</button>
-        <div role="separator" className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
-        <button role="menuitem" type="button" data-inbox-action="window" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => {
-          window.open(`/leochat?im=${encodeURIComponent(menu.item.id)}`, "_blank", "noopener,noreferrer,popup,width=1000,height=760");
-          setMenu(null);
-        }}>{tt("独立窗口显示")}</button>
-        <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="hide" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => void updateConversation({ hidden: true })}>{tt("不显示")}</button>
-        <div role="separator" className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
-        <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="delete" className="min-h-8 w-full rounded-md px-2.5 text-left text-neutral-600 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:hover:bg-neutral-900/40" onClick={() => { setDeleting(menu.item.id); setMenu(null); }}>{tt("删除")}</button>
-        {menuError && <p role="alert" className="px-3 py-2 text-red-600">{menuError}</p>}
-      </div>}
+      {menu ? (
+        <span ref={menuAnchorRef} aria-hidden="true" className="pointer-events-none fixed h-0 w-0" style={{ left: menu.x, top: menu.y }} />
+      ) : null}
+      <FloatingMenu
+        open={menu != null}
+        anchorRef={menuAnchorRef}
+        onClose={() => setMenu(null)}
+        align="start"
+        preferredPlacement="below"
+        width={184}
+        ariaLabel={tt("会话设置")}
+        attributes={{ "data-inbox-context-menu": "" }}
+      >
+        {menu ? (
+          <>
+            <MenuAction action="pin"><FloatingMenuItem disabled={menuBusy} label={menu.item.pinned ? tt("取消置顶") : tt("置顶聊天")} onSelect={() => void updateConversation({ pinned: !menu.item.pinned })} /></MenuAction>
+            <MenuAction action="unread"><FloatingMenuItem disabled={menuBusy} label={tt("标为未读")} onSelect={() => void updateConversation("unread")} /></MenuAction>
+            <MenuAction action="mute"><FloatingMenuItem disabled={menuBusy} label={menu.item.muted ? tt("取消消息免打扰") : tt("消息免打扰")} onSelect={() => void updateConversation({ muted: !menu.item.muted })} /></MenuAction>
+            <FloatingMenuSeparator />
+            <MenuAction action="window">
+              <FloatingMenuItem
+              label={tt("独立窗口显示")}
+              onSelect={() => {
+                window.open(`/leochat?im=${encodeURIComponent(menu.item.id)}`, "_blank", "noopener,noreferrer,popup,width=1000,height=760");
+                setMenu(null);
+              }}
+            />
+            </MenuAction>
+            <MenuAction action="hide"><FloatingMenuItem disabled={menuBusy} label={tt("不显示")} onSelect={() => void updateConversation({ hidden: true })} /></MenuAction>
+            <FloatingMenuSeparator />
+            <MenuAction action="delete"><FloatingMenuItem danger disabled={menuBusy} label={tt("删除")} onSelect={() => { setDeleting(menu.item.id); setMenu(null); }} /></MenuAction>
+            {menuError ? <p role="alert" className="px-2.5 py-1.5 text-[12px] text-rose-600">{menuError}</p> : null}
+          </>
+        ) : null}
+      </FloatingMenu>
       {deleting && <ConfirmDialog title={tt("删除聊天")} body={tt("删除此聊天及你自己的聊天记录，其他成员的记录不受影响。新消息到来时会话会重新显示。")} confirmLabel={tt("删除")} danger onCancel={() => setDeleting(null)} onConfirm={async () => {
         try {
           await clearConversationHistory(deleting, true);
@@ -257,7 +230,7 @@ export function Inbox(props: InboxProps) {
           setDeleting(null);
         }
       }} />}
-      {menuError && !menu && <p role="alert" className="px-3 py-2 text-[12px] text-red-600">{menuError}</p>}
+      {menuError && !menu && <p role="alert" className="px-3 py-2 text-[12px] text-rose-600">{menuError}</p>}
     </div>
   );
 }

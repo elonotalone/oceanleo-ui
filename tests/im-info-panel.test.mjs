@@ -500,6 +500,9 @@ test("聊天列表右键：置顶、未读、免打扰、隐藏分别调用对�
     "DELETE /v1/im/conversations/c1/history": {},
   }) };
   const view = await mount(React.createElement(Inbox, { activeConversationId: null, onOpenConversation() {}, onNew() {} }), im);
+  // The menu is the shared FloatingMenu, portalled to document.body.
+  const menuQ = (sel) => document.querySelector(sel);
+  const menuQa = (sel) => [...document.querySelectorAll(sel)];
   const context = async () => {
     await act(async () => view.q('[data-testid="inbox-row"]').dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 20, clientY: 30 })));
     await settle();
@@ -510,20 +513,21 @@ test("聊天列表右键：置顶、未读、免打扰、隐藏分别调用对�
     window.open = (...args) => { opened.push(args); return null; };
     try {
       await context();
-      await view.click(view.q('[data-inbox-action="window"]'));
+      await view.click(menuQ('[data-inbox-action="window"] [role="menuitem"]'));
       assert.deepEqual(opened, [["/leochat?im=c1", "_blank", "noopener,noreferrer,popup,width=1000,height=760"]]);
     } finally { window.open = previousOpen; }
     for (const action of ["pin", "unread", "mute", "hide"]) {
       await context();
-      assert.ok(view.q("[data-inbox-context-menu]"));
-      assert.equal(view.q('[data-inbox-action="pin"]').textContent, "置顶聊天");
-      assert.equal(view.qa('[data-inbox-context-menu] [role="separator"]').length, 2, "conversation actions are grouped, with deletion visually separated");
-      await view.click(view.q(`[data-inbox-action="${action}"]`));
+      assert.ok(menuQ("[data-inbox-context-menu]"));
+      assert.equal(menuQ('[data-inbox-action="pin"]').textContent, "置顶聊天");
+      assert.equal(menuQa('[data-inbox-context-menu] [role="separator"]').length, 2, "conversation actions are grouped, with deletion visually separated");
+      await view.click(menuQ(`[data-inbox-action="${action}"] [role="menuitem"]`));
     }
     assert.deepEqual(im.fetch.calls.filter((call) => call.method === "PATCH").map((call) => call.json), [{ pinned: true }, { muted: true }, { hidden: true }]);
     assert.ok(im.fetch.calls.some((call) => call.path.endsWith("/unread") && call.method === "POST"));
     await context();
-    await view.click(view.q('[data-inbox-action="delete"]'));
+    assert.ok(menuQ('[data-inbox-action="delete"] [role="menuitem"]').className.includes("text-rose-600"), "delete uses the danger style");
+    await view.click(menuQ('[data-inbox-action="delete"] [role="menuitem"]'));
     assert.ok(!im.fetch.calls.some((call) => call.method === "DELETE"));
     await view.click(view.q("[data-confirm-ok]"));
     assert.ok(im.fetch.calls.some((call) => call.path.endsWith("/history?hide=true") && call.method === "DELETE"));

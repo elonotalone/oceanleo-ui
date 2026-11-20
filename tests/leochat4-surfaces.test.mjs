@@ -135,7 +135,7 @@ const noticesStub = dataModule(`
     return { getState(){ return { unread: 0 }; }, subscribe(){ return () => {}; }, refresh(){ return Promise.resolve(); } };
   }
 `);
-const stylesStub = dataModule(`export function ensureMessagesSurfaceStyles(){}`);
+const stylesStub = dataModule(`export const LEOCHAT_ICON_BUTTON=""; export function ImCloseIcon(){return null;} export function ImPlusIcon(){return null;} export function ImSearchIcon(){return null;} export function ImMoreIcon(){return null;} export function ensureMessagesSurfaceStyles(){}`);
 const signInStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   export function BaySignInPrompt({ text }){

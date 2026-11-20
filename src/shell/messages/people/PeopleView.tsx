@@ -17,6 +17,16 @@ export interface PeopleViewProps {
 
 type Tab = "contacts" | "requests";
 
+const ENTRY_ROW = "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-stone-800 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" className={`h-4 w-4 shrink-0 text-stone-400 transition ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
 export function PeopleView({ onOpenConversation }: PeopleViewProps) {
   const tt = useUI();
   const [tab, setTab] = useState<Tab>("contacts");
@@ -36,10 +46,14 @@ export function PeopleView({ onOpenConversation }: PeopleViewProps) {
         plusLabel={tt("找人")}
         actions={[{ id: "find-people", label: tt("找人"), onSelect: () => setInviting(true) }]}
       />
-      <button type="button" data-new-friends-entry onClick={() => setTab(tab === "requests" ? "contacts" : "requests")} aria-expanded={tab === "requests"} className="flex w-full items-center gap-3 border-b border-neutral-100 px-3 py-4 text-left text-[14px]">
-        <span aria-hidden>{tab === "requests" ? "⌄" : "›"}</span>{tt("新的朋友")}
-      </button>
-      <button type="button" data-blocked-entry aria-expanded={showBlocked} onClick={() => setShowBlocked(!showBlocked)} className="flex w-full items-center gap-3 border-b border-neutral-100 px-3 py-2 text-left text-[14px]">{tt("已拉黑")}</button>
+      <div className="shrink-0 px-2 pt-1">
+        <button type="button" data-new-friends-entry onClick={() => setTab(tab === "requests" ? "contacts" : "requests")} aria-expanded={tab === "requests"} className={`${ENTRY_ROW} ${tab === "requests" ? "bg-neutral-200/80" : "hover:bg-neutral-200/50"}`}>
+          <Chevron open={tab === "requests"} />{tt("新的朋友")}
+        </button>
+        <button type="button" data-blocked-entry aria-expanded={showBlocked} onClick={() => setShowBlocked(!showBlocked)} className={`${ENTRY_ROW} ${showBlocked ? "bg-neutral-200/80" : "hover:bg-neutral-200/50"}`}>
+          <Chevron open={showBlocked} />{tt("已拉黑")}
+        </button>
+      </div>
       {tab === "requests" && !showBlocked && <RequestsList query={query} onOpenConversation={onOpenConversation} />}
       <div className="min-h-0 flex-1">
         {showBlocked ? <BlockedList query={query} onBack={() => setShowBlocked(false)} /> : <ContactList query={query} onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} />}

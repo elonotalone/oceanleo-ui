@@ -9,6 +9,8 @@ import type {
   ImPresence,
   ImUnread,
 } from "../../../lib/im/types";
+import { isInboxConversation } from "../inbox-view";
+import { previewLabelOf, type ImLastMessageWithLabel } from "../preview-label";
 import type { ImSocket, SocketOutput, SocketState } from "./socket";
 
 export type ImConnectionState = SocketState;
@@ -32,11 +34,15 @@ export const PREVIEW_FILE = "[文件]";
 export const PREVIEW_ARTIFACT = "[作品]";
 export const PREVIEW_REPLAY = "[工作回放]";
 export const PREVIEW_CARD = "[卡片]";
+export const PREVIEW_TASK = "[任务]";
+export const PREVIEW_QUOTE = "[聊天记录]";
 
 /** 一条消息在收件箱 / 通知里的一行摘要。撤回、隐藏、卡片、附件各有固定文案。 */
 export function messagePreview(message: ImMessage): string {
   if (message.recalled_at) return PREVIEW_RECALLED;
   if (message.hidden_reason === "moderation") return PREVIEW_HIDDEN;
+  // 引用卡片（合同 §2.2）：类型表里还没有 "quote" 时按字符串比。
+  if ((message.kind as string) === "quote") return PREVIEW_QUOTE;
   const body = (message.body || "").replace(/\s+/g, " ").trim();
   switch (message.kind) {
     case "image":
@@ -55,6 +61,9 @@ export function messagePreview(message: ImMessage): string {
       return message.card?.title ? `${PREVIEW_ARTIFACT} ${message.card.title}` : PREVIEW_ARTIFACT;
     case "replay":
       return message.card?.title ? `${PREVIEW_REPLAY} ${message.card.title}` : PREVIEW_REPLAY;
+    case "task":
+      return message.card?.title ? `${PREVIEW_TASK} ${message.card.title}` : PREVIEW_TASK;
+
     default:
       if (message.card) return message.card.title ? `${PREVIEW_CARD} ${message.card.title}` : PREVIEW_CARD;
       return body.slice(0, 120);
@@ -62,15 +71,18 @@ export function messagePreview(message: ImMessage): string {
 }
 
 export function lastMessageOf(message: ImMessage): ImLastMessage {
-  return {
+  const last: ImLastMessageWithLabel = {
     id: message.id,
     seq: message.seq,
     sender_id: message.sender_id,
     sender_kind: message.sender_kind,
     kind: message.kind,
     preview: messagePreview(message),
+    // 与服务端同形的 label（合同 §2.2）：收件箱据它按当前语言画「[图片] …」「[任务] …」。
+    preview_label: previewLabelOf(message),
     created_at: message.created_at,
   };
+  return last;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +167,10 @@ export function applyInboxEvent(state: InboxState, event: ImEvent, ctx: InboxCtx
     case "conversation.updated": {
       const incoming = event.conversation;
       const exists = state.items.some((item) => item.id === incoming.id);
+      // 项目里的会话（session）与旧任务会话不进 LeoChat（合同 §2.1；成员同步会推 kind=project 的摘要）。
+      if (!isInboxConversation(incoming)) {
+        return exists ? { ...state, items: state.items.filter((item) => item.id !== incoming.id) } : state;
+      }
       const items = exists
         ? state.items.map((item) => (item.id === incoming.id ? incoming : item))
         : [incoming, ...state.items];
@@ -338,6 +354,11 @@ export function createImStore(deps: StoreDeps): ImStore {
    * 而 LeoChat 整页 / 右侧栏里的列表和全局宿主不在一棵树里、不会跟着重挂——start() 据此自己补拉（V02 D1）。
    */
   let inboxWanted = false;
+  // 不属于 LeoChat 的会话（项目里的 session、旧任务会话）：它们的消息照常分发给订阅者（会话视图要用），
+  // 但不进收件箱、不算 LeoChat 未读，也不再为它们反复整页刷新收件箱。
+  const outsideIds = new Set<string>();
+  // 收到不认识的会话的消息、正在刷新收件箱确认的那些 id；刷新后仍不在列表里的归入 outsideIds。
+  const unknownIds = new Set<string>();
   let inboxRetryTimer: unknown = null;
   let inboxRetryAttempt = 0;
   const retryDelays = [1_000, 2_000, 5_000, 10_000, 15_000];
@@ -401,7 +422,23 @@ export function createImStore(deps: StoreDeps): ImStore {
     }
   }
 
+  function eventConversationId(event: ImEvent): string | null {
+    if (event.type === "conversation.updated") return event.conversation.id;
+    const id = (event as { conversation_id?: unknown }).conversation_id;
+    return typeof id === "string" ? id : null;
+  }
+
   function applyEvent(event: ImEvent): void {
+    if (event.type === "conversation.updated") {
+      if (isInboxConversation(event.conversation)) outsideIds.delete(event.conversation.id);
+      else outsideIds.add(event.conversation.id);
+    }
+    const eventConversation = eventConversationId(event);
+    if (eventConversation && outsideIds.has(eventConversation) && event.type !== "conversation.updated") {
+      dispatch(event);
+      return;
+    }
+    if (event.type === "message.created" && !conversationLookup(event.conversation_id)) unknownIds.add(event.conversation_id);
     // 顺序要紧：未读与桌面通知先看「事件到来之前」的收件箱（要拿旧的 last_message.seq 去重），再更新收件箱。
     const uctx: UnreadCtx = { ...ctx(), conversation: conversationLookup };
     unread = applyUnreadEvent(unread, event, uctx);
@@ -444,15 +481,26 @@ export function createImStore(deps: StoreDeps): ImStore {
     try {
       const page = await deps.fetchConversations(filter, null);
       if (mySeq !== loadSeq) return;
+      const items = page.items.filter(isInboxConversation);
       inbox = {
         filter,
-        items: sortInbox(page.items),
+        items: sortInbox(items),
         nextCursor: page.next_cursor,
         loaded: true,
         loading: false,
         error: null,
         needsRefresh: false,
       };
+      // 刷新是为不认识的会话来的，刷完它仍不在列表里：不是 LeoChat 的会话；未读以服务端为准重取一次。
+      let learned = false;
+      for (const id of unknownIds) {
+        if (!items.some((item) => item.id === id)) {
+          outsideIds.add(id);
+          learned = true;
+        }
+      }
+      unknownIds.clear();
+      if (learned) void refreshUnread();
       clearInboxRetry();
       inboxRetryAttempt = 0;
     } catch (error) {
@@ -482,7 +530,7 @@ export function createImStore(deps: StoreDeps): ImStore {
       const known = new Set(inbox.items.map((item) => item.id));
       inbox = {
         ...inbox,
-        items: sortInbox([...inbox.items, ...page.items.filter((item) => !known.has(item.id))]),
+        items: sortInbox([...inbox.items, ...page.items.filter((item) => !known.has(item.id) && isInboxConversation(item))]),
         nextCursor: page.next_cursor,
         loading: false,
         error: null,
@@ -545,6 +593,8 @@ export function createImStore(deps: StoreDeps): ImStore {
       // 清空照旧（换账号不能看到上一个人的会话）；停之前发出的列表请求作废，结果可能属于上一个账号。
       loadSeq += 1;
       inbox = emptyInbox();
+      outsideIds.clear();
+      unknownIds.clear();
       self = null;
       emit();
     },
