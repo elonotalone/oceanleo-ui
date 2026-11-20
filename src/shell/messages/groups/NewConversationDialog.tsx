@@ -53,7 +53,7 @@ function NewChatPage({ onClose, onCreated, presetMemberIds }: NewConversationDia
   }
   return <PeoplePage title={tt(group ? "新建群组" : "新建聊天")} onBack={() => { if (group) { setGroup(false); setPicked([]); setTitle(""); setResult(null); setError(null); } else onClose(); }}>
     <div data-new-conversation aria-busy={busy}>
-      {error != null && <PeopleFailure error={error} />}
+      {error != null && <PeopleFailure error={error} action="other" />}
       {!group && <button type="button" className={`${QUIET} mb-3`} data-action="new-group" onClick={() => { setGroup(true); setError(null); }}>{tt("新建群组")}</button>}
       {result ? <div data-create-result>
         <p className="text-[13px]">{tt("群已创建。已加入 {n} 人，{m} 人等待同意。", { n: result.added, m: result.pending })}</p>

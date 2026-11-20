@@ -35,7 +35,7 @@ export function ContactList({ query, onOpenConversation, onOpenProfile }: Contac
   const contacts = useLoader(listContacts, []);
   const following = useFollowing();
   const remarks = useLoader(listUserRemarks, []);
-  const unavailable = errorCodeOf(following.error) === "people_unavailable" || (following.error as { status?: number } | null)?.status === 404;
+  const unavailable = errorCodeOf(following.error).endsWith("unavailable") || [404, 503].includes((following.error as { status?: number } | null)?.status ?? 0);
   const shownContacts: Pick<ImContact, "user_id" | "profile">[] = unavailable ? contacts.data ?? [] : following.people.map(person => ({
     user_id: person.user_id,
     profile: { ...contacts.data?.find(c => c.user_id === person.user_id)?.profile, user_id: person.user_id, display_name: person.name, avatar_url: person.avatar_url, remark: remarks.data?.find(r => r.user_id === person.user_id)?.remark ?? contacts.data?.find(c => c.user_id === person.user_id)?.profile.remark },

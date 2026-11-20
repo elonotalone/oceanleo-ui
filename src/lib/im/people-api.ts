@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { imFetch } from "./client";
+import { useAutoRecovery } from "../auto-recovery";
 import { currentDomainProfile } from "../../contracts/domain-family";
 import type {
   ImContact,
@@ -124,7 +125,7 @@ export function reasonOf(error: unknown, fallback: string): string {
 export function peopleMessageError(error: unknown, tt: (key: string, vars?: Record<string, string | number>) => string): string {
   const code = errorCodeOf(error);
   if (code === "reply_limit") return tt("对方回复前，每周最多发送 3 条消息。");
-  if (code === "people_unavailable" || (error as { status?: number } | null)?.status === 404) return tt("找人功能暂不可用。");
+  if (code.endsWith("unavailable") || (error as { status?: number } | null)?.status === 503 || (error as { status?: number } | null)?.status === 404) return tt("找人功能暂不可用。");
   if (code === "username_taken") return tt("这个用户名已被使用。");
   if (code === "username_invalid") return tt("用户名需为 3–32 位小写字母、数字、下划线或连字符，并以字母或数字开头。");
   return reasonOf(error, tt("没成功，请稍后再试。"));
@@ -152,23 +153,31 @@ export function useLoader<T>(fn: () => Promise<T>, deps: ReadonlyArray<unknown>)
     error: null,
   });
   const ticket = useRef(0);
+  const recoveryAttempts = useRef(0);
   const fnRef = useRef(fn);
   fnRef.current = fn;
-  const run = useCallback(() => {
+  const run = useCallback(async (recover = false) => {
     const mine = ++ticket.current;
-    setState({ data: null, loading: true, error: null });
-    fnRef.current().then(
-      (data) => {
-        if (mine === ticket.current) setState({ data, loading: false, error: null });
-      },
-      (error) => {
-        if (mine === ticket.current) setState((s) => ({ data: s.data, loading: false, error }));
-      },
-    );
+    if (!recover) {
+      recoveryAttempts.current = 0;
+      setState({ data: null, loading: true, error: null });
+    }
+    try {
+      const data = await fnRef.current();
+      if (mine === ticket.current) {
+        recoveryAttempts.current = 0;
+        setState({ data, loading: false, error: null });
+      }
+    } catch (error) {
+      if (mine === ticket.current) setState((s) => ({ data: s.data, loading: false, error }));
+    }
   }, []);
+  const reload = useCallback(() => { void run(); }, [run]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { run(); return () => { ++ticket.current; }; }, deps);
-  return { ...state, reload: run };
+  useEffect(() => { void run(); return () => { ++ticket.current; }; }, deps);
+  // Keep the labelled failure visible while retrying; a failed read is never an empty list.
+  useAutoRecovery(state.error != null, () => run(true), "", recoveryAttempts);
+  return { ...state, reload };
 }
 
 /* ---------- 接口 ---------- */

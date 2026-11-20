@@ -40,7 +40,7 @@ const reactUrl = pathToFileURL(require.resolve("react")).href;
 
 // 恒等 tt：断言直接读中文原文；{x} 插值规则与真 useUI 一致。
 const uiHookStub = dataModule(`
-  const tt = (value, vars) => value.replace(/\\{(\\w+)\\}/g, (_, key) => String(vars?.[key] ?? "{" + key + "}"));
+  const tt = (value, vars) => (globalThis.__FX2_COPY?.[value] ?? value).replace(/\\{(\\w+)\\}/g, (_, key) => String(vars?.[key] ?? "{" + key + "}"));
   export function useUI() { return tt; }
 `);
 
@@ -168,7 +168,7 @@ for (const [name, file] of Object.entries({
   components[name] = (await import(await compileModule(`src/shell/messages/${file}.tsx`, STUBS)))[name];
 }
 const { PeopleView, NewConversationDialog, ProfileCard, MemberPicker, FindPeople, MyUsername, Inbox } = components;
-const { peopleMessageError, sortContacts } = await import(await compileModule("src/lib/im/people-api.ts", STUBS));
+const { peopleMessageError, sortContacts, useLoader, listFollows } = await import(await compileModule("src/lib/im/people-api.ts", STUBS));
 const { swHuCopy } = await import("../src/i18n/ui/messages/sw-hu-copy.ts");
 const { LOCALES } = await import("../src/i18n/config.ts");
 const card = (id, name, more = {}) => ({ user_id: id, name, username: id, avatar_url: null, following: false, follows_me: false, blocked: false, ...more });
@@ -283,10 +283,10 @@ test("request and block errors never become empty lists; contacts survive people
     assert.match(view.text(), /找人功能暂不可用/);
     assert.ok(view.q('[data-contact="bobby"]'));
     await view.click(view.q("[data-new-friends-entry]"));
-    assert.match(view.q("[data-message-requests]").textContent, /request list failed/);
+    assert.match(view.q("[data-message-requests]").textContent, /找人功能暂不可用，正在自动恢复/);
     assert.doesNotMatch(view.q("[data-message-requests]").textContent, /没有消息请求/);
     await view.click(view.q("[data-blocked-entry]"));
-    assert.match(view.text(), /block list failed/);
+    assert.match(view.text(), /找人功能暂不可用，正在自动恢复/);
     assert.equal(view.q("[data-blocked-empty]"), null);
   } finally { view.cleanup(); }
 });
@@ -339,13 +339,13 @@ test("search failure clears previous results; suggestion failure leaves followin
     "GET /v1/im/users/search": () => { if (fail) throw Error("search failed"); return { people: [alice] }; },
   });
   try {
-    assert.match(view.text(), /suggestions failed/);
+    assert.match(view.text(), /找人功能暂不可用，正在自动恢复/);
     assert.ok(view.q('[data-person="bobby"]'));
     await view.type(view.q("input[type=search]"), "alice"); await delay(280);
     assert.ok(view.q('[data-person="alice"]'));
     fail = true;
     await view.type(view.q("input[type=search]"), "bob"); await delay(280);
-    assert.match(view.text(), /search failed/);
+    assert.match(view.text(), /找人功能暂不可用，正在自动恢复/);
     assert.equal(view.q('[data-person="alice"]'), null);
     assert.doesNotMatch(view.text(), /没有找到/);
   } finally { view.cleanup(); }
@@ -367,7 +367,7 @@ test("New group retains multi-select, existing groups, creation result, and expl
     assert.deepEqual(opened, ["new-group"]);
   } finally { view.cleanup(); }
   const failed = await open(NewConversationDialog, { open: true, onClose() {}, onCreated() {} }, { "GET /v1/im/contacts/groups": () => { throw Error("groups failed"); } });
-  try { await failed.view.click(button(failed.view, "新建群组")); assert.match(failed.view.q("[data-existing-groups]").textContent, /groups failed/); assert.doesNotMatch(failed.view.q("[data-existing-groups]").textContent, /还没有已有群/); } finally { failed.view.cleanup(); }
+  try { await failed.view.click(button(failed.view, "新建群组")); assert.match(failed.view.q("[data-existing-groups]").textContent, /找人功能暂不可用，正在自动恢复/); assert.doesNotMatch(failed.view.q("[data-existing-groups]").textContent, /还没有已有群/); } finally { failed.view.cleanup(); }
 });
 
 test("profile follows without approval, sends DM and blocks; no friend-request actions", async () => {
@@ -451,5 +451,136 @@ test("changing a username saves the edited handle and updates its shared profile
     assert.deepEqual(fetch.calls.find(c => c.method === "PUT").json, { username: "new_name" });
     await view.click(button(view, "复制资料链接"));
     assert.equal(globalThis.__copied, "https://oceanleo.com/leochat?find=1&username=new_name");
+  } finally { view.cleanup(); }
+});
+
+
+const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
+
+for (const [label, failure] of [
+  ["people_unavailable", () => apiError(503, "people_unavailable", "pending migration")],
+  ["generic 503", () => apiError(503, "http_503", "temporarily unavailable")],
+  ["unavailable code", () => apiError(409, "username_unavailable", "unavailable")],
+  ["network failure", () => new TypeError("Failed to fetch")],
+]) {
+  test(`English Find people labels ${label} and automatically recovers without a follow action`, async () => {
+    globalThis.__FX2_COPY = UI_MESSAGES.en;
+    let fail = true;
+    const { view, fetch } = await open(FindPeople, { onBack() {}, onOpenConversation() {} }, {
+      "GET /v1/im/username": () => { if (fail) throw failure(); return { username: "my_name", suggested: "my_name" }; },
+    });
+    try {
+      assert.equal(view.q("h2").textContent, "Find people");
+      assert.match(view.q('[role="alert"]').textContent, /unavailable.*automatically/);
+      assert.doesNotMatch(view.text(), /Loading|Couldn’t update your follow|don.t follow anyone yet/);
+      assert.equal(view.qa("button").length, 1, "only Back; no Retry control");
+      fail = false;
+      await act(async () => window.dispatchEvent(new window.Event("online")));
+      await settle();
+      assert.ok(view.q("[data-my-username]"));
+      assert.ok(view.q("[data-people-discovery]"));
+      assert.equal(view.q('[role="alert"]'), null);
+      assert.equal(view.q("h2").textContent, "Find people");
+      assert.ok(fetch.calls.filter(c => c.path === "/v1/im/username").length >= 2);
+      assert.equal(fetch.calls.filter(c => c.method !== "GET").length, 0);
+    } finally { view.cleanup(); delete globalThis.__FX2_COPY; }
+  });
+}
+
+test("503 suggestions and following settle into labelled states, recover on focus, and follow errors appear only after a click", async () => {
+  globalThis.__FX2_COPY = UI_MESSAGES.en;
+  let fail = true;
+  const { view, fetch } = await open(FindPeople, { onBack() {}, onOpenConversation() {} }, {
+    "GET /v1/im/follows": () => { if (fail) throw apiError(503, "follows_unavailable", "pending"); return { people: [bob], next_cursor: null }; },
+    "GET /v1/im/follow-suggestions": () => { if (fail) throw new TypeError("Failed to fetch"); return { groups: [{ key: "team", people: [alice] }] }; },
+    "POST /v1/im/follows": () => { throw apiError(503, "people_unavailable", "pending"); },
+  });
+  try {
+    assert.equal(view.q("h2").textContent, "Find people");
+    for (const region of ["[data-people-suggestions]", "[data-people-following]"]) {
+      assert.match(view.q(region).textContent, /unavailable.*automatically/);
+      assert.doesNotMatch(view.q(region).textContent, /Loading|Couldn’t update your follow|don.t follow anyone yet/);
+    }
+    fail = false;
+    await act(async () => window.dispatchEvent(new window.Event("focus"))); await settle();
+    assert.ok(view.q('[data-person="alice"]'));
+    assert.ok(view.q('[data-person="bobby"]'));
+    assert.doesNotMatch(view.text(), /Couldn’t update your follow/);
+    await view.click(view.qa('[data-person="alice"] button').at(-1));
+    assert.equal(view.q("h2").textContent, "Find people");
+    assert.match(view.q('[data-person="alice"] [role="alert"]').textContent, /Couldn’t update your follow/);
+    await act(async () => window.dispatchEvent(new window.Event("focus"))); await settle();
+    assert.equal(fetch.calls.filter(c => c.method === "POST").length, 1, "recovery never repeats a mutation");
+    assert.equal(view.qa('[data-person="alice"] button').at(-1).textContent, "Follow");
+  } finally { view.cleanup(); delete globalThis.__FX2_COPY; }
+});
+
+test("Contact exposes 503 failure while retaining real contacts, then updates after recovery", async () => {
+  let fail = true;
+  const { view } = await open(PeopleView, { onOpenConversation() {} }, {
+    "GET /v1/im/follows": () => { if (fail) throw apiError(503, "http_503", "unavailable"); return { people: [card("later", "Later", { following: true })], next_cursor: null }; },
+  });
+  try {
+    assert.match(view.text(), /找人功能暂不可用，正在自动恢复/);
+    assert.ok(view.q('[data-contact="bobby"]'));
+    assert.equal(view.q("[data-contacts-empty]"), null);
+    fail = false;
+    await act(async () => window.dispatchEvent(new window.Event("online"))); await settle();
+    assert.ok(view.q('[data-contact="later"]'));
+    assert.equal(view.q('[data-contact="bobby"]'), null);
+    assert.equal(view.q('[role="alert"]'), null);
+  } finally { view.cleanup(); }
+});
+
+test("following and followers reads back off automatically and pause offline", async () => {
+  for (const box of ["following", "followers"]) {
+    let fail = true;
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    function Probe() {
+      const load = useLoader(() => listFollows(box), [box]);
+      return React.createElement("p", { "data-state": load.loading ? "loading" : load.error ? "unavailable" : "ready" }, load.data?.people[0]?.name);
+    }
+    const { view, fetch } = await open(Probe, {}, {
+      "GET /v1/im/follows": () => { if (fail) throw new TypeError("Failed to fetch"); return { people: [bob], next_cursor: null }; },
+    });
+    try {
+      assert.equal(view.q("[data-state]").dataset.state, "unavailable");
+      await delay(1100);
+      assert.equal(fetch.calls.length, 1, "offline reads do not retry");
+      Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+      await act(async () => window.dispatchEvent(new window.Event("online"))); await settle();
+      assert.equal(fetch.calls.length, 2);
+      fail = false;
+      await delay(2100); // second recovery uses the 2-second backoff, without an event or button
+      assert.equal(view.q("[data-state]").dataset.state, "ready");
+      assert.ok(fetch.calls.every(c => c.path.includes(`box=${box}`)));
+    } finally { view.cleanup(); Object.defineProperty(navigator, "onLine", { configurable: true, value: true }); }
+  }
+});
+
+test("username availability recovers automatically and stale recovery cannot overwrite an edited draft", async () => {
+  let fail = true;
+  let release;
+  const { view } = await open(MyUsername, { value: null, suggested: "valid_name", onSaved() {} }, {
+    "GET /v1/im/username/availability": ({ path }) => {
+      if (fail) throw apiError(503, "people_unavailable", "unavailable");
+      if (path.includes("valid_name")) return new Promise(resolve => { release = resolve; });
+      return { available: false };
+    },
+  });
+  try {
+    await delay(330);
+    assert.match(view.text(), /找人功能暂不可用，正在自动恢复/);
+    assert.equal(view.q("input").value, "valid_name");
+    fail = false;
+    await act(async () => window.dispatchEvent(new window.Event("focus"))); await settle();
+    assert.equal(typeof release, "function");
+    await view.type(view.q("input"), "taken_name"); await delay(330);
+    await act(async () => release({ available: true })); await settle();
+    assert.equal(view.q("input").value, "taken_name");
+    assert.match(view.text(), /这个用户名已被使用/);
+    assert.equal(view.q("button[type=submit]").disabled, true);
+    await view.type(view.q("input"), "recovered_name"); await delay(330);
+    assert.equal(view.q('[role="alert"]'), null);
   } finally { view.cleanup(); }
 });

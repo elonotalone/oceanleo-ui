@@ -1,8 +1,9 @@
 "use client";
 
 import { BackButton } from "../../../ui/BackButton";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { useAutoRecovery } from "../../../lib/auto-recovery";
 import {
   copyText, errorCodeOf, followPerson, followSuggestions, getUsername, listFollows, openDm,
   peopleMessageError, profileLink, searchPeople, setUsername, unfollowPerson,
@@ -22,9 +23,9 @@ export function PeoplePage({ title, onBack, children }: { title: string; onBack:
   </section>;
 }
 
-export function PeopleFailure({ error }: { error: unknown }) {
+export function PeopleFailure({ error, action }: { error: unknown; action?: "follow" | "other" }) {
   const tt = useUI();
-  return <p role="alert" className="py-2 text-[12px] text-red-600">{peopleMessageError(error, tt)}</p>;
+  return <p role="alert" className="py-2 text-[12px] text-red-600">{action === "follow" ? tt("关注操作未完成，请稍后再试。") : action === "other" ? peopleMessageError(error, tt) : tt("找人功能暂不可用，正在自动恢复。")}</p>;
 }
 
 /** Cursor pages are kept explicit so following lists never silently stop at page one. */
@@ -42,11 +43,12 @@ export function useFollowing() {
   }, [first.reload]);
   async function more() {
     if (!cursor || busy) return;
-    setBusy(true); setError(null);
-    try { const page = await listFollows("following", cursor); setExtra((old) => [...old, ...page.people]); setCursor(page.next_cursor); }
+    setBusy(true);
+    try { const page = await listFollows("following", cursor); setExtra((old) => [...old, ...page.people]); setCursor(page.next_cursor); setError(null); }
     catch (e) { setError(e); }
     finally { setBusy(false); }
   }
+  useAutoRecovery(error != null, more, cursor);
   const people = [...new Map([...(first.data?.people ?? []), ...extra].map(p => [p.user_id, p])).values()];
   return { ...first, people, cursor, more, busy, moreError: error };
 }
@@ -75,7 +77,7 @@ export function PersonRow({ person, mode, onPick, selected, disabled }: { person
       </button>
       {mode === "follow" && <button type="button" disabled={busy || person.blocked} onClick={() => void toggle()} className={QUIET}>{tt(following ? "已关注" : "关注")}</button>}
     </div>
-    {error != null && <PeopleFailure error={error} />}
+    {error != null && <PeopleFailure error={error} action="follow" />}
   </li>;
 }
 
@@ -119,24 +121,35 @@ export function MyUsername({ value, suggested, onSaved }: { value: string | null
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<boolean | null>(null);
   const [qr, setQr] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const checkTicket = useRef(0);
+  async function checkAvailability() {
+    const mine = checkTicket.current;
+    try {
+      const result = await usernameAvailability(draft);
+      if (mine === checkTicket.current) { setAvailability(result.available ? "available" : "taken"); setError(null); }
+    } catch (e) {
+      if (mine === checkTicket.current) { setError(e); setAvailability("error"); }
+    }
+  }
+  useAutoRecovery(editing && availability === "error", checkAvailability, draft);
   useEffect(() => {
-    if (!editing) return;
-    let alive = true;
-    setError(null);
-    if (!usernameValid(draft)) { setAvailability("invalid"); return; }
-    if (draft === value) { setAvailability("available"); return; }
-    setAvailability("checking");
-    const timer = setTimeout(() => {
-      usernameAvailability(draft).then(r => { if (alive) setAvailability(r.available ? "available" : "taken"); }, e => { if (alive) { setError(e); setAvailability("error"); } });
-    }, 300);
-    return () => { alive = false; clearTimeout(timer); };
+    ++checkTicket.current;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    setError(null); setSaveError(false);
+    if (editing) {
+      if (!usernameValid(draft)) setAvailability("invalid");
+      else if (draft === value) setAvailability("available");
+      else { setAvailability("checking"); timer = setTimeout(() => void checkAvailability(), 300); }
+    }
+    return () => { ++checkTicket.current; clearTimeout(timer); };
   }, [draft, editing, value]);
   async function save() {
     if (busy || availability !== "available") return;
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setSaveError(false);
     try { const result = await setUsername(draft); onSaved(result.username); setDraft(result.username); setEditing(false); setQr(false); setCopied(null); }
     catch (e) {
-      setError(e);
+      setError(e); setSaveError(true);
       if (errorCodeOf(e) === "username_taken") setAvailability("taken");
       if (errorCodeOf(e) === "username_invalid") setAvailability("invalid");
     } finally { setBusy(false); }
@@ -158,7 +171,7 @@ export function MyUsername({ value, suggested, onSaved }: { value: string | null
       {copied === false && <input readOnly aria-label={tt("资料链接")} value={profileLink(value!)} className="w-full" />}
       {qr && <InviteQrCode url={profileLink(value!)} fileLabel={tt("我的资料二维码")} />}
     </>}
-    {error != null && <PeopleFailure error={error} />}
+    {error != null && <PeopleFailure error={error} action={saveError ? "other" : undefined} />}
   </section>;
 }
 
@@ -177,6 +190,6 @@ export function FindPeople({ onBack, onOpenConversation }: { onBack: () => void;
         try { const id = await openDm(person.user_id); if (id) onOpenConversation(id); } catch (e) { setError(e); }
       }} />}
     </>}
-    {error != null && <PeopleFailure error={error} />}
+    {error != null && <PeopleFailure error={error} action="other" />}
   </PeoplePage>;
 }
