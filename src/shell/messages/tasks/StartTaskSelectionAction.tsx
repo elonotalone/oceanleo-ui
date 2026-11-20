@@ -29,9 +29,9 @@ function StartTaskButton({ ctx }: { ctx: MessageSelectionContext }) {
         disabled={count === 0}
         data-selection-action={START_TASK_ACTION_ID}
         onClick={() => setOpen(true)}
-        className="rounded-lg px-2.5 py-1 text-[13px] text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
+        className="shrink-0 rounded-lg px-2.5 py-1 text-[13px] text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
       >
-        {tt("开任务")}
+        {tt("用选中的消息开任务")}
       </button>
       {open ? (
         <StartTaskDialog

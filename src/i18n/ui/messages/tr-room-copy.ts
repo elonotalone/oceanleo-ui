@@ -52,7 +52,7 @@ type Copy = Record<keyof typeof ZH, string>;
 const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   "en": {
     "不填则自动命名": "Leave empty to name it automatically",
-    "交给智能体": "Give to agent",
+    "交给智能体": "Ask an agent",
     "交给谁": "Give to",
     "从 LeoChat 导入": "Import from LeoChat",
     "他们也能给这个子任务发消息，费用由你承担。": "They can also send messages to this sub task. You pay for it.",
@@ -97,7 +97,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "zh-TW": {
     "不填则自动命名": "不填則自動命名",
-    "交给智能体": "交給智慧體",
+    "交给智能体": "叫智慧體",
     "交给谁": "交給誰",
     "从 LeoChat 导入": "從 LeoChat 匯入",
     "他们也能给这个子任务发消息，费用由你承担。": "他們也能傳訊息給這個子任務，費用由你承擔。",
@@ -142,7 +142,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "de": {
     "不填则自动命名": "Leer lassen, um automatisch zu benennen",
-    "交给智能体": "An Agent übergeben",
+    "交给智能体": "Agent fragen",
     "交给谁": "Übergeben an",
     "从 LeoChat 导入": "Aus LeoChat importieren",
     "他们也能给这个子任务发消息，费用由你承担。": "Sie können dieser Unteraufgabe ebenfalls Nachrichten senden. Du zahlst dafür.",
@@ -187,7 +187,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "es": {
     "不填则自动命名": "Déjalo vacío para nombrarla automáticamente",
-    "交给智能体": "Pasar al agente",
+    "交给智能体": "Pedir a un agente",
     "交给谁": "Pasar a",
     "从 LeoChat 导入": "Importar de LeoChat",
     "他们也能给这个子任务发消息，费用由你承担。": "También pueden enviar mensajes a esta subtarea. Tú la pagas.",
@@ -232,7 +232,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "es-419": {
     "不填则自动命名": "Déjalo vacío para nombrarla automáticamente",
-    "交给智能体": "Pasar al agente",
+    "交给智能体": "Pedir a un agente",
     "交给谁": "Pasar a",
     "从 LeoChat 导入": "Importar de LeoChat",
     "他们也能给这个子任务发消息，费用由你承担。": "También pueden enviar mensajes a esta subtarea. Tú la pagas.",
@@ -277,7 +277,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "fr": {
     "不填则自动命名": "Laisser vide pour la nommer automatiquement",
-    "交给智能体": "Confier à l’agent",
+    "交给智能体": "Demander à un agent",
     "交给谁": "Confier à",
     "从 LeoChat 导入": "Importer depuis LeoChat",
     "他们也能给这个子任务发消息，费用由你承担。": "Ils peuvent aussi envoyer des messages à cette sous-tâche. Vous la payez.",
@@ -322,7 +322,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "it": {
     "不填则自动命名": "Lascia vuoto per assegnare un nome automatico",
-    "交给智能体": "Affida all’agente",
+    "交给智能体": "Chiedi a un agente",
     "交给谁": "Affida a",
     "从 LeoChat 导入": "Importa da LeoChat",
     "他们也能给这个子任务发消息，费用由你承担。": "Potranno anche inviare messaggi a questa sottoattività. Paghi tu.",
@@ -367,7 +367,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "pt-BR": {
     "不填则自动命名": "Deixe em branco para nomear automaticamente",
-    "交给智能体": "Passar ao agente",
+    "交给智能体": "Chamar um agente",
     "交给谁": "Passar para",
     "从 LeoChat 导入": "Importar do LeoChat",
     "他们也能给这个子任务发消息，费用由你承担。": "Eles também podem enviar mensagens a esta subtarefa. Você paga por ela.",
@@ -412,7 +412,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "pt-PT": {
     "不填则自动命名": "Deixe vazio para dar um nome automaticamente",
-    "交给智能体": "Passar ao agente",
+    "交给智能体": "Chamar um agente",
     "交给谁": "Passar a",
     "从 LeoChat 导入": "Importar do LeoChat",
     "他们也能给这个子任务发消息，费用由你承担。": "Também podem enviar mensagens a esta subtarefa. O custo é seu.",
@@ -457,7 +457,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "vi": {
     "不填则自动命名": "Để trống để tự đặt tên",
-    "交给智能体": "Giao cho tác tử",
+    "交给智能体": "Nhờ tác tử",
     "交给谁": "Giao cho",
     "从 LeoChat 导入": "Nhập từ LeoChat",
     "他们也能给这个子任务发消息，费用由你承担。": "Họ cũng có thể gửi tin nhắn cho tác vụ con này. Bạn trả phí.",
@@ -502,7 +502,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "tr": {
     "不填则自动命名": "Otomatik adlandırmak için boş bırakın",
-    "交给智能体": "Ajana ver",
+    "交给智能体": "Ajana sor",
     "交给谁": "Kime verilsin",
     "从 LeoChat 导入": "LeoChat'ten içe aktar",
     "他们也能给这个子任务发消息，费用由你承担。": "Onlar da bu alt göreve mesaj gönderebilir. Ücreti siz ödersiniz.",
@@ -547,7 +547,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "ja": {
     "不填则自动命名": "空欄なら自動で名前を付けます",
-    "交给智能体": "エージェントに渡す",
+    "交给智能体": "エージェントに頼む",
     "交给谁": "渡す先",
     "从 LeoChat 导入": "LeoChat から取り込む",
     "他们也能给这个子任务发消息，费用由你承担。": "この人たちもこのサブタスクにメッセージを送れます。費用はあなたが負担します。",
@@ -592,7 +592,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "ko": {
     "不填则自动命名": "비워 두면 자동으로 이름이 붙습니다",
-    "交给智能体": "에이전트에게 넘기기",
+    "交给智能体": "에이전트에게 요청",
     "交给谁": "넘길 대상",
     "从 LeoChat 导入": "LeoChat에서 가져오기",
     "他们也能给这个子任务发消息，费用由你承担。": "이들도 이 하위 작업에 메시지를 보낼 수 있습니다. 비용은 내가 냅니다.",
@@ -637,7 +637,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "ar": {
     "不填则自动命名": "اتركه فارغًا لتسميته تلقائيًا",
-    "交给智能体": "سلِّم إلى الوكيل",
+    "交给智能体": "اطلب من وكيل",
     "交给谁": "سلِّم إلى",
     "从 LeoChat 导入": "استيراد من LeoChat",
     "他们也能给这个子任务发消息，费用由你承担。": "يمكنهم أيضًا إرسال رسائل إلى هذه المهمة الفرعية. أنت تدفع التكلفة.",
@@ -682,7 +682,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "th": {
     "不填则自动命名": "เว้นว่างไว้เพื่อตั้งชื่ออัตโนมัติ",
-    "交给智能体": "ส่งให้เอเจนต์",
+    "交给智能体": "ขอให้เอเจนต์ช่วย",
     "交给谁": "ส่งให้",
     "从 LeoChat 导入": "นำเข้าจาก LeoChat",
     "他们也能给这个子任务发消息，费用由你承担。": "พวกเขาส่งข้อความถึงงานย่อยนี้ได้ด้วย คุณเป็นผู้จ่ายค่าใช้จ่าย",
@@ -727,7 +727,7 @@ const COPY: Record<Exclude<Locale, "zh">, Copy> = {
   },
   "hi": {
     "不填则自动命名": "अपने-आप नाम देने के लिए खाली छोड़ें",
-    "交给智能体": "एजेंट को सौंपें",
+    "交给智能体": "एजेंट से कहें",
     "交给谁": "किसे सौंपें",
     "从 LeoChat 导入": "LeoChat से आयात करें",
     "他们也能给这个子任务发消息，费用由你承担。": "वे भी इस उप-कार्य को संदेश भेज सकते हैं। खर्च आप देंगे।",

@@ -29,6 +29,7 @@ import { WorkConversationHeader } from "./WorkConversationHeader";
 import { workSendPolicy } from "./work-policy";
 import { selectionActionsFor, useMessageSelectionActions, type MessageSelectionAction, type MessageSelectionContext } from "./selection-actions";
 import type { ComposerExtras } from "../../task-room/composer-extras";
+import { ensureStartTaskSelectionAction } from "../tasks/StartTaskSelectionAction";
 import {
   CallButton,
   CallChatProvider,
@@ -39,6 +40,11 @@ import {
   type CallChatContextValue,
   type RemovalReason,
 } from "../call/chat";
+
+// "New task from selected messages" in every ordinary conversation's select bar, wherever a conversation is
+// mounted (LeoChat window / page / panel, a deal, a task page), not only once the inbox module was loaded.
+// A called export, not a bare import: the package's `sideEffects` would let a bundler drop a bare one.
+ensureStartTaskSelectionAction();
 
 export interface ConversationViewProps {
   conversationId: string;
@@ -596,8 +602,8 @@ function ConversationBody(props: ConversationViewProps & {
         </div>
       </div>
       {selectionMode ? (
-        <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t border-neutral-200 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900" data-message-selection-toolbar="">
-          <span className="mr-auto text-sm">{tt("已选择 {n} 条", { n: selectedMessageIds.size })}</span>
+        <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 overflow-x-auto whitespace-nowrap border-t border-neutral-200 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900" data-message-selection-toolbar="">
+          <span className="mr-auto shrink-0 text-sm">{tt("已选择 {n} 条", { n: selectedMessageIds.size })}</span>
           {slotActions.map((action) => <action.Component key={action.id} ctx={selectionContext} />)}
           <button type="button" disabled={!selectedMessageIds.size} onClick={() => setForwardMessages(snapshot.messages.filter((message) => selectedMessageIds.has(message.id) && message.card?.type !== "task"))}>{tt("转发")}</button>
           <button type="button" disabled={!canDeleteSelection} onClick={() => setBulkDeleteOpen(true)} className="text-neutral-600 disabled:opacity-40">{tt("删除")}</button>

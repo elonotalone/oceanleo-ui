@@ -27,6 +27,11 @@ export interface MessageSelectionAction {
   order?: number;
   /** Default: every conversation except `kind === "task"`. Per-instance actions ignore it. */
   appliesTo?: (conversation: ImConversationDetail | null) => boolean;
+  /**
+   * Per-instance actions only: registered actions this one stands in for (hidden in that bar). A task view over a
+   * project chat offers its own "New task from selected messages" instead of LeoChat's start-task.
+   */
+  replaces?: readonly string[];
   /** Renders its own button (and any dialog it opens); may use hooks. Return null to hide. */
   Component: ComponentType<{ ctx: MessageSelectionContext }>;
 }
@@ -77,7 +82,7 @@ export function selectionActionsFor(
   conversation: ImConversationDetail | null,
 ): MessageSelectionAction[] {
   const applicable = registered.filter((action) => (action.appliesTo ?? defaultAppliesTo)(conversation));
-  const ownIds = new Set(own.map((action) => action.id));
+  const ownIds = new Set(own.flatMap((action) => [action.id, ...(action.replaces ?? [])]));
   return [...own, ...applicable.filter((action) => !ownIds.has(action.id))]
     .map((action, index) => ({ action, index }))
     .sort((a, b) => (a.action.order ?? 0) - (b.action.order ?? 0) || a.index - b.index)

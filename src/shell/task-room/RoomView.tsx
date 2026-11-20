@@ -89,7 +89,7 @@ function SpinOffAction({ ctx }: { ctx: MessageSelectionContext }) {
       onClick={() => actions.openSpinOff(ctx.selectedMessages.map((message) => message.id), ctx.exitSelection)}
       data-task-spin-off=""
     >
-      {tt("新建任务")}
+      {tt("用所选消息新建任务")}
     </button>
   );
 }
@@ -97,7 +97,8 @@ function SpinOffAction({ ctx }: { ctx: MessageSelectionContext }) {
 const ROOM_SELECTION_ACTIONS: MessageSelectionAction[] = [
   { id: "task-room.select-all", order: -30, Component: SelectAllAction },
   { id: "task-room.ask-agent", order: -20, Component: AskAgentAction },
-  { id: "task-room.spin-off", order: -10, Component: SpinOffAction },
+  // Stands in for LeoChat's start-task (registered for project chats too): one "new task" entry in a task's bar.
+  { id: "task-room.spin-off", order: -10, Component: SpinOffAction, replaces: ["tu3.start-task"] },
 ];
 
 const STATUS_DOT: Record<TaskCardStatus, string> = {
