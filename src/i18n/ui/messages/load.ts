@@ -25,6 +25,7 @@ import { localBrowserCopy } from "./local-browser-copy";
 import { deviceExperienceCopy } from "./device-experience-copy";
 import { swBrCopy } from "./sw-br-copy";
 import { swTsCopy } from "./sw-ts-copy";
+import { rwFnCopy } from "./rw-fn-copy";
 import { swNuCopy } from "./sw-nu-copy";
 import { taskLiveCopy } from "./task-live-copy";
 import { swTwCopy } from "./sw-tw-copy";
@@ -214,5 +215,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...STEP_UP_MESSAGES[locale],
     ...swBdCopy(locale),
     ...swTsCopy(locale),
+    ...rwFnCopy(locale),
   };
 };

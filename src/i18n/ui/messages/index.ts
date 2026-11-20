@@ -64,6 +64,7 @@ import { EDITOR_OVERHAUL_MESSAGES } from "./editor-overhaul-copy";
 import { deviceExperienceCopy } from "./device-experience-copy";
 import { swBrCopy } from "./sw-br-copy";
 import { swTsCopy } from "./sw-ts-copy";
+import { rwFnCopy } from "./rw-fn-copy";
 import { swNuCopy } from "./sw-nu-copy";
 import { taskLiveCopy } from "./task-live-copy";
 import { swTwCopy } from "./sw-tw-copy";
@@ -577,6 +578,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...STEP_UP_MESSAGES[language],
       ...swBdCopy(language),
       ...swTsCopy(language),
+      ...rwFnCopy(language),
     }];
   }),
 ) as Record<Locale, Record<string, string>>;
