@@ -66,6 +66,7 @@ import { swBrCopy } from "./sw-br-copy";
 import { swTsCopy } from "./sw-ts-copy";
 import { rwFnCopy } from "./rw-fn-copy";
 import { ssUlCopy } from "./ss-ul-copy";
+import { ssFuCopy } from "./ss-fu-copy";
 import { ssUcCopy } from "./ss-uc-copy";
 import { ssUtCopy } from "./ss-ut-copy";
 import { swNuCopy } from "./sw-nu-copy";
@@ -596,6 +597,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...rwFnCopy(language),
       ...ssUlCopy(language),
       ...ssUcCopy(language),
+    ...ssFuCopy(language),
       ...ssUtCopy(language),
     }];
   }),

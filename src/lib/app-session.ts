@@ -75,6 +75,7 @@ export interface AppSession {
 }
 
 export interface ListAppSessionsOptions {
+  q?: string;
   signal?: AbortSignal;
   headers?: Record<string, string>;
   limit?: number;
@@ -232,6 +233,7 @@ export async function listAppSessions(
   const params = new URLSearchParams({
     limit: String(options.limit ?? 100),
   });
+  if (options.q?.trim()) params.set("q", options.q.trim());
   const site = (options.siteId || "").trim();
   const app = (options.appId || "").trim();
   if (site) params.set("site_id", site);

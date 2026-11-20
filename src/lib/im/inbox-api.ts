@@ -10,19 +10,21 @@ export function isInboxFilter(value: string): value is InboxFilter {
   return (INBOX_FILTERS as readonly string[]).includes(value);
 }
 
-export function conversationsPath(filter: string, cursor?: string | null, limit = 30): string {
+export function conversationsPath(filter: string, cursor?: string | null, limit = 30, q = ""): string {
   const params = new URLSearchParams();
   params.set("filter", isInboxFilter(filter) ? filter : "all");
   if (cursor) params.set("cursor", cursor);
   params.set("limit", String(limit));
+  if (q.trim()) params.set("q", q.trim());
   return `/v1/im/conversations?${params.toString()}`;
 }
 
 export async function fetchConversations(
   filter: string,
   cursor?: string | null,
+  q = "",
 ): Promise<ImPage<ImConversationSummary>> {
-  const page = await imFetch<ImPage<ImConversationSummary>>(conversationsPath(filter, cursor));
+  const page = await imFetch<ImPage<ImConversationSummary>>(conversationsPath(filter, cursor, 30, q));
   if (!page || !Array.isArray(page.items)) return page;
   // 群头像拼图成员：服务端给了就收拾成安全形状（最多 4 个、头像只认 https）；没给的行原样不动。
   return {

@@ -12,7 +12,7 @@ import { FloatingMenuItem, FloatingMenuLabel, FloatingMenuSeparator } from "../.
 import { AccessPopover } from "../../access/AccessPopover";
 import { ForwardPicker } from "../../forward";
 import { writeClipboardText } from "../../share/share-clipboard";
-import { SELECT_ALL_LIMIT } from "./message-selection";
+import { SS_FU_COPY as limits } from "../../../i18n/ui/messages/ss-fu-copy";
 
 export type ForwardCopyPage = "actions" | "forward";
 
@@ -26,13 +26,14 @@ export interface ForwardCopyMenuProps {
   /** Menu closed (outside click, Escape, done): the host leaves select mode. */
   onClose: () => void;
   onPage: (page: ForwardCopyPage) => void;
-  selectedCount: number;
+  selectedCount: number | null;
   allSelected: boolean;
   /** Older history is being paged in for "Select all". */
   selectingAll: boolean;
   onToggleAll: () => void;
   /** Selected messages as clipboard text, oldest first, and how many they are. */
-  copyText: () => { text: string; count: number };
+  copyText: () => { text: string; count: number } | Promise<{ text: string; count: number }>;
+  resolveMessageIds?: (limit: number) => Promise<string[]>;
   /** Selected message ids, oldest first. */
   messageIds: readonly string[];
   /** Rows of the list stay clickable while the menu is open. */
@@ -89,10 +90,16 @@ export function ForwardCopyMenu(props: ForwardCopyMenuProps) {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setNotice(null), 2600);
   };
+  const [copying, setCopying] = useState(false);
   const copySelection = async () => {
-    const { text, count } = copyText();
-    const copied = count > 0 && await writeClipboardText(text);
-    say(copied ? "ok" : "error", copied ? tt("已复制 {count} 条消息。", { count }) : tt("复制失败，请手动选中文本复制。"));
+    setCopying(true);
+    try {
+      const { text, count } = await copyText();
+      const copied = count > 0 && await writeClipboardText(text);
+      say(copied ? "ok" : "error", copied ? tt("已复制 {count} 条消息。", { count }) : tt("复制失败，请手动选中文本复制。"));
+    } catch {
+      say("error", tt("复制失败，请手动选中文本复制。"));
+    } finally { setCopying(false); }
   };
   const empty = selectedCount === 0;
   const label = tt(copy.forwardOrCopy);
@@ -111,22 +118,19 @@ export function ForwardCopyMenu(props: ForwardCopyMenuProps) {
       >
         {page === "actions" ? (
           <div data-forward-copy-actions="">
-            <FloatingMenuItem icon={<MenuIcon name="forward" />} label={tt("转发")} disabled={empty} onSelect={() => onPage("forward")} />
-            <FloatingMenuItem icon={<MenuIcon name="copy" />} label={tt("复制")} disabled={empty} onSelect={() => void copySelection()} />
+            <FloatingMenuItem icon={<MenuIcon name="forward" />} label={tt("转发")} disabled={empty || copying || selectingAll} onSelect={() => onPage("forward")} />
+            <FloatingMenuItem icon={<MenuIcon name="copy" />} label={tt("复制")} disabled={empty || copying || selectingAll} onSelect={() => void copySelection()} />
             <FloatingMenuSeparator />
-            <FloatingMenuLabel>{tt("已选 {count} 条", { count: selectedCount })}</FloatingMenuLabel>
+            <FloatingMenuLabel>{selectedCount === null ? tt(limits.allMessages) : tt("已选 {count} 条", { count: selectedCount })}</FloatingMenuLabel>
             <FloatingMenuItem
               icon={<MenuIcon name="select" />}
               label={tt(allSelected ? "取消全选" : "全选")}
-              disabled={selectingAll}
+              disabled={selectingAll || copying}
               onSelect={onToggleAll}
             />
-            {selectingAll ? <p role="status" className="px-2.5 py-1.5 text-xs text-neutral-500">{tt(copy.loadingEarlier)}</p> : null}
-            {!selectingAll && selectedCount >= SELECT_ALL_LIMIT ? (
-              <p className="px-2.5 py-1.5 text-xs text-neutral-500">{tt(copy.selectCap, { count: SELECT_ALL_LIMIT })}</p>
-            ) : null}
+            {selectingAll || copying ? <p role="status" className="px-2.5 py-1.5 text-xs text-stone-500">{tt(copy.loadingEarlier)}</p> : null}
             {notice ? (
-              <p role="status" className={`px-2.5 py-1.5 text-xs ${notice.tone === "ok" ? "text-neutral-500" : "text-rose-600"}`}>{notice.text}</p>
+              <p role="status" className={`px-2.5 py-1.5 text-xs ${notice.tone === "ok" ? "text-stone-500" : "text-rose-600"}`}>{notice.text}</p>
             ) : null}
           </div>
         ) : (
@@ -135,6 +139,8 @@ export function ForwardCopyMenu(props: ForwardCopyMenuProps) {
             <ForwardPicker
               source={{ conversationId, title }}
               messageIds={messageIds}
+              selectedCount={selectedCount}
+              resolveMessageIds={props.resolveMessageIds}
               onDone={onClose}
               onCancel={() => onPage("actions")}
             />

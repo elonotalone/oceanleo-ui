@@ -26,8 +26,9 @@ import { getConversationStore, unreadBoundary, type ConversationStore } from "./
 import { historyEventTargetsConversation, subscribeHistoryCleared } from "./history-events";
 import { WorkConversationHeader } from "./WorkConversationHeader";
 import { workSendPolicy } from "./work-policy";
+import { loadSelectionHistory } from "./selection-history";
 import { ForwardCopyMenu, type ForwardCopyPage } from "./ForwardCopyMenu";
-import { SELECT_ALL_LIMIT, everythingSelected, orderedSelection, selectableIds, selectionText } from "./message-selection";
+import { everythingSelected, orderedSelection, selectableIds, selectionText } from "./message-selection";
 import {
   CallButton,
   CallChatProvider,
@@ -238,7 +239,9 @@ function ConversationBody(props: ConversationViewProps & {
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(() => new Set());
   const [menuPage, setMenuPage] = useState<ForwardCopyPage>("actions");
   const [selectingAll, setSelectingAll] = useState(false);
+  const [wholeConversation, setWholeConversation] = useState(false);
   const selectionGeneration = useRef(0);
+  useEffect(() => () => { selectionGeneration.current += 1; }, []);
   const [reporting, setReporting] = useState<ImMessage | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
@@ -370,44 +373,40 @@ function ConversationBody(props: ConversationViewProps & {
     selectionGeneration.current += 1;
     setSearchOpen(false);
     setSelectingAll(false);
+    setWholeConversation(false);
     setSelectedMessageIds(new Set(ids));
     setMenuPage(page);
     setSelectionMode(true);
   }, []);
   const exitSelection = useCallback(() => {
     selectionGeneration.current += 1;
+    setWholeConversation(false);
     setSelectionMode(false);
     setSelectingAll(false);
     setSelectedMessageIds(new Set());
     setMenuPage("actions");
   }, []);
-  const selectedInOrder = useMemo(() => orderedSelection(snapshot.messages, selectedMessageIds), [snapshot.messages, selectedMessageIds]);
-  const allSelected = everythingSelected(snapshot.messages, selectedMessageIds, snapshot.hasMoreBefore);
-  /** Every message, older pages included (up to SELECT_ALL_LIMIT, newest kept), or clear when all are selected. */
+  const visibleSelection = useMemo(() => wholeConversation ? new Set(selectableIds(snapshot.messages)) : selectedMessageIds,
+    [wholeConversation, snapshot.messages, selectedMessageIds]);
+  const selectedInOrder = useMemo(() => orderedSelection(snapshot.messages, visibleSelection), [snapshot.messages, visibleSelection]);
+  const allSelected = wholeConversation || everythingSelected(snapshot.messages, selectedMessageIds, snapshot.hasMoreBefore || snapshot.hasMoreAfter);
   const toggleAll = useCallback(() => {
-    if (allSelected) {
-      setSelectedMessageIds(new Set());
-      return;
-    }
+    selectionGeneration.current += 1;
+    setWholeConversation(!allSelected);
+    setSelectedMessageIds(new Set());
+  }, [allSelected]);
+  const resolveSelection = async (limit = Infinity): Promise<ImMessage[]> => {
+    if (!wholeConversation) return selectedInOrder.slice(limit === Infinity ? 0 : -limit);
     const generation = selectionGeneration.current;
     setSelectingAll(true);
-    void (async () => {
-      let current = store.getSnapshot();
-      try {
-        while (current.hasMoreBefore && selectableIds(current.messages).length < SELECT_ALL_LIMIT) {
-          const before = current.messages.length;
-          await store.loadBefore();
-          current = store.getSnapshot();
-          if (current.messages.length === before) break;
-        }
-      } catch {
-        current = store.getSnapshot();
-      }
-      if (generation !== selectionGeneration.current) return;
-      setSelectedMessageIds(new Set(selectableIds(current.messages).slice(-SELECT_ALL_LIMIT)));
-      setSelectingAll(false);
-    })();
-  }, [allSelected, store]);
+    try {
+      const messages = await loadSelectionHistory((params) => messagesApi.listMessages(conversationId, params), limit);
+      if (generation !== selectionGeneration.current) throw new Error("Selection changed");
+      return messages;
+    } finally {
+      if (generation === selectionGeneration.current) setSelectingAll(false);
+    }
+  };
   const selectionRequestNonce = selectionRequest?.nonce;
   useEffect(() => {
     if (!selectionRequest) return;
@@ -503,7 +502,7 @@ function ConversationBody(props: ConversationViewProps & {
     return (
       <div className="relative h-full" data-conversation-loading="">
         <RoutePageSkeleton variant="list" label={tt("正在加载…")} />
-        {snapshot.error ? <p role="status" data-load-retrying className="absolute inset-x-0 bottom-3 px-3 text-center text-[12px] text-neutral-500">{tt("消息暂时无法加载，正在自动重试…")}</p> : null}
+        {snapshot.error ? <p role="status" data-load-retrying className="absolute inset-x-0 bottom-3 px-3 text-center text-[12px] text-stone-500">{tt("消息暂时无法加载，正在自动重试…")}</p> : null}
       </div>
     );
   }
@@ -568,15 +567,29 @@ function ConversationBody(props: ConversationViewProps & {
             page={menuPage}
             onToggle={() => {
               if (selectionMode) exitSelection();
-              else enterSelection(selectableIds(snapshot.messages), "actions");
+              else { enterSelection(selectableIds(snapshot.messages), "actions"); setWholeConversation(true); }
             }}
             onClose={exitSelection}
             onPage={setMenuPage}
-            selectedCount={selectedInOrder.length}
+            selectedCount={wholeConversation && (snapshot.hasMoreBefore || snapshot.hasMoreAfter) ? null : selectedInOrder.length}
             allSelected={allSelected}
             selectingAll={selectingAll}
             onToggleAll={toggleAll}
-            copyText={() => ({ text: selectionText(selectedInOrder, nameOfMessage), count: selectedInOrder.length })}
+            copyText={async () => {
+              const generation = selectionGeneration.current;
+              const messages = await resolveSelection();
+              const missing = [...new Set(messages.map((message) => message.sender_id).filter((id): id is string => Boolean(id && !profiles[id])))];
+              const extra: typeof profiles = {};
+              for (let i = 0; i < missing.length; i += 100) {
+                for (const profile of await messagesApi.profiles(missing.slice(i, i + 100))) extra[profile.user_id] = profile;
+              }
+              if (generation !== selectionGeneration.current) throw new Error("Selection changed");
+              return { text: selectionText(messages, (message) => {
+                const profile = message.sender_id ? extra[message.sender_id] : undefined;
+                return profile ? visiblePersonName(profile, { showNickname: conversation?.kind !== "dm" && conversation?.show_member_nicknames !== false }) : nameOfMessage(message);
+              }), count: messages.length };
+            }}
+            resolveMessageIds={async (limit) => (await resolveSelection(limit)).map((message) => message.id)}
             messageIds={selectedInOrder.map((message) => message.id)}
             ignoreOutsideSelector={SELECT_ROW_SELECTOR}
           />
@@ -618,13 +631,18 @@ function ConversationBody(props: ConversationViewProps & {
               highlightSeq={highlightSeq}
               handlers={handlers}
               selectionMode={selectionMode}
-              selectedMessageIds={selectedMessageIds}
-              onToggleSelected={(message) => setSelectedMessageIds((current) => {
-                const next = new Set(current);
-                if (next.has(message.id)) next.delete(message.id);
-                else next.add(message.id);
-                return next;
-              })}
+              selectedMessageIds={visibleSelection}
+              onToggleSelected={(message) => {
+                selectionGeneration.current += 1;
+                setWholeConversation(false);
+                setSelectingAll(false);
+                setSelectedMessageIds((current) => {
+                  const next = new Set(wholeConversation ? visibleSelection : current);
+                  if (next.has(message.id)) next.delete(message.id);
+                  else next.add(message.id);
+                  return next;
+                });
+              }}
               onReachBottom={reportRead}
               scrollToMessageId={scrollTarget}
               messageMarks={messageMarks}

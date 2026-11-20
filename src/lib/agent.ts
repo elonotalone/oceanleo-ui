@@ -962,9 +962,10 @@ export function listTasks(
   pending = false,
   surface: "app" | "advanced" | "all" = "app",
   projectScope: ProjectScope = "unassigned",
-  options: { signal?: AbortSignal; headers?: Record<string, string> } = {},
+  options: { signal?: AbortSignal; headers?: Record<string, string>; q?: string } = {},
 ) {
   const params = new URLSearchParams({ limit: String(limit) });
+  if (options.q?.trim()) params.set("q", options.q.trim());
   const site = (siteId || "").trim();
   if (site) params.set("site_id", site);
   if (pending) params.set("pending", "true");

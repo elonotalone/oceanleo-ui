@@ -3,9 +3,6 @@
 import type { ImMessage } from "../../../lib/im/types";
 import { plainTextOf } from "./message-format";
 
-/** "Select all" pages older history until this many messages are selected (the quote card's limit, contract §2.2). */
-export const SELECT_ALL_LIMIT = 500;
-
 /** A real, visible message: sent (seq > 0), not a system line, not recalled or hidden. */
 export function isSelectableMessage(message: ImMessage): boolean {
   if (message.seq <= 0) return false;
@@ -25,7 +22,6 @@ export function orderedSelection(messages: readonly ImMessage[], selected: Reado
 
 /** Every loaded selectable message is selected and there is no older page left to add. */
 export function everythingSelected(messages: readonly ImMessage[], selected: ReadonlySet<string>, hasMoreBefore: boolean): boolean {
-  if (selected.size >= SELECT_ALL_LIMIT) return true;
   const ids = selectableIds(messages);
   if (ids.length === 0 || hasMoreBefore) return false;
   return ids.every((id) => selected.has(id));

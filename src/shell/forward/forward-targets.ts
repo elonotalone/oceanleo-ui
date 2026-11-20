@@ -1,8 +1,8 @@
 // Forward targets and the two requests behind them (contract §2.3 / §2.2).
 // - Tasks: the same reads My tasks uses (`GET /v1/agent/tasks` + `GET /v1/app-sessions`, merged by
 //   `mergeHistoryEntries`), only the caller's own agent tasks (rows shared with them are left out).
-// - Chats: LeoChat conversations (`GET /v1/im/conversations`, first two pages), not dissolved, not the source.
-// - Sessions: `GET /v1/projects` then `GET /v1/projects/{id}/sessions` per project (newest 12 projects),
+// - Chats: LeoChat conversations (`GET /v1/im/conversations`, all cursor pages), not dissolved, not the source.
+// - Sessions: `GET /v1/projects` then `GET /v1/projects/{id}/sessions` per caller project,
 //   sessions the caller may write in. A server without sessions simply contributes none.
 import { imFetch, ImApiError } from "../../lib/im/client";
 import { fetchConversations } from "../../lib/im/inbox-api";
@@ -60,10 +60,10 @@ export function forwardTaskRows(entries: readonly HistoryListEntry[]): ForwardTa
   return rows;
 }
 
-export async function loadForwardTasks(): Promise<ForwardTaskRow[]> {
+export async function loadForwardTasks(q = ""): Promise<ForwardTaskRow[]> {
   const [tasks, sessions] = await Promise.all([
-    listTasks(100, undefined, false, "all", "all"),
-    listAppSessions({ limit: 100, includeArchived: true, surface: "all", projectScope: "all" }),
+    listTasks(100, undefined, false, "all", "all", { q }),
+    listAppSessions({ limit: 100, includeArchived: true, surface: "all", projectScope: "all", q }),
   ]);
   if (!tasks.ok && !sessions.ok) throw new ImApiError(tasks.status || 0, "unavailable", tasks.error || "");
   const taskItems = tasks.ok ? tasks.data?.items ?? [] : [];
@@ -111,37 +111,42 @@ async function loadSessions(excludeId: string): Promise<ForwardChatRow[]> {
       const row = raw as { id?: unknown; name?: unknown; kind?: unknown };
       if (typeof row?.id !== "string" || !row.id || row.kind === "website") return [];
       return [{ id: row.id, name: typeof row.name === "string" ? row.name : "" }];
-    }).slice(0, 12);
+    });
   } catch {
     return [];
   }
-  const lists = await Promise.all(projects.map(async (project) => {
-    try {
-      const answer = await imFetch<{ sessions?: SessionRow[] }>(`/v1/projects/${encodeURIComponent(project.id)}/sessions`);
-      return forwardSessionRows(Array.isArray(answer?.sessions) ? answer.sessions : [], project.name, excludeId);
-    } catch {
-      return [];
-    }
-  }));
+  const lists: ForwardChatRow[][] = [];
+  // Bound concurrent project reads without excluding older projects.
+  for (let offset = 0; offset < projects.length; offset += 4) {
+    lists.push(...await Promise.all(projects.slice(offset, offset + 4).map(async (project) => {
+      try {
+        const answer = await imFetch<{ sessions?: SessionRow[] }>(`/v1/projects/${encodeURIComponent(project.id)}/sessions`);
+        return forwardSessionRows(Array.isArray(answer?.sessions) ? answer.sessions : [], project.name, excludeId);
+      } catch {
+        return [];
+      }
+    })));
+  }
   return lists.flat();
 }
 
-export async function loadForwardChats(excludeId: string): Promise<ForwardChatRow[]> {
+export async function loadForwardChats(excludeId: string, q = ""): Promise<ForwardChatRow[]> {
   const chats = (async () => {
-    const first = await fetchConversations("all");
-    const items = [...(first?.items ?? [])];
-    if (first?.next_cursor) {
-      try {
-        const second = await fetchConversations("all", first.next_cursor);
-        items.push(...(second?.items ?? []));
-      } catch {
-        // The first page is enough to forward somewhere.
-      }
-    }
+    const items: ImConversationSummary[] = [];
+    let cursor: string | null = null;
+    const seen = new Set<string>();
+    do {
+      const page = await fetchConversations("all", cursor, q);
+      items.push(...(page?.items ?? []));
+      cursor = page?.next_cursor || null;
+      if (cursor && seen.has(cursor)) throw new ImApiError(502, "invalid_cursor", "");
+      if (cursor) seen.add(cursor);
+    } while (cursor);
     return forwardChatRows(items, excludeId);
   })();
   const [chatRows, sessionRows] = await Promise.all([chats, loadSessions(excludeId)]);
-  return [...sessionRows, ...chatRows];
+  const needle = q.trim().toLocaleLowerCase();
+  return [...sessionRows, ...chatRows].filter((row) => !needle || `${row.title} ${row.project || ""}`.toLocaleLowerCase().includes(needle));
 }
 
 function bundleOf(raw: unknown): ChatBundle {

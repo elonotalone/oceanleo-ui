@@ -6,7 +6,6 @@ import React, { act } from "react";
 import "./helpers/w1-jsdom-window.mjs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
-  SELECT_ALL_LIMIT,
   everythingSelected,
   isSelectableMessage,
   orderedSelection,
@@ -82,7 +81,7 @@ test("select mode: system lines, recalled, hidden and unsent messages are never 
   assert.equal(everythingSelected(list, new Set(["a", "b"]), false), true);
   assert.equal(everythingSelected(list, new Set(["a", "b"]), true), false, "older pages left: Select all still offered");
   assert.equal(everythingSelected(list, new Set(["a"]), false), false);
-  assert.equal(everythingSelected([], new Set(Array.from({ length: SELECT_ALL_LIMIT }, (_, i) => String(i))), true), true);
+  assert.equal(everythingSelected([], new Set(Array.from({ length: 500 }, (_, i) => String(i))), true), false);
 });
 
 // ── The right-click message menu (real MessageActions + FloatingMenu) ──────
@@ -262,5 +261,55 @@ test("Forward page renders the ForwardPicker with the source and the selected id
     assert.deepEqual(calls.page, ["actions"]);
     await act(async () => document.querySelector("[data-test-done]").click());
     assert.equal(calls.close, 1);
+  } finally { await view.unmount(); }
+});
+
+
+test("mouse and pen long presses do nothing; touch long press opens the message menu", async () => {
+  const { element } = item();
+  const view = await mount(element());
+  const press = (type, pointerType) => {
+    const event = new window.Event(type, { bubbles: true });
+    Object.defineProperties(event, { pointerType: { value: pointerType }, clientX: { value: 30 }, clientY: { value: 50 } });
+    view.host.querySelector("[data-message-row]").dispatchEvent(event);
+  };
+  try {
+    for (const pointer of ["mouse", "pen"]) {
+      await act(async () => { press("pointerdown", pointer); await new Promise(resolve => setTimeout(resolve, 470)); });
+      assert.equal(document.querySelector("[data-message-actions]"), null, pointer);
+      await act(async () => press("pointerup", pointer));
+    }
+    await act(async () => { press("pointerdown", "touch"); await new Promise(resolve => setTimeout(resolve, 470)); });
+    assert.ok(document.querySelector("[data-message-actions]"));
+    await act(async () => press("pointerup", "touch"));
+  } finally { await view.unmount(); }
+});
+
+test("whole-conversation count stays unknown until history loads; Copy shows progress and waits", async () => {
+  let finish;
+  globalThis.__ucCopied = null;
+  const { props } = menuProps({ selectedCount: null, allSelected: true, copyText: () => new Promise(resolve => { finish = resolve; }) });
+  const view = await mount(React.createElement(ForwardCopyMenu, props));
+  try {
+    assert.match(document.querySelector("[data-forward-copy-actions]").textContent, /全部消息/);
+    const copy = [...document.querySelectorAll('[role="menuitem"]')].find(el => el.textContent === "复制");
+    await act(async () => copy.click());
+    assert.match(document.querySelector('[role="status"]').textContent, /载入|加载/);
+    assert.equal(globalThis.__ucCopied, null);
+    assert.equal(copy.disabled, true);
+    await act(async () => finish({ text: "whole record", count: 2400 }));
+    assert.equal(globalThis.__ucCopied, "whole record");
+    assert.match(document.querySelector("[data-forward-copy-actions]").textContent, /2400/);
+  } finally { await view.unmount(); }
+});
+
+test("Copy history failure reports failure and writes no partial clipboard", async () => {
+  globalThis.__ucCopied = null;
+  const { props } = menuProps({ copyText: async () => { throw new Error("offline"); } });
+  const view = await mount(React.createElement(ForwardCopyMenu, props));
+  try {
+    await act(async () => [...document.querySelectorAll('[role="menuitem"]')].find(el => el.textContent === "复制").click());
+    assert.equal(globalThis.__ucCopied, null);
+    assert.match(document.querySelector('[role="status"]').textContent, /复制失败/);
   } finally { await view.unmount(); }
 });

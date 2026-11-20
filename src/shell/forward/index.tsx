@@ -4,6 +4,7 @@
 // stub's; unit UC renders <ForwardPicker/> as the second page of the conversation's Forward / Copy menu; unit US
 // opens the right panel on `oceanleo:open-task-panel`; the task composer (AgentChat) takes the pending bundles.
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { SS_FU_COPY as limits } from "../../i18n/ui/messages/ss-fu-copy";
 import { useUI } from "../../i18n/ui/useUI";
 import { SS_UT_COPY as copy } from "../../i18n/ui/messages/ss-ut-copy";
 import { FloatingMenuItem, FloatingMenuLabel, FloatingMenuSeparator } from "../../ui/menu/FloatingMenu";
@@ -56,6 +57,8 @@ export interface ForwardPickerProps {
   source: { conversationId: string; title: string };
   /** Selected message ids, oldest first. */
   messageIds: readonly string[];
+  selectedCount?: number | null;
+  resolveMessageIds?: (limit: number) => Promise<string[]>;
   /** Called after the messages were handed over (task panel opened, or quote card posted). */
   onDone: () => void;
   onCancel: () => void;
@@ -123,7 +126,7 @@ const SESSION = glyph(<><path d="M4 7h16v10H4z" /><path d="M4 7l2-3h12l2 3" /></
  * Task target → bundle → pending forward → right panel on that task (or a new task draft).
  * Chat / session target → quote card posted there at once. Failures stay on this page, in words.
  */
-export function ForwardPicker({ source, messageIds, onDone, onCancel }: ForwardPickerProps): ReactElement | null {
+export function ForwardPicker({ source, messageIds, selectedCount = messageIds.length, resolveMessageIds, onDone, onCancel }: ForwardPickerProps): ReactElement | null {
   const tt = useUI();
   const toast = useToast();
   const [query, setQuery] = useState("");
@@ -134,6 +137,8 @@ export function ForwardPicker({ source, messageIds, onDone, onCancel }: ForwardP
   // One client id per request kind and target: a retry after a lost answer is the same request (idempotent).
   const clientIds = useRef(new Map<string, string>());
   const alive = useRef(true);
+  const selectionKey = `${source.conversationId}:${selectedCount}:${messageIds.join(",")}`;
+  useEffect(() => { clientIds.current.clear(); }, [selectionKey]);
   const clientIdFor = (key: string) => {
     const known = clientIds.current.get(key);
     if (known) return known;
@@ -144,13 +149,17 @@ export function ForwardPicker({ source, messageIds, onDone, onCancel }: ForwardP
 
   useEffect(() => {
     alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
+
+  useEffect(() => {
     let current = true;
-    setTasks(null);
-    setChats(null);
-    loadForwardTasks().then((rows) => { if (current) setTasks(rows); }, () => { if (current) setTasks([]); });
-    loadForwardChats(source.conversationId).then((rows) => { if (current) setChats(rows); }, () => { if (current) setChats([]); });
-    return () => { current = false; alive.current = false; };
-  }, [source.conversationId]);
+    const timer = setTimeout(() => {
+      loadForwardTasks(query.trim()).then((rows) => { if (current) setTasks(rows); }, () => { if (current) setTasks([]); });
+      loadForwardChats(source.conversationId, query.trim()).then((rows) => { if (current) setChats(rows); }, () => { if (current) setChats([]); });
+    }, query.trim() ? 250 : 0);
+    return () => { current = false; clearTimeout(timer); };
+  }, [source.conversationId, query]);
 
   const needle = query.trim().toLocaleLowerCase();
   const taskRows = useMemo(() => (tasks ?? [])
@@ -161,14 +170,14 @@ export function ForwardPicker({ source, messageIds, onDone, onCancel }: ForwardP
     .filter((row) => matches(needle, row.title, row.project))
     .slice(0, MAX_ROWS), [chats, needle]);
   const nothing = tasks !== null && chats !== null && taskRows.length === 0 && chatRows.length === 0 && !matches(needle, tt("新任务"));
-  const locked = busy !== null || messageIds.length === 0;
+  const locked = busy !== null || selectedCount === 0;
 
   const toTask = async (target: ForwardTaskTarget) => {
     const key = target.kind === "task" ? `task:${target.taskId}` : "new-task";
     setBusy(key);
     setFailure(null);
     try {
-      const bundle = await createChatBundle(source.conversationId, messageIds, clientIdFor("bundle"));
+      const bundle = await createChatBundle(source.conversationId, resolveMessageIds ? await resolveMessageIds(2000) : messageIds.slice(-2000), clientIdFor("bundle"));
       setPendingForward(target, bundle);
       openTaskPanel(target.kind === "task" ? { taskId: target.taskId, title: target.title } : {});
       onDone();
@@ -184,7 +193,7 @@ export function ForwardPicker({ source, messageIds, onDone, onCancel }: ForwardP
     setBusy(key);
     setFailure(null);
     try {
-      await postQuoteCard(row.id, source.conversationId, messageIds, clientIdFor(`quote:${row.id}`));
+      await postQuoteCard(row.id, source.conversationId, resolveMessageIds ? await resolveMessageIds(500) : messageIds.slice(-500), clientIdFor(`quote:${row.id}`));
       toast.success(tt(copy.quoted, { title: row.title || tt("未命名") }));
       onDone();
     } catch (error) {
@@ -198,6 +207,9 @@ export function ForwardPicker({ source, messageIds, onDone, onCancel }: ForwardP
 
   return (
     <div data-forward-picker="" data-forward-source={source.conversationId}>
+      {selectedCount === null || selectedCount > 2000 ? <p role="note" className="px-2.5 py-1.5 text-xs text-stone-500">{tt(limits.taskLimit)}</p> : null}
+      {selectedCount === null || selectedCount > 500 ? <p role="note" className="px-2.5 py-1.5 text-xs text-stone-500">{tt(limits.quoteLimit)}</p> : null}
+      {busy !== null ? <p role="status" className="px-2.5 py-1.5 text-xs text-stone-500">{tt(copy.forwarding)}</p> : null}
       <FloatingMenuItem icon={BACK} label={tt("返回")} onSelect={onCancel} disabled={busy !== null} />
       <div className="px-1.5 pb-1 pt-0.5">
         <input

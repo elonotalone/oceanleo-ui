@@ -237,3 +237,48 @@ test("ss-ut copy: every locale has every key with the same {variables}", async (
     }
   }
 });
+
+test("picker warns before trimming: tasks get newest 2000; chats/sessions get newest 500", async () => {
+  calls.length = 0;
+  const ids = Array.from({ length: 2307 }, (_, i) => `m${i + 1}`);
+  const resolved = [];
+  const view = await mount(forward.ForwardPicker, {
+    source: { conversationId: "whole", title: "Design" }, messageIds: ["visible"], selectedCount: null,
+    resolveMessageIds: async limit => { resolved.push(limit); return ids.slice(-limit); }, onDone() {}, onCancel() {},
+  });
+  try {
+    await flush();
+    const notes = [...view.host.querySelectorAll('[role="note"]')].map(el => el.textContent).join(" ");
+    assert.match(notes, /2000/); assert.match(notes, /500/);
+    const byText = text => [...view.host.querySelectorAll('[role="menuitem"]')].find(el => el.textContent === text);
+    await click(byText("新任务"));
+    const bundleCall = calls.find(call => call[0] === "bundle");
+    assert.equal(bundleCall[2].length, 2000); assert.equal(bundleCall[2][0], "m308"); assert.equal(bundleCall[2].at(-1), "m2307");
+    forward.takePendingForward({ kind: "new-task" });
+    await click(byText("KickoffApollo"));
+    const quoteCall = calls.find(call => call[0] === "quote");
+    assert.equal(quoteCall[3].length, 500); assert.equal(quoteCall[3][0], "m1808"); assert.equal(quoteCall[3].at(-1), "m2307");
+    assert.deepEqual(resolved, [2000, 500]);
+  } finally { await view.close(); }
+});
+
+test("explicit selection also respects limits; a small selection shows no trim notice", async () => {
+  const view = await mount(forward.ForwardPicker, { source: { conversationId: "c", title: "" }, messageIds: ["one", "two"], onDone() {}, onCancel() {} });
+  try { await flush(); assert.equal(view.host.querySelector('[role="note"]'), null); } finally { await view.close(); }
+});
+
+test("explicit selections above the caps warn and send the newest allowed IDs", async () => {
+  calls.length = 0;
+  const ids = Array.from({ length: 2003 }, (_, i) => `m${i + 1}`);
+  const view = await mount(forward.ForwardPicker, { source: { conversationId: "explicit", title: "" }, messageIds: ids, onDone() {}, onCancel() {} });
+  try {
+    await flush();
+    assert.equal(view.host.querySelectorAll('[role="note"]').length, 2);
+    const byText = text => [...view.host.querySelectorAll('[role="menuitem"]')].find(el => el.textContent === text);
+    await click(byText("新任务"));
+    assert.deepEqual(calls.find(call => call[0] === "bundle")[2], ids.slice(-2000));
+    forward.takePendingForward({ kind: "new-task" });
+    await click(byText("Ann"));
+    assert.deepEqual(calls.find(call => call[0] === "quote")[3], ids.slice(-500));
+  } finally { await view.close(); }
+});
