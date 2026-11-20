@@ -3,11 +3,8 @@
 import { AutoRecovery } from "./AutoRecovery";
 
 import { BackButton } from "../ui/BackButton";
-import { Breadcrumb, type BreadcrumbItem } from "../ui/Breadcrumb";
-import { ConfirmDialog } from "../ui";
-import { TR_PANEL_COPY as trPanel } from "../i18n/ui/messages/tr-panel-copy";
+import { Breadcrumb } from "../ui/Breadcrumb";
 import { useTaskStack } from "./workspace-panels/task-stack-context";
-import { resolveTaskLinkKind, startTaskDiscussion, useTaskChain } from "./workspace-panels/task-chain";
 import { sameTaskProject, taskProjectHref, taskProjectLink, useNarrowWidth, type TaskProjectLink } from "./task-header-project";
 import { accessToken, getUserId, AUTH_STATE_EVENT } from "../lib/auth/client";
 
@@ -73,7 +70,16 @@ import {
 import { AgentProgress } from "./AgentProgress";
 import { AGENT_CONVERSATION_MAX_WIDTH_CLASS } from "./agent-conversation-layout";
 import { agentMessageTimeSeparators } from "./chat-time-separators";
-import { LeoComposer, type ComposerMenuItem } from "./LeoComposer";
+import { LeoComposer, type ComposerAttachment, type ComposerMenuItem } from "./LeoComposer";
+import {
+  OPEN_TASK_PANEL_EVENT,
+  chatRecordTitle,
+  forwardedMessageText,
+  takePendingForward,
+  type ChatBundle,
+  type ForwardTaskTarget,
+  type OpenTaskPanelDetail,
+} from "./forward";
 import type { ExecutionTarget } from "../lib/execution-target";
 // Computer tasks (thin-gateway 2026-11-07): one stream per task, the raw ACP rows the
 // gateway stored (`AcpTranscript`) in this same stream frame and LeoComposer;
@@ -896,11 +902,8 @@ function AgentChatInner({
   const [taskSiteId, setTaskSiteId] = useState<string>("");
   // The project this task belongs to, only for project owners/members (contract §1.4): the top bar's breadcrumb.
   const [taskProject, setTaskProject] = useState<TaskProjectLink | null>(null);
-  // Where this task sits in the task tree (Project / Task / Sub task); unavailable = today's header.
-  const taskChain = useTaskChain(taskId);
   // Under the right panel's task stack, task links open in place (pushed on the stack).
   const taskStack = useTaskStack();
-  const [discussOpen, setDiscussOpen] = useState(false);
   // 本次对话「总结」= 后端自动生成的 task.title（首轮收尾时 AI 概括，见 refresh）。
   // A project task's mode as the server last reported it (owner sees project_id).
   const [projectTask, setProjectTask] = useState<{ taskId: string; projectId: string; mode: ProjectTaskMode } | null>(null);
@@ -989,6 +992,35 @@ function AgentChatInner({
   // 关掉输入工具的站，首页那一侧的 HomeIntro 同样是关的，`onStart` 不可能带出附件；
   // 真收到就说明有人绕过了 D8，这里显式丢弃而不是默默照单全收。
   const initialAtts = toolsOn ? initialAttachments : undefined;
+  // Chats forwarded to this task (or to a new task draft): one removable chip each in the composer; on send the
+  // message text is each `<chat-record>` block, a blank line, then the prompt. Same path for cloud and computer tasks.
+  const [forwarded, setForwarded] = useState<ChatBundle[]>([]);
+  const adoptForwardedRef = useRef<(bundles: ChatBundle[]) => void>(() => undefined);
+  adoptForwardedRef.current = (bundles: ChatBundle[]) => {
+    if (!bundles.length) return;
+    setForwarded((current) => [...current, ...bundles.filter((bundle) => !current.some((known) => known.id === bundle.id))]);
+    const files = bundles.flatMap((bundle) => bundle.mode === "file" && bundle.attachment
+      ? [bundle.attachment as unknown as ComposerAttachment] : []);
+    if (files.length && toolsOn) atts.addComposerAttachments(files);
+  };
+  useEffect(() => {
+    const target: ForwardTaskTarget = taskId ? { kind: "task", taskId, title: "" } : { kind: "new-task" };
+    adoptForwardedRef.current(takePendingForward(target));
+    const onOpenTaskPanel = (event: Event) => {
+      const detail = (event as CustomEvent<OpenTaskPanelDetail | undefined>).detail;
+      if ((detail?.taskId || "") !== (taskId || "")) return;
+      adoptForwardedRef.current(takePendingForward(target));
+    };
+    window.addEventListener(OPEN_TASK_PANEL_EVENT, onOpenTaskPanel);
+    return () => window.removeEventListener(OPEN_TASK_PANEL_EVENT, onOpenTaskPanel);
+  }, [taskId]);
+  const removeForwarded = useCallback((id: string) => {
+    const bundle = forwarded.find((item) => item.id === id);
+    setForwarded((current) => current.filter((item) => item.id !== id));
+    const fileId = bundle?.mode === "file" ? (bundle.attachment as { id?: unknown } | null | undefined)?.id : undefined;
+    if (typeof fileId === "string" && fileId) atts.removeAttachment(fileId);
+  }, [forwarded, atts]);
+  const forwardedChips = useMemo(() => forwarded.map((bundle) => ({ id: bundle.id, title: bundle.title, messages: bundle.messages })), [forwarded]);
 
   useEffect(() => {
     setBranchTaskId(null);
@@ -2194,7 +2226,7 @@ function AgentChatInner({
   // program). A draft creates its task first. On a refusal (409) the composer keeps
   // the text; the user's own row, and the program's error row, arrive on the socket.
   async function sendAcpMessage(retry?: (typeof acpPendingSends)[number], providedText?: string) {
-    const text = retry ? retry.text : (providedText ?? input).trim();
+    const text = retry ? retry.text : providedText !== undefined ? providedText.trim() : forwardedMessageText(forwarded, input);
     const uploaded = retry ? retry.attachments : providedText !== undefined ? [] : toolsOn ? atts.ready() : [];
     if ((!text && uploaded.length === 0) || acpBusy || (pendingInFlight && !retry?.restored) || acpComposerDisabled || (!taskId && !retry && (!acpProgram || !acpComputerId))) return;
     if (providedText === undefined && toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
@@ -2227,6 +2259,7 @@ function AgentChatInner({
     if (providedText === undefined && (!retry || input.trim() === text)) {
       setInput("");
       atts.clear();
+      if (!retry) setForwarded([]);
     }
     void acpScroll.resumeFollowing();
     setAcpBusy(true);
@@ -2400,7 +2433,8 @@ function AgentChatInner({
 
   async function send(orgId?: string, executionTarget?: ExecutionTarget, connectorText?: string): Promise<boolean> {
     const fromConnector = connectorText !== undefined;
-    const prompt = (connectorText ?? input).trim();
+    const submittedForwarded = fromConnector ? [] : forwarded;
+    const prompt = forwardedMessageText(submittedForwarded, connectorText ?? input);
     // Allow send when there's an attachment even if the text is empty. But block
     // while any attachment is still uploading.
     // 关掉输入工具时不存在任何用户附件来源，附件相关的分支一律走空集，
@@ -2418,7 +2452,7 @@ function AgentChatInner({
       setBusy(true);
       const created = await edit.flow.start(prompt || tt("请分析我上传的文件。"), edit.binding, { attachments: uploaded, orgId, executionTarget });
       setBusy(false);
-      if (created) { if (!fromConnector) { setInput(""); atts.clear(); } adoptOwnedTask(created); }
+      if (created) { if (!fromConnector) { setInput(""); atts.clear(); setForwarded([]); } adoptOwnedTask(created); }
       return Boolean(created);
     }
     const submittedInput = input;
@@ -2427,10 +2461,12 @@ function AgentChatInner({
       if (fromConnector) return;
       setInput((current) => (current ? current : submittedInput));
       atts.restoreReady(submittedAttachments);
+      setForwarded((current) => (current.length ? current : submittedForwarded));
     };
     if (!fromConnector) {
       setInput("");
       atts.clear();
+      setForwarded([]);
     }
     const effectivePrompt = prompt || tt("请分析我上传的文件。");
     const turn = captureEditorTurn(effectivePrompt);
@@ -3062,7 +3098,8 @@ function AgentChatInner({
   const firstUserMessage = computerTask
     ? acpView.turns.find((turn) => turn.text.trim())?.text || messages.find((message) => message.role === "user")?.content
     : messages.find((message) => message.role === "user")?.content;
-  const convoSummary = taskHeaderTitle(taskTitle, firstUserMessage, tt("新任务"));
+  // A forwarded chat record is never the title: the person's words, else "N messages from <chat>".
+  const convoSummary = taskHeaderTitle(chatRecordTitle(taskTitle, tt), firstUserMessage ? chatRecordTitle(firstUserMessage, tt) : firstUserMessage, tt("新任务"));
 
   // ---------------------------------------------------------------------
   // 单行顶栏（操作员 2026-09-07：图 466f833a 布局 + 3f9d0f8c 图标 + 662b8bb0 搜索态）
@@ -3080,66 +3117,30 @@ function AgentChatInner({
       {convoSummary}
     </span>
   );
-  const trailLink = (href: string): BreadcrumbItem["onClick"] => (event) => {
-    if (!href.startsWith("/") || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-    event.preventDefault();
-    headerRouter.push(href);
-  };
-  // The chain ends with this task; what comes before it are its parent tasks (root first).
-  const chainItems = taskChain.state === "ready" ? taskChain.chain : [];
-  const chainAncestors = chainItems.length >= 2 && chainItems[chainItems.length - 1]?.id === taskId ? chainItems.slice(0, -1) : [];
-  // A project's root task is the project chat: the project crumb already stands for it.
-  const trailAncestors = taskProject && chainAncestors[0]?.kind === "room" && chainAncestors[0].title === taskProject.name
-    ? chainAncestors.slice(1) : chainAncestors;
-  const trail: BreadcrumbItem[] = [
-    ...(taskProject ? [{ label: taskProject.name, href: taskProjectHref(taskProject.id), onClick: trailLink(taskProjectHref(taskProject.id)) }] : []),
-    ...trailAncestors.map((item) => {
-      const href = `/tasks/${encodeURIComponent(item.id)}`;
-      return { label: item.title || tt("任务"), href, onClick: trailLink(href) };
-    }),
-  ];
+  // The plain project breadcrumb (session/sites wave: no task chain, no "Discuss with people").
   const summaryNode = (
     <div data-agent-chat-title className="flex min-w-0 flex-1 items-center" hidden={searchOpen && headerNarrow}>
-      {trail.length ? (
+      {taskProject ? (
         <Breadcrumb
           className="text-[13px]"
-          label={chainAncestors.length ? tt(trPanel.trail) : undefined}
-          items={[...trail, { label: convoSummary }]}
+          items={[
+            {
+              label: taskProject.name,
+              href: taskProjectHref(taskProject.id),
+              onClick: (event) => {
+                const href = taskProjectHref(taskProject.id);
+                if (!href.startsWith("/") || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                event.preventDefault();
+                headerRouter.push(href);
+              },
+            },
+            { label: convoSummary },
+          ]}
           current={titleText}
         />
       ) : titleText}
     </div>
   );
-  // "Discuss with people": a sub task with other people and no parent task yet becomes a sub task of a new task.
-  const discussAccess = accessState.access;
-  const onOwnTaskPage = typeof window !== "undefined" && !sidebarHost &&
-    window.location.pathname.replace(/\/+$/, "").endsWith(`/tasks/${encodeURIComponent(taskId || "")}`);
-  // Who may turn this agent task into a sub task of a new task (the server's rule: owner or accepted collaborator),
-  // only while task rooms answer and the task has no parent task yet.
-  const canDiscuss = Boolean(taskId && !hostReadOnly && (onOwnTaskPage || sidebarHost) &&
-    taskChain.state === "ready" && chainAncestors.length === 0 && discussAccess &&
-    (discussAccess.role === "owner" || (discussAccess.role === "collaborate" && discussAccess.state === "member")));
-  // The header entry shows once other people are involved; Collaborate always offers "Invite people to discuss".
-  const showDiscuss = canDiscuss && Boolean(discussAccess &&
-    (discussAccess.role !== "owner" || discussAccess.general_access === "restricted" ||
-      (currentProjectMode !== null && currentProjectMode !== "private")));
-  const discuss = async () => {
-    if (!taskId) return;
-    const result = await startTaskDiscussion(taskId);
-    setDiscussOpen(false);
-    if (!result.ok) {
-      setError(tt(trPanel.discussFailed));
-      return;
-    }
-    // On this task's own page the page reads its place again and shows the task with this sub task beside it.
-    if (!onOwnTaskPage) headerRouter.push(`/tasks/${encodeURIComponent(taskId)}`);
-  };
-  const discussButton = showDiscuss ? (
-    <button type="button" data-task-discuss="" onClick={() => setDiscussOpen(true)} title={tt(trPanel.discussNote)}
-      className="inline-flex shrink-0 items-center rounded-lg px-2 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-900 focus-visible:ring-2 focus-visible:ring-stone-300">
-      {tt(trPanel.discuss)}
-    </button>
-  ) : null;
   const searchControl = searchOpen ? (
     <div
       data-agent-chat-search
@@ -3250,16 +3251,10 @@ function AgentChatInner({
           onChange={mode => setProjectTask(current => current?.taskId === taskId ? { ...current, mode } : current)} />
       )}
       {canManageTask && headerExtra}
-      {discussButton}
-      {discussOpen && (
-        <ConfirmDialog title={trPanel.discuss} body={trPanel.discussNote} confirmLabel={trPanel.discussStart}
-          onConfirm={discuss} onCancel={() => setDiscussOpen(false)} />
-      )}
       {searchControl}
       {taskId && accessState.access && accessRights.canView && sharePaneShown && (
         <TaskSharePanel key={taskId} taskId={taskId} taskUrl={taskQuoteHref(taskId)}
-          access={{...accessState.access, can_manage: canManageTask}} share={share}
-          onDiscuss={canDiscuss ? () => setDiscussOpen(true) : undefined} />
+          access={{...accessState.access, can_manage: canManageTask}} share={share} />
       )}
       {taskId && !sidebarHost && (
         <TaskActionsMenu
@@ -3596,6 +3591,8 @@ function AgentChatInner({
             attachments={toolsOn ? atts.composerAttachments : undefined}
             onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
             onRetryAttachment={toolsOn ? atts.retryAttachment : undefined}
+            chatRecords={forwardedChips}
+            onRemoveChatRecord={removeForwarded}
             // Refresh keeps the follow-up text and its Library files; 「从资料库添加文件」.
             draftKey={taskId ? `task:${taskId}` : undefined}
             onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
@@ -3696,6 +3693,8 @@ function AgentChatInner({
           attachments={toolsOn ? atts.composerAttachments : undefined}
           onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
           onRetryAttachment={toolsOn ? atts.retryAttachment : undefined}
+          chatRecords={forwardedChips}
+          onRemoveChatRecord={removeForwarded}
           draftKey={taskId ? `task:${taskId}` : undefined}
           onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
           onVoiceTranscript={handleVoiceTranscript}
@@ -3823,7 +3822,7 @@ function AgentChatInner({
             event.preventDefault();
             event.stopPropagation();
             const title = (anchor.textContent || "").trim().slice(0, 200);
-            void resolveTaskLinkKind(linked).then((kind) => taskStack.push({ kind, id: linked, title }));
+            taskStack.push({ kind: "agent_task", id: linked, title });
             return;
           }
           const action = workspaceActionForHref(anchor.href, window.location.origin);

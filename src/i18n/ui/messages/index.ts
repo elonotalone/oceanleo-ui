@@ -68,6 +68,7 @@ import { rwFnCopy } from "./rw-fn-copy";
 import { trPanelCopy } from "./tr-panel-copy";
 import { ssUlCopy } from "./ss-ul-copy";
 import { ssUcCopy } from "./ss-uc-copy";
+import { ssUtCopy } from "./ss-ut-copy";
 import { swNuCopy } from "./sw-nu-copy";
 import { taskLiveCopy } from "./task-live-copy";
 import { swTwCopy } from "./sw-tw-copy";
@@ -597,6 +598,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...trPanelCopy(language),
       ...ssUlCopy(language),
       ...ssUcCopy(language),
+      ...ssUtCopy(language),
     }];
   }),
 ) as Record<Locale, Record<string, string>>;

@@ -360,9 +360,10 @@ test("空 snapshot `{}` 不算 snapshot；门户 home-agent/agent 无 snapshot �
   assert.equal(isTaskThreadSession(home), true);
   assert.equal(isTaskThreadSession({ ...home, app_id: "agent" }), true);
   assert.equal(isTaskThreadSession({ ...home, task_id: null }), true, "no task_id → linked-task / empty state path");
-  // A real snapshot, or a sub-site's own runtime, keeps the site workspace.
+  // A real snapshot keeps the site workspace. Sub-sites are gone (session/sites wave): an old
+  // site's chat-only session opens as the task chat on the main site too.
   assert.equal(isTaskThreadSession({ ...home, snapshot: { draft: 1 } }), false);
-  assert.equal(isTaskThreadSession({ ...home, site_id: "word" }), false);
+  assert.equal(isTaskThreadSession({ ...home, site_id: "word" }), true);
   assert.equal(isTaskThreadSession({ ...home, app_id: "library" }), false);
 });
 

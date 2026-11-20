@@ -12,7 +12,7 @@
 // master-detail 形态供 doctrine v4 覆盖式子栏使用。
 // ============================================================================
 
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AgentChat, type AgentLibraryTabs } from "./AgentChat";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
@@ -46,6 +46,7 @@ import {
   type HistoryOpenHint,
 } from "./task-open-cache";
 import { useUI } from "../i18n/ui/useUI";
+import { chatRecordTitle } from "./forward/chat-record";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import { LibraryTaskHistoryWorkspace } from "./library-task-history";
 import { LocalTaskDetail, LocalTaskRows, useLocalTasks } from "./LocalWorkspace";
@@ -78,10 +79,6 @@ import {
   isShellTask,
   isTaskThreadSession,
   mergeHistoryEntries,
-  buildHistoryTree,
-  filterHistoryTree,
-  historyTreeRoomOfSelection,
-  type HistoryTaskRoom,
   shellSessionFromTask,
   withLinkedAgentTask,
   type HistoryEntryActivity,
@@ -106,7 +103,6 @@ import {
 } from "./HistoryRowActions";
 import { deleteTaskRow, updateTaskRow } from "./task-row-actions";
 import { HistoryRowFrame } from "./HistoryRowBubble";
-import { useMyTaskRooms } from "./history-task-rooms";
 
 const HISTORY_TITLE_CHANGED_EVENT = "oceanleo:history-title-changed";
 
@@ -306,7 +302,6 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
     if (JSON.stringify(historyEntrySharedBy(x) ?? null) !== JSON.stringify(historyEntrySharedBy(y) ?? null)) return false;
     if (isHistoryEntryWorking(x) !== isHistoryEntryWorking(y)) return false;
     if ((x.activity_state ?? null) !== (y.activity_state ?? null)) return false;
-    if ((x.parent_room?.id ?? null) !== (y.parent_room?.id ?? null)) return false;
     if (
       (x.input_at ?? null) !== (y.input_at ?? null) ||
       (x.activity_at ?? null) !== (y.activity_at ?? null) ||
@@ -880,80 +875,6 @@ function HistoryProjectTag({ project }: { project: HistoryProjectBadge }) {
   );
 }
 
-/**
- * A task (people conversation) row in My tasks: opens the task; the caret shows / hides its
- * sub tasks (agent tasks started from it), with their count.
- */
-function HistoryTaskRoomRow({ room, childCount, expanded, selected, timestamp, onOpen, onToggle }: {
-  room: HistoryTaskRoom;
-  childCount: number;
-  expanded: boolean;
-  selected: boolean;
-  timestamp: string;
-  onOpen: () => void;
-  onToggle: () => void;
-}) {
-  const tt = useUI();
-  const title = room.title || tt("未命名任务");
-  const project = room.project?.id ? { id: room.project.id, name: room.project.name, icon: null } : null;
-  return (
-    <HistoryRowFrame
-      title={title}
-      timestamp={timestamp}
-      className={`group relative flex items-center gap-1 rounded-lg px-3 py-2 text-[14px] leading-5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-        selected
-          ? "bg-neutral-200/80 text-neutral-900 outline outline-1 outline-neutral-300 outline-offset-[-1px]"
-          : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
-      }`}
-    >
-      {(describedBy) => (
-        <div className="flex min-w-0 flex-1 items-center gap-2.5" data-history-room={room.id}>
-          {childCount > 0 ? (
-            <button
-              type="button"
-              onClick={onToggle}
-              aria-expanded={expanded}
-              aria-label={expanded ? tt("收起子任务") : tt("展开子任务")}
-              data-history-room-toggle=""
-              className="inline-flex w-4 shrink-0 justify-center rounded text-neutral-500 outline-none hover:text-neutral-800 focus-visible:ring-2 focus-visible:ring-neutral-400"
-            >
-              <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M9 6l6 6-6 6" />
-              </svg>
-            </button>
-          ) : (
-            <span className="inline-flex w-4 shrink-0 justify-center text-neutral-400" aria-hidden="true">
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="4" y="4" width="16" height="16" rx="4" />
-                <path d="M8.5 12.5l2.5 2.5 4.5-5" />
-              </svg>
-            </span>
-          )}
-          <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onOpen}
-              aria-describedby={describedBy}
-              className="flex min-w-0 flex-1 items-center gap-1 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
-            >
-              <span className="min-w-0 flex-1 truncate" data-history-title="">{title}</span>
-              {(room.unread ?? 0) > 0 ? (
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" aria-label={tt("有未读消息")} data-history-room-unread="" />
-              ) : null}
-              {childCount > 0 ? (
-                <span className="shrink-0 text-[11px] tabular-nums text-neutral-500" data-history-room-children={childCount} title={tt("{n} 个子任务", { n: childCount })}>
-                  {childCount}
-                </span>
-              ) : null}
-            </button>
-            {project && <HistoryProjectTag project={project} />}
-          </span>
-        </div>
-      )}
-    </HistoryRowFrame>
-  );
-}
-
 /** Hover a row this long (pointer resting, not sweeping past) and its reads start. */
 const HOVER_PREFETCH_MS = 80;
 
@@ -977,13 +898,11 @@ function useHoverPrefetch() {
 // ----------------------------------------------------------------------------
 // 主侧栏内联区：我的任务列表（可删除）。v5 起不再覆盖主导航。
 // ----------------------------------------------------------------------------
-export function HistorySubNav({ siteId, accent = "#0ea5e9", onOpenEntry, onOpenRoom }: {
+export function HistorySubNav({ siteId, accent = "#0ea5e9", onOpenEntry }: {
   siteId?: string;
   accent?: string;
   /** A sidebar owns its selection and may handle an ordinary conversation in place. */
   onOpenEntry?: (entry: HistoryListEntry) => boolean;
-  /** Opening a task (people conversation). Default: the task page `/tasks/{id}`. */
-  onOpenRoom?: (room: HistoryTaskRoom) => void;
 }) {
   const tt = useUI();
   const { items, loading, error, notice, remove, mutate } = useMyTasksHistory(siteId);
@@ -991,9 +910,10 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9", onOpenEntry, onOpenR
   const cloudTaskIds = new Set(items.filter((entry) => entry.kind === "task").map((entry) => entry.id));
   // Once a finished local record is synced, keep the ordinary task's title,
   // menu and outputs. Native rows cover live execution and offline records.
-  const localTasks = (!siteId || siteId === "oceanleo") ? local.tasks.filter((task) =>
+  // Sub-sites are gone (session/sites wave): every site's tasks are listed on the main site.
+  const localTasks = local.tasks.filter((task) =>
     !task.remoteTaskId || !cloudTaskIds.has(task.remoteTaskId) || task.canCancel || task.stage === "waiting_for_network",
-  ) : [];
+  );
   const localRemoteIds = new Set(localTasks.map((task) => task.remoteTaskId).filter(Boolean));
   const [globalSelection, setGlobalSelection] = useWorkspaceSelection("history");
   const [localSelection, setLocalSelection] = useState<string | null>(null);
@@ -1097,35 +1017,6 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9", onOpenEntry, onOpenR
         .some((value) => String(value).toLocaleLowerCase().includes(normalizedSearch));
     });
   }, [normalizedSearch, orderedItems]);
-  // Tasks (people conversations) share the top level; their sub tasks are nested (task-rooms wave).
-  // Unavailable task list → `rooms === null` → the flat list above, unchanged.
-  const rooms = useMyTaskRooms(!siteId || siteId === "oceanleo");
-  const tree = useMemo(() => {
-    const rows = buildHistoryTree(orderedItems, rooms);
-    if (!normalizedSearch) return rows;
-    const hit = (value: unknown) => String(value || "").toLocaleLowerCase().includes(normalizedSearch);
-    return filterHistoryTree(
-      rows,
-      (room) => hit(room.title) || hit(room.project?.name),
-      (entry) => {
-        const record = entry.kind === "session" ? entry.session : entry.task;
-        const project = historyEntryProject(entry);
-        return [record.title, project?.name, project?.id].some(hit);
-      },
-    );
-  }, [orderedItems, rooms, normalizedSearch]);
-  const [expandedRooms, setExpandedRooms] = useState<ReadonlySet<string>>(() => new Set());
-  const selectedRoom = historyTreeRoomOfSelection(tree, sel, historyEntryMatchesSelection);
-  const openRoom = (room: HistoryTaskRoom) => {
-    setSel(room.id);
-    if (onOpenRoom) {
-      onOpenRoom(room);
-      return;
-    }
-    const href = portalHref(`/tasks/${encodeURIComponent(room.id)}`);
-    if (href.startsWith("/")) router.push(href);
-    else window.location.assign(href);
-  };
   const visibleLocalTasks = useMemo(() => {
     if (!normalizedSearch) return localTasks;
     return localTasks.filter((task) => {
@@ -1137,191 +1028,6 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9", onOpenEntry, onOpenR
     setSearchOpen(false);
     setSearchQuery("");
     if (!onOpenEntry) router.replace("/history");
-  };
-
-  const renderEntry = (entry: HistoryListEntry, nested: boolean) => {
-    if (entry.kind === "task" && localRemoteIds.has(entry.id)) return null;
-    const isSession = entry.kind === "session";
-    const record = isSession ? entry.session : entry.task;
-    const on = historyEntryMatchesSelection(entry, sel);
-    const title =
-      record.title ||
-      (isSession ? entry.session.app_id : "") ||
-      tt("未命名任务");
-    const timestamp = historyEntryTimestamp(entry);
-    const pinned = isSession
-      ? Boolean(entry.session.pinned)
-      : Boolean(entry.task.pinned);
-    const favorite = isSession
-      ? Boolean(entry.session.favorite)
-      : Boolean(entry.task.favorite);
-    const sharedBy = historyEntrySharedBy(entry);
-    const renaming = !sharedBy && renameFor === entry.id;
-    const project = historyEntryProject(entry);
-    const openEntry = () => {
-      if (onOpenEntry) {
-        prefetchHistoryOpen(historyOpenHint(entry));
-        setSel(entry.id);
-        if (!onOpenEntry(entry)) router.push(historyHrefFor(entry, pathname));
-        return;
-      }
-      if (mountedHistoryDetails > 0 && typeof window !== "undefined") {
-        const current = new URL(window.location.href);
-        const currentSelection = historySessionIdFromPath(current.pathname) ||
-          taskIdFromPath(current.pathname) || current.searchParams.get("task") || sel;
-        // Reselecting the shown task keeps its chosen conversation (native
-        // or cloud). A bare row URL would discard computerSession; the URL
-        // identity also prevents a stale sidebar selection blocking a switch.
-        if (historyEntryMatchesSelection(entry, currentSelection)) return;
-      }
-      // Reads start before anything renders; the switch itself is client-only
-      // while the detail is on this page (openHistoryHref).
-      prefetchHistoryOpen(historyOpenHint(entry));
-      openHistoryHref(historyHrefFor(entry, pathname), router.push);
-      setSel(entry.id);
-    };
-    // 2026-10-31 Manus 式行：只有一行任务名（无时间 / 来源 / 花费副标题），选中 =
-    // 与主导航同一档中性灰底，悬停更浅；完整名 + 时间在悬停气泡里（HistoryRowFrame）。
-    return (
-      <HistoryRowFrame
-        key={`${entry.kind}:${entry.id}`}
-        title={title}
-        timestamp={timestamp}
-        working={isHistoryEntryWorking(entry)}
-        disabled={renaming || menuFor === entry.id}
-        className={`group relative flex items-center gap-1 rounded-lg px-3 py-2 text-[14px] leading-5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${nested ? "ml-4 " : ""}${
-          on
-            ? "bg-neutral-200/80 text-neutral-900 outline outline-1 outline-neutral-300 outline-offset-[-1px]"
-            : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
-        }`}
-      >
-        {(describedBy) => (<>
-        {renaming ? (
-          <form
-            className="flex min-w-0 flex-1 items-center gap-1"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const next = renameDraft.trim();
-              setRenameFor(null);
-              if (next && next !== title) void mutate(entry, { title: next });
-            }}
-          >
-            <input
-              autoFocus
-              value={renameDraft}
-              onChange={(e) => setRenameDraft(e.target.value)}
-              onBlur={() => {
-                const next = renameDraft.trim();
-                setRenameFor(null);
-                if (next && next !== title) void mutate(entry, { title: next });
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setRenameFor(null);
-              }}
-              className="min-w-0 flex-1 rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-[13px] text-neutral-800 outline-none focus:border-neutral-500"
-            />
-          </form>
-        ) : (
-          // 整行（除项目标签与 ⋯ 菜单外）点了都打开任务；键盘焦点在标题按钮上，
-          // 回车触发的 click 冒泡到这里。标签是独立链接，不嵌在按钮里。
-          <div
-            onClick={openEntry}
-            onPointerEnter={() => hoverPrefetch.start(entry)}
-            onPointerLeave={hoverPrefetch.cancel}
-            onPointerDown={() => prefetchHistoryOpen(historyOpenHint(entry))}
-            onFocus={() => prefetchHistoryOpen(historyOpenHint(entry))}
-            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left"
-            data-history-row={entry.id}
-          >
-            {/* Confirmed work uses the conversation list's animated mark;
-                other rows keep an empty slot so titles stay aligned.
-                The slot is as wide as a nav icon, so task names line up with the
-                nav labels above (no indent line). */}
-            <span className="inline-flex w-4 shrink-0 justify-center" data-history-working={isHistoryEntryWorking(entry) ? "" : undefined} data-history-waiting={isHistoryEntryWaiting(entry) ? "" : undefined}>
-              {isHistoryEntryWorking(entry) && (
-                <SessionRunningIcon label={tt("进行中")} toneClassName="text-emerald-600" />
-              )}
-              {isHistoryEntryWaiting(entry) && (
-                <span
-                  aria-label={tt("等待你的操作")}
-                  title={tt("等待你的操作")}
-                  className="text-[13px] leading-4 text-amber-500"
-                >
-                  ◌
-                </span>
-              )}
-            </span>
-            <span className="flex min-w-0 flex-1 items-center gap-1.5">
-              <button
-                type="button"
-                aria-describedby={describedBy}
-                className="flex min-w-0 flex-1 items-center gap-1 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
-              >
-                {pinned && (
-                  <svg className="h-3 w-3 shrink-0 text-amber-500" viewBox="0 0 24 24" fill="currentColor" aria-label={tt("已置顶")}>
-                    <path d="M14 4l6 6-3 1-4 4-1 5-3-3-4 4-1-1 4-4-3-3 5-1 4-4 1-3z" />
-                  </svg>
-                )}
-                {sharedBy ? <span className="min-w-0 flex-1">
-                  <span className="block truncate" data-history-title="">{title}</span>
-                  <span data-task-shared-by="" className="block truncate text-[11px] text-[var(--muted-foreground)]">{tt("由 {name} 分享", { name: historySharedByName(entry) || tt("参与者") })}</span>
-                </span> : <span className="min-w-0 flex-1 truncate" data-history-title="">{title}</span>}
-                {isHistoryEntryFinishing(entry) && <span data-history-finishing="" className="shrink-0 text-[11px] text-neutral-500">{tt("正在确认结束")}</span>}
-                {entry.created_by === "leo" && <LeoCreatedMark />}
-                {favorite && (
-                  <svg className="h-3 w-3 shrink-0 fill-yellow-500 text-yellow-500" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-label={tt("已收藏")}>
-                    <path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8L12 3z" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </button>
-              {project && <HistoryProjectTag project={project} />}
-            </span>
-          </div>
-        )}
-        {/* 宗旨 v22：Manus 式「⋯」菜单（新标签打开 / 重命名 / 置顶 / 收藏 / 删除）。 */}
-        {!renaming && (
-          <HistoryRowMenu
-            open={menuFor === entry.id}
-            onOpenChange={(v) => setMenuFor(v ? entry.id : null)}
-            active={on}
-            pinned={pinned}
-            favorite={favorite}
-            canManage={!sharedBy}
-            canDelete={canDeleteHistoryEntry(entry)}
-            inProject={Boolean(project)}
-            href={historyHrefFor(entry, pathname)}
-            taskId={onOpenEntry ? undefined : entry.kind === "task" ? entry.id : entry.session.task_id || undefined}
-            taskTitle={title}
-            onRename={() => {
-              setRenameDraft(title);
-              setRenameFor(entry.id);
-              setMenuFor(null);
-            }}
-            onTogglePin={() => {
-              void mutate(entry, { pinned: !pinned });
-              setMenuFor(null);
-            }}
-            onToggleFavorite={() => {
-              void mutate(entry, { favorite: !favorite });
-              setMenuFor(null);
-            }}
-            onMove={() => {
-              setMoveTarget(entry);
-              setMenuFor(null);
-            }}
-            onRemoveFromProject={() => {
-              void mutate(entry, { project_id: null });
-              setMenuFor(null);
-            }}
-            onDelete={() => {
-              setPending(entry);
-              setMenuFor(null);
-            }}
-          />
-        )}
-        </>)}
-      </HistoryRowFrame>
-    );
   };
 
   // 模型选择已移到主区右上角（HistoryDetail），侧栏子栏只列任务本身。
@@ -1343,31 +1049,192 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9", onOpenEntry, onOpenR
       {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(error)}</p>}
       {notice && <p role="alert" data-history-delete-error className="px-3 py-2 text-[12px] text-rose-600">{tt(notice)}</p>}
       {!error && (loading || local.loading) && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载…")}</p>}
-      {!error && !loading && !local.loading && visibleItems.length === 0 && tree.length === 0 && visibleLocalTasks.length === 0 && (
+      {!error && !loading && !local.loading && visibleItems.length === 0 && visibleLocalTasks.length === 0 && (
         <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(normalizedSearch ? "没有匹配的任务。" : "还没有任务。")}</p>
       )}
       <LocalTaskRows tasks={visibleLocalTasks} selected={sel} accent={accent} />
-      {tree.map((row) => {
-        if (row.kind === "entry") return renderEntry(row.entry, false);
-        const open = expandedRooms.has(row.room.id) || selectedRoom === row.room.id || Boolean(normalizedSearch);
+      {visibleItems.filter((entry) => entry.kind !== "task" || !localRemoteIds.has(entry.id)).map((entry) => {
+        const isSession = entry.kind === "session";
+        const record = isSession ? entry.session : entry.task;
+        const on = historyEntryMatchesSelection(entry, sel);
+        // A task started from a forwarded chat shows the person's words or "N messages from <chat>", never the tags.
+        const title =
+          chatRecordTitle(record.title || "", tt) ||
+          (isSession ? entry.session.app_id : "") ||
+          tt("未命名任务");
+        const timestamp = historyEntryTimestamp(entry);
+        const pinned = isSession
+          ? Boolean(entry.session.pinned)
+          : Boolean(entry.task.pinned);
+        const favorite = isSession
+          ? Boolean(entry.session.favorite)
+          : Boolean(entry.task.favorite);
+        const sharedBy = historyEntrySharedBy(entry);
+        const renaming = !sharedBy && renameFor === entry.id;
+        const project = historyEntryProject(entry);
+        const openEntry = () => {
+          if (onOpenEntry) {
+            prefetchHistoryOpen(historyOpenHint(entry));
+            setSel(entry.id);
+            if (!onOpenEntry(entry)) router.push(historyHrefFor(entry, pathname));
+            return;
+          }
+          if (mountedHistoryDetails > 0 && typeof window !== "undefined") {
+            const current = new URL(window.location.href);
+            const currentSelection = historySessionIdFromPath(current.pathname) ||
+              taskIdFromPath(current.pathname) || current.searchParams.get("task") || sel;
+            // Reselecting the shown task keeps its chosen conversation (native
+            // or cloud). A bare row URL would discard computerSession; the URL
+            // identity also prevents a stale sidebar selection blocking a switch.
+            if (historyEntryMatchesSelection(entry, currentSelection)) return;
+          }
+          // Reads start before anything renders; the switch itself is client-only
+          // while the detail is on this page (openHistoryHref).
+          prefetchHistoryOpen(historyOpenHint(entry));
+          openHistoryHref(historyHrefFor(entry, pathname), router.push);
+          setSel(entry.id);
+        };
+        // 2026-10-31 Manus 式行：只有一行任务名（无时间 / 来源 / 花费副标题），选中 =
+        // 与主导航同一档中性灰底，悬停更浅；完整名 + 时间在悬停气泡里（HistoryRowFrame）。
         return (
-          <Fragment key={row.key}>
-            <HistoryTaskRoomRow
-              room={row.room}
-              childCount={row.children.length}
-              expanded={open}
-              selected={sel === row.room.id}
-              timestamp={row.sortTime}
-              onOpen={() => openRoom(row.room)}
-              onToggle={() => setExpandedRooms((current) => {
-                const next = new Set(current);
-                if (open) next.delete(row.room.id);
-                else next.add(row.room.id);
-                return next;
-              })}
-            />
-            {open ? row.children.map((entry) => renderEntry(entry, true)) : null}
-          </Fragment>
+          <HistoryRowFrame
+            key={`${entry.kind}:${entry.id}`}
+            title={title}
+            timestamp={timestamp}
+            working={isHistoryEntryWorking(entry)}
+            disabled={renaming || menuFor === entry.id}
+            className={`group relative flex items-center gap-1 rounded-lg px-3 py-2 text-[14px] leading-5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+              on
+                ? "bg-neutral-200/80 text-neutral-900 outline outline-1 outline-neutral-300 outline-offset-[-1px]"
+                : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
+            }`}
+          >
+            {(describedBy) => (<>
+            {renaming ? (
+              <form
+                className="flex min-w-0 flex-1 items-center gap-1"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const next = renameDraft.trim();
+                  setRenameFor(null);
+                  if (next && next !== title) void mutate(entry, { title: next });
+                }}
+              >
+                <input
+                  autoFocus
+                  value={renameDraft}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  onBlur={() => {
+                    const next = renameDraft.trim();
+                    setRenameFor(null);
+                    if (next && next !== title) void mutate(entry, { title: next });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setRenameFor(null);
+                  }}
+                  className="min-w-0 flex-1 rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-[13px] text-neutral-800 outline-none focus:border-neutral-500"
+                />
+              </form>
+            ) : (
+              // 整行（除项目标签与 ⋯ 菜单外）点了都打开任务；键盘焦点在标题按钮上，
+              // 回车触发的 click 冒泡到这里。标签是独立链接，不嵌在按钮里。
+              <div
+                onClick={openEntry}
+                onPointerEnter={() => hoverPrefetch.start(entry)}
+                onPointerLeave={hoverPrefetch.cancel}
+                onPointerDown={() => prefetchHistoryOpen(historyOpenHint(entry))}
+                onFocus={() => prefetchHistoryOpen(historyOpenHint(entry))}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left"
+                data-history-row={entry.id}
+              >
+                {/* Confirmed work uses the conversation list's animated mark;
+                    other rows keep an empty slot so titles stay aligned.
+                    The slot is as wide as a nav icon, so task names line up with the
+                    nav labels above (no indent line). */}
+                <span className="inline-flex w-4 shrink-0 justify-center" data-history-working={isHistoryEntryWorking(entry) ? "" : undefined} data-history-waiting={isHistoryEntryWaiting(entry) ? "" : undefined}>
+                  {isHistoryEntryWorking(entry) && (
+                    <SessionRunningIcon label={tt("进行中")} toneClassName="text-emerald-600" />
+                  )}
+                  {isHistoryEntryWaiting(entry) && (
+                    <span
+                      aria-label={tt("等待你的操作")}
+                      title={tt("等待你的操作")}
+                      className="text-[13px] leading-4 text-amber-500"
+                    >
+                      ◌
+                    </span>
+                  )}
+                </span>
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <button
+                    type="button"
+                    aria-describedby={describedBy}
+                    className="flex min-w-0 flex-1 items-center gap-1 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+                  >
+                    {pinned && (
+                      <svg className="h-3 w-3 shrink-0 text-amber-500" viewBox="0 0 24 24" fill="currentColor" aria-label={tt("已置顶")}>
+                        <path d="M14 4l6 6-3 1-4 4-1 5-3-3-4 4-1-1 4-4-3-3 5-1 4-4 1-3z" />
+                      </svg>
+                    )}
+                    {sharedBy ? <span className="min-w-0 flex-1">
+                      <span className="block truncate" data-history-title="">{title}</span>
+                      <span data-task-shared-by="" className="block truncate text-[11px] text-[var(--muted-foreground)]">{tt("由 {name} 分享", { name: historySharedByName(entry) || tt("参与者") })}</span>
+                    </span> : <span className="min-w-0 flex-1 truncate" data-history-title="">{title}</span>}
+                    {isHistoryEntryFinishing(entry) && <span data-history-finishing="" className="shrink-0 text-[11px] text-neutral-500">{tt("正在确认结束")}</span>}
+                    {entry.created_by === "leo" && <LeoCreatedMark />}
+                    {favorite && (
+                      <svg className="h-3 w-3 shrink-0 fill-yellow-500 text-yellow-500" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-label={tt("已收藏")}>
+                        <path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8L12 3z" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </button>
+                  {project && <HistoryProjectTag project={project} />}
+                </span>
+              </div>
+            )}
+            {/* 宗旨 v22：Manus 式「⋯」菜单（新标签打开 / 重命名 / 置顶 / 收藏 / 删除）。 */}
+            {!renaming && (
+              <HistoryRowMenu
+                open={menuFor === entry.id}
+                onOpenChange={(v) => setMenuFor(v ? entry.id : null)}
+                active={on}
+                pinned={pinned}
+                favorite={favorite}
+                canManage={!sharedBy}
+                canDelete={canDeleteHistoryEntry(entry)}
+                inProject={Boolean(project)}
+                href={historyHrefFor(entry, pathname)}
+                taskId={onOpenEntry ? undefined : entry.kind === "task" ? entry.id : entry.session.task_id || undefined}
+                taskTitle={title}
+                onRename={() => {
+                  setRenameDraft(title);
+                  setRenameFor(entry.id);
+                  setMenuFor(null);
+                }}
+                onTogglePin={() => {
+                  void mutate(entry, { pinned: !pinned });
+                  setMenuFor(null);
+                }}
+                onToggleFavorite={() => {
+                  void mutate(entry, { favorite: !favorite });
+                  setMenuFor(null);
+                }}
+                onMove={() => {
+                  setMoveTarget(entry);
+                  setMenuFor(null);
+                }}
+                onRemoveFromProject={() => {
+                  void mutate(entry, { project_id: null });
+                  setMenuFor(null);
+                }}
+                onDelete={() => {
+                  setPending(entry);
+                  setMenuFor(null);
+                }}
+              />
+            )}
+            </>)}
+          </HistoryRowFrame>
         );
       })}
 
@@ -1498,9 +1365,7 @@ export function HistoryDetail({
   // URL 本身必须足以恢复详情，包括 query 深链和认证恢复期间尚未同步的侧栏选中态。
   const sel =
     historySessionIdFromPath(detailPathname) || taskIdFromPath(detailPathname) || detailTaskQuery || selected;
-  const localTask = (!siteId || siteId === "oceanleo")
-    ? local.tasks.find((task) => sel === `local:${task.id}` || (sel === task.remoteTaskId && (task.canCancel || task.stage === "waiting_for_network")))
-    : undefined;
+  const localTask = local.tasks.find((task) => sel === `local:${task.id}` || (sel === task.remoteTaskId && (task.canCancel || task.stage === "waiting_for_network")));
   const localSelection = Boolean(local.workspace && (sel?.startsWith("local:") || localTask));
   const [loaded, setLoaded] = useState<LoadedHistoryDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -1578,7 +1443,6 @@ export function HistoryDetail({
             session ? { kind: "session", session } : undefined);
       void fromDisk.then((value) => {
         if (!alive || answered || !value) return;
-        if (value.kind === "task" && siteId && value.detail.task.site_id && value.detail.task.site_id !== siteId) return;
         shown = value;
         setLoaded(value);
         setSettledFor(sel);
@@ -1592,14 +1456,6 @@ export function HistoryDetail({
         directTask = await openTaskFirstPage(sel);
         if (!alive) return;
         if (directTask.ok && directTask.data) {
-          if (
-            siteId &&
-            directTask.data.task.site_id &&
-            directTask.data.task.site_id !== siteId
-          ) {
-            fail("这条旧记录不属于当前网站。");
-            return;
-          }
           commit({ kind: "task", detail: directTask.data });
           return;
         }
@@ -1621,12 +1477,7 @@ export function HistoryDetail({
       if (!alive) return;
       if (sessionResult.ok && sessionResult.data) {
         const session = sessionResult.data;
-        // 项目里建的会话与普通会话一样直接打开（D11，撤销 2026-08-13 的拦截页）。
-        if (siteId && session.site_id !== siteId &&
-            !(siteId === "oceanleo" && session.app_id === "library")) {
-          fail("这条工作会话不属于当前网站。");
-          return;
-        }
+        // 项目里建的会话与普通会话一样直接打开（D11，撤销 2026-08-13 的拦截页）；every site's sessions open here.
         let fallbackTask: TaskDetail | undefined;
         if (!isRestorableAppSession(session)) {
           // 迁移期可能已有 session 聚合行但 snapshot 不完整；找它关联的旧 task 继续回放，
@@ -1662,14 +1513,6 @@ export function HistoryDetail({
       const taskResult = directTask ?? (await getTask(sel));
       if (!alive) return;
       if (taskResult.ok && taskResult.data) {
-        if (
-          siteId &&
-          taskResult.data.task.site_id &&
-          taskResult.data.task.site_id !== siteId
-        ) {
-          fail("这条旧记录不属于当前网站。");
-          return;
-        }
         commit({ kind: "task", detail: taskResult.data });
         return;
       }

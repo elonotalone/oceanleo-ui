@@ -11,26 +11,7 @@ type HistoryEntryTimes = {
   input_at?: string;
   /** Latest user message, retained for activity reconciliation. */
   user_activity_at?: string;
-  /** The task (people conversation) this agent task is a sub task of; absent = standalone. */
-  parent_room?: HistoryParentRoom;
 };
-
-/** `parent_room` on a task list row (task-rooms wave: `{id, title}` or null). */
-export interface HistoryParentRoom {
-  id: string;
-  title: string;
-}
-
-/** The parent task of an agent task row, when the gateway sends one. */
-export function taskParentRoom(task: unknown): HistoryParentRoom | undefined {
-  if (!task || typeof task !== "object") return undefined;
-  const raw = (task as { parent_room?: unknown }).parent_room;
-  if (!raw || typeof raw !== "object") return undefined;
-  const id = (raw as { id?: unknown }).id;
-  if (typeof id !== "string" || !id.trim()) return undefined;
-  const title = (raw as { title?: unknown }).title;
-  return { id: id.trim(), title: typeof title === "string" ? title : "" };
-}
 
 export type HistoryListEntry =
   | ({
@@ -227,16 +208,12 @@ function newestFirst(a?: string | null, b?: string | null): number {
   return bTime - aTime;
 }
 
-/** The time My tasks orders a row by: latest composer input, else its record times. */
-export function historyEntrySortTime(entry: HistoryListEntry): string {
-  return entry.input_at ||
-    (entry.kind === "task" ? entry.task.last_input_at || entry.task.updated_at || entry.task.created_at : entry.session.updated_at || entry.session.created_at) ||
-    historyEntryTimestamp(entry);
-}
-
 /** Latest composer input wins; recent activity breaks ties. */
 export function compareHistoryEntries(a: HistoryListEntry, b: HistoryListEntry): number {
-  const byInput = newestFirst(historyEntrySortTime(a), historyEntrySortTime(b));
+  const inputTime = (entry: HistoryListEntry) => entry.input_at ||
+    (entry.kind === "task" ? entry.task.last_input_at || entry.task.updated_at || entry.task.created_at : entry.session.updated_at || entry.session.created_at) ||
+    historyEntryTimestamp(entry);
+  const byInput = newestFirst(inputTime(a), inputTime(b));
   if (byInput) return byInput;
   const byActivity = newestFirst(historyEntryTimestamp(a), historyEntryTimestamp(b));
   if (byActivity) return byActivity;
@@ -351,7 +328,6 @@ export function mergeHistoryEntries(
         (!stateTask && isTaskWorking({ ...session, activity_state: ownState }));
       const selectedState = activityStateOf(stateTask);
       const finishing = finishingSessionIds.has(session.id) || Boolean(session.task_id && finishingTaskIds.has(session.task_id));
-      const parentRoom = taskParentRoom(stateTask);
       const activity_state = working ? "working"
         : selectedState === "failed" || selectedState === "offline" || selectedState === "waiting_user" ? selectedState
         : finishing ? "finishing" : selectedState ?? ownState;
@@ -367,7 +343,6 @@ export function mergeHistoryEntries(
         ...(working ? { working: true as const } : {}),
         ...(activity_state ? { activity_state } : {}),
         ...definedTimes(sessionTimes(session)),
-        ...(parentRoom ? { parent_room: parentRoom } : {}),
       };
     }),
     ...legacyTasks.map(
@@ -380,7 +355,6 @@ export function mergeHistoryEntries(
         ...(isTaskWorking(task) ? { working: true as const } : {}),
         ...(activityStateOf(task) ? { activity_state: activityStateOf(task) } : {}),
         ...definedTimes(taskTimes(task)),
-        ...(taskParentRoom(task) ? { parent_room: taskParentRoom(task) } : {}),
       }),
     ),
   ];
@@ -486,7 +460,7 @@ export function isRestorableAppSession(
 export function isTaskThreadSession(
   session: AppSession | null | undefined,
 ): boolean {
-  if (!session?.id || session.site_id !== "oceanleo" || hasRealSnapshot(session)) return false;
+  if (!session?.id || hasRealSnapshot(session)) return false;
   return session.app_id === "home-agent" || session.app_id === "agent";
 }
 
@@ -557,108 +531,4 @@ export function shellSessionFromTask(
     sessionId,
     computerName: shell?.computer_name,
   };
-}
-
-// ---------------------------------------------------------------------------
-// My tasks tree (task-rooms wave): tasks (people conversations, `GET /v1/task-rooms?scope=mine`)
-// and standalone agent tasks share the top level; an agent task whose `parent_room` is one of
-// my tasks is nested under it. Without the task list (route not deployed / failed) the list
-// is exactly today's flat list.
-
-/** One of my tasks as the list needs it (a `RoomSummary` subset). */
-export interface HistoryTaskRoom {
-  id: string;
-  title: string;
-  last_message_at: string | null;
-  project?: { id: string; name: string } | null;
-  unread?: number;
-}
-
-export type HistoryTreeRow =
-  | { kind: "entry"; key: string; entry: HistoryListEntry }
-  | { kind: "room"; key: string; room: HistoryTaskRoom; children: HistoryListEntry[]; sortTime: string };
-
-/** The sub tasks' parent id of a row, if it is nested in the task list it names. */
-export function historyEntryParentRoomId(entry: HistoryListEntry): string | null {
-  return entry.parent_room?.id || null;
-}
-
-/**
- * Build the top level. `rooms === null` → today's flat list (each entry a row, same order).
- * An agent task whose parent is not one of `rooms` (I am not a member) stays at the top level.
- * Order: latest activity across both kinds — a task's time is its last message or its newest
- * sub task's time, an agent task's is the time `compareHistoryEntries` sorts it by.
- */
-export function buildHistoryTree(
-  entries: readonly HistoryListEntry[],
-  rooms: readonly HistoryTaskRoom[] | null,
-): HistoryTreeRow[] {
-  const sorted = [...entries].sort(compareHistoryEntries);
-  if (!rooms) return sorted.map((entry) => ({ kind: "entry", key: `${entry.kind}:${entry.id}`, entry }));
-  const roomIds = new Set(rooms.map((room) => room.id));
-  const children = new Map<string, HistoryListEntry[]>();
-  const top: Array<{ row: HistoryTreeRow; time: string; entry?: HistoryListEntry }> = [];
-  for (const entry of sorted) {
-    const parent = historyEntryParentRoomId(entry);
-    if (parent && roomIds.has(parent)) {
-      const list = children.get(parent) ?? [];
-      list.push(entry);
-      children.set(parent, list);
-      continue;
-    }
-    top.push({ row: { kind: "entry", key: `${entry.kind}:${entry.id}`, entry }, time: historyEntrySortTime(entry), entry });
-  }
-  const seen = new Set<string>();
-  for (const room of rooms) {
-    if (seen.has(room.id)) continue;
-    seen.add(room.id);
-    const nested = children.get(room.id) ?? [];
-    const sortTime = latestTime(room.last_message_at, ...nested.map(historyEntrySortTime)) || "";
-    top.push({ row: { kind: "room", key: `room:${room.id}`, room, children: nested, sortTime }, time: sortTime });
-  }
-  top.sort((a, b) => {
-    const byTime = newestFirst(a.time, b.time);
-    if (byTime) return byTime;
-    if (a.entry && b.entry) return compareHistoryEntries(a.entry, b.entry);
-    return a.row.key < b.row.key ? -1 : a.row.key > b.row.key ? 1 : 0;
-  });
-  return top.map((item) => item.row);
-}
-
-/**
- * Search over the tree: a task row stays when its own title matches (with all its sub tasks)
- * or when any sub task matches (with just those); agent task rows as before.
- */
-export function filterHistoryTree(
-  rows: readonly HistoryTreeRow[],
-  roomMatches: (room: HistoryTaskRoom) => boolean,
-  entryMatches: (entry: HistoryListEntry) => boolean,
-): HistoryTreeRow[] {
-  const out: HistoryTreeRow[] = [];
-  for (const row of rows) {
-    if (row.kind === "entry") {
-      if (entryMatches(row.entry)) out.push(row);
-      continue;
-    }
-    if (roomMatches(row.room)) {
-      out.push(row);
-      continue;
-    }
-    const kept = row.children.filter(entryMatches);
-    if (kept.length) out.push({ ...row, children: kept });
-  }
-  return out;
-}
-
-/** The task row that holds `selection` (a sub task id / session id), for auto-expanding it. */
-export function historyTreeRoomOfSelection(
-  rows: readonly HistoryTreeRow[],
-  selection: string | null | undefined,
-  matches: (entry: HistoryListEntry, selection: string) => boolean,
-): string | null {
-  if (!selection) return null;
-  for (const row of rows) {
-    if (row.kind === "room" && row.children.some((entry) => matches(entry, selection))) return row.room.id;
-  }
-  return null;
 }

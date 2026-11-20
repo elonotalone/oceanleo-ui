@@ -6,8 +6,6 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
-  Suspense,
-  lazy,
   useCallback,
   useEffect,
   useId,
@@ -35,6 +33,7 @@ import type { UploadProgressSnapshot } from "../lib/upload/progress";
 import type { PreparedImageDimensions } from "../lib/upload/image-compress";
 import { PRIVATE_ATTACHMENT_MAX_BYTES } from "../lib/attachment-url";
 import { AttachmentStrip } from "./AttachmentStrip";
+import { ComposerChatRecordChips, type ComposerChatRecord } from "./forward/chat-record";
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
@@ -50,10 +49,6 @@ import { useComposerDraft } from "./composer-draft";
 import { useComposerMaxHeight } from "./composer-max-height";
 import { ComposerLibraryPicker, warmComposerLibraryFiles } from "./ComposerLibraryPicker";
 import { AnchoredPopover } from "./anchored-popover";
-import type { SendToPeopleOptions } from "./messages/tasks/SendToPeople";
-
-// 「发给人」只在传了 `sendToPeople` 的输入框里出现：按需加载（找人、建任务那一串不进每个输入框）。
-const SendToPeopleButton = lazy(() => import("./messages/tasks/SendToPeople").then((mod) => ({ default: mod.SendToPeopleButton })));
 import { attachmentFailureText, failedAttachments, stopClickAllowed, stopPressArmed } from "./composer-send-guard";
 import {
   composerSlashAdapter,
@@ -272,6 +267,12 @@ export interface LeoComposerProps {
   attachments?: ComposerAttachment[];
   onRemoveAttachment?: (id: string) => void;
   /**
+   * Chats forwarded to this task (session/sites wave): one removable chip "N messages from <chat>" each, above
+   * the attachment tiles. They count as content, so Send works with an empty prompt; the host builds the text.
+   */
+  chatRecords?: readonly ComposerChatRecord[];
+  onRemoveChatRecord?: (id: string) => void;
+  /**
    * C1 (2026-10-31): given → clicking an attachment tile calls this (the host opens
    * it, e.g. in the task right sidebar); the shared Library detail handles opening.
    * rendered. Omitted → AttachmentStrip opens the shared Library detail locally.
@@ -350,11 +351,6 @@ export interface LeoComposerProps {
    * 模板实填模式下不启用。逻辑全在 `composer-skill-slash.tsx`。
    */
   skillSlash?: ComposerSkillSlashOption;
-  /**
-   * 新任务输入框（首页 / 任务起步）：发送键旁边加「发给人」——选几个人，打的字成为一个新任务
-   * （人的会话）的第一条消息，建好后打开它。发送键 / Enter 仍是交给 agent。不传 = 没有这个按钮。
-   */
-  sendToPeople?: boolean | SendToPeopleOptions;
 }
 
 export function LeoComposer({
@@ -394,6 +390,8 @@ export function LeoComposer({
   onAddAttachments,
   draftKey,
   attachments,
+  chatRecords,
+  onRemoveChatRecord,
   onRemoveAttachment,
   onOpenAttachment,
   onRetryAttachment,
@@ -416,7 +414,6 @@ export function LeoComposer({
   appsHost,
   onOpenPlugins,
   skillSlash,
-  sendToPeople,
 }: LeoComposerProps) {
   const tt = useUI();
   // `disabled` remains a full lock for older callers. Network callers use the
@@ -516,7 +513,7 @@ export function LeoComposer({
   const failedFiles = failedAttachments(attachments);
   const attachmentFailure = attachmentFailureText(tt, attachments);
   const canSend =
-    Boolean(value.trim() || attachments?.length) &&
+    Boolean(value.trim() || attachments?.length || chatRecords?.length) &&
     !attachments?.some((attachment) => attachment.uploading) &&
     failedFiles.length === 0 &&
     // 压缩期间文件还没交给业务，此刻放行会把「没有附件」的消息发出去。
@@ -525,7 +522,7 @@ export function LeoComposer({
     !readOnly && !sendBlocked && (boundExecutionTarget !== null || nativeConversation);
   // 误触停止（F3 2026-11-02）：发送键原地变成停止键，双击「发送」的第二下曾把刚开始的
   // 任务停掉。停止键出现 800ms 内不认，且只认从停止键本身按下去的那一下（键盘不受后者限）。
-  const hasContent = Boolean(value.trim() || attachments?.length || intake.pending.length);
+  const hasContent = Boolean(value.trim() || attachments?.length || chatRecords?.length || intake.pending.length);
   const stopShown = Boolean(onSubmit && loading && onStop && (stopping || !hasContent));
   const stopShownAt = useRef(0);
   const stopPressOk = useRef(false);
@@ -670,6 +667,7 @@ export function LeoComposer({
       )}
       {/* 附件方块（ChatGPT 式，2026-10-31）：在输入区上方；上传中压暗 + 小圆环，失败红徽章，
           悬停 ×。进度来自总线读数（intake.inFlight），压缩中的文件先画成上传中方块。 */}
+      <ComposerChatRecordChips records={chatRecords ?? []} onRemove={onRemoveChatRecord} disabled={readOnly} />
       <AttachmentStrip
         attachments={attachments ?? []}
         onRemove={onRemoveAttachment}
@@ -873,16 +871,6 @@ export function LeoComposer({
               >
                 {stopping ? <span className="v-spinner text-[12px]" aria-hidden="true" /> : <StopGlyph />}
               </button>
-          )}
-          {sendToPeople && onSubmit && !stopShown && (
-            <Suspense fallback={null}>
-              <SendToPeopleButton
-                text={value}
-                options={typeof sendToPeople === "object" ? sendToPeople : undefined}
-                blockedReason={attachments?.length ? tt("带文件的内容只能交给 agent；发给人前请先移除文件。") : readOnly ? tt("现在不能发送") : null}
-                onSent={() => onChange("")}
-              />
-            </Suspense>
           )}
           {onSubmit && !stopShown && (
               <button

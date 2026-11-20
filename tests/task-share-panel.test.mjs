@@ -251,23 +251,13 @@ test("empty selections disable exports while collaborators can copy their task l
   } finally {await view.close();}
 });
 
-test("Collaborate offers 'Invite people to discuss' only when the host passes it; it closes the panel and asks the host", async () => {
+test("Collaborate has no 'Invite people to discuss' (session/sites wave: a task has no people chat)", async () => {
   const client = new TaskAccessMock();
-  let asked = 0;
-  const without = await mount(TaskSharePanel, { taskId: "t", taskUrl: "/tasks/t", access: client.access, share: shareState(), client });
-  try {
-    await click(without.host.querySelector("[data-share-entry]"));
-    await click(button("共同协作"));
-    assert.equal(document.querySelector("[data-task-share-discuss]"), null, "no task rooms / already in a task: no entry");
-  } finally { await without.close(); }
-  const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "/tasks/t", access: client.access, share: shareState(), client, onDiscuss: () => { asked += 1; } });
+  const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "/tasks/t", access: client.access, share: shareState(), client, onDiscuss: () => { throw new Error("never asked"); } });
   try {
     await click(view.host.querySelector("[data-share-entry]"));
     await click(button("共同协作"));
-    const entry = document.querySelector("[data-task-share-discuss]");
-    assert.equal(entry.textContent, "邀请大家讨论");
-    await click(entry);
-    assert.equal(asked, 1);
-    assert.equal(view.host.querySelector("[data-share-entry]").getAttribute("aria-expanded"), "false", "the panel closed; the host confirms and opens the task");
+    assert.equal(document.querySelector("[data-task-share-discuss]"), null);
+    assert.ok(!document.body.textContent.includes("邀请大家讨论"));
   } finally { await view.close(); }
 });
