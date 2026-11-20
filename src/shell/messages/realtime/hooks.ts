@@ -20,6 +20,11 @@ interface Runtime {
 }
 
 let runtime: Runtime | null = null;
+let notificationTranslate: (key: string) => string = () => "OceanLeo";
+
+export function setImNotificationTranslator(translate: (key: string) => string): void {
+  notificationTranslate = translate;
+}
 
 function getRuntime(): Runtime {
   if (runtime) return runtime;
@@ -40,7 +45,8 @@ function getRuntime(): Runtime {
     notifyDesktop: (input) => maybeShowDesktopNotification(input),
     isHidden: () => typeof document !== "undefined" && document.hidden,
     selfId: () => getUserId(),
-    fallbackTitle: () => "消息",
+    fallbackTitle: () => notificationTranslate("消息"),
+    translate: (key) => notificationTranslate(key),
   });
   runtime = { socket, store };
   return runtime;

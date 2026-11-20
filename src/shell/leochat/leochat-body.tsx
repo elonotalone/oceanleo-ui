@@ -5,7 +5,7 @@
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { DealConversationView } from "../bay/deal";
-import { ConversationView } from "../messages/conversation/ConversationView";
+import { LeoChatConversation } from "../messages/conversation/LeoChatConversation";
 import { ConversationInfoPanel } from "../messages/groups/ConversationInfoPanel";
 import { NewConversationDialog } from "../messages/groups/NewConversationDialog";
 import { Inbox } from "../messages/Inbox";
@@ -15,9 +15,9 @@ import { MessagesSubView } from "../messages/notices/MessagesSubView";
 import { PeopleView } from "../messages/people/PeopleView";
 
 export interface LeoChatBodyProps {
-  /** wide：左列表（340px）右会话，两边同时在；窄：一次只显示一边，有会话时显示会话。 */
+  /** wide：左列表（320px）右会话，两边同时在；窄：一次只显示一边，有会话时显示会话。 */
   wide: boolean;
-  /** Page title and tabs live inside the list, immediately above its search. */
+  /** Tabs live inside the list, immediately above its search. */
   listHeader?: ReactNode;
 }
 
@@ -74,7 +74,7 @@ export function LeoChatBody({ wide, listHeader }: LeoChatBodyProps): ReactElemen
         onBack={closeConversation}
       />
     ) : (
-      <ConversationView
+      <LeoChatConversation
         key={state.conversationId}
         conversationId={state.conversationId}
         layout={layout}
@@ -87,7 +87,7 @@ export function LeoChatBody({ wide, listHeader }: LeoChatBodyProps): ReactElemen
     );
     thread = (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div data-conversation-thread hidden={infoOpen && !talent} style={{ display: infoOpen && !talent ? "none" : "flex" }} className="min-h-0 min-w-0 flex-1 flex-col">
+        <div data-conversation-thread className={infoOpen && !talent ? "hidden" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
           {conversation}
         </div>
         {infoOpen && !talent ? (
@@ -132,7 +132,7 @@ export function LeoChatBody({ wide, listHeader }: LeoChatBodyProps): ReactElemen
   if (wide) {
     return (
       <div data-leochat-body="wide" className="flex min-h-0 flex-1">
-        <div data-leochat-list className="flex min-h-0 w-[340px] shrink-0 flex-col border-r border-stone-200">
+        <div data-leochat-list className="flex min-h-0 w-80 shrink-0 flex-col border-r border-stone-200">
           {listHeader}
           {list}
         </div>

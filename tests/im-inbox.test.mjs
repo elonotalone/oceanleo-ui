@@ -236,7 +236,7 @@ async function settle() {
   for (let i = 0; i < 6; i += 1) await Promise.resolve();
 }
 
-function makeStore({ items = [conv("a"), conv("b")], hidden = false } = {}) {
+function makeStore({ items = [conv("a"), conv("b")], hidden = false, translate } = {}) {
   const socket = fakeSocket();
   const notified = [];
   const fetched = { conversations: 0, unread: 0 };
@@ -255,7 +255,8 @@ function makeStore({ items = [conv("a"), conv("b")], hidden = false } = {}) {
     notifyDesktop: (input) => notified.push(input),
     isHidden: () => hidden,
     selfId: async () => ME,
-    fallbackTitle: () => "消息",
+    fallbackTitle: () => "Messages",
+    translate,
   });
   return {
     store,
@@ -410,4 +411,24 @@ test("sessions (kind project / task) stay out of the LeoChat inbox and unread; t
   assert.equal(t.fetched.conversations, before + 1, "no reload per session message");
   assert.deepEqual(t.store.inbox().items.map((i) => i.id), ["a"]);
   assert.deepEqual(applyInboxEvent({ ...emptyInbox(), items: [conv("x", { kind: "task" })] }, { type: "conversation.updated", conversation: conv("x", { kind: "task" }) }, { selfId: ME, foregroundConversationId: null }).items, []);
+});
+
+
+test("desktop notifications translate media, quote, task, recalled and hidden previews through the active locale", async () => {
+  const dictionary = { "[图片]": "[Image]", "[任务]": "[Task]", "[聊天记录]": "[Chat history]", "撤回了一条消息": "Message recalled", "该消息因违反规则已隐藏": "Message hidden" };
+  const t = makeStore({ items: [conv("a", { title: "" })], hidden: true, translate: key => dictionary[key] || key });
+  t.store.start(); await settle(); t.socket.emit({ kind: "ready", userId: ME }); await settle(); await t.store.loadInbox();
+  for (const [over, expected] of [
+    [{ kind: "image", body: "" }, "[Image]"],
+    [{ kind: "task", card: { title: "Report" } }, "[Task] Report"],
+    [{ kind: "quote", card: { source_title: "Design" } }, "[Chat history] Design"],
+    [{ recalled_at: "now" }, "Message recalled"],
+    [{ hidden_reason: "moderation" }, "Message hidden"],
+  ]) {
+    const seq = t.notified.length + 2;
+    t.socket.emit({ kind: "event", event: created(msg("a", seq, over)) });
+    assert.equal(t.notified.at(-1).body, expected);
+    assert.equal(t.notified.at(-1).title, "Messages");
+  }
+  t.store.stop();
 });

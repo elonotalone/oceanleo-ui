@@ -182,7 +182,7 @@ const dialogStub = (name) =>
 const bodyAliases = {
   "../../i18n/ui/useUI": uiStub,
   "../bay/deal": viewStub("DealConversationView"),
-  "../messages/conversation/ConversationView": viewStub("ConversationView", { back: true }),
+  "../messages/conversation/LeoChatConversation": viewStub("LeoChatConversation", { back: true }),
   "../messages/groups/ConversationInfoPanel": dialogStub("ConversationInfoPanel"),
   "../messages/groups/NewConversationDialog": dialogStub("NewConversationDialog"),
   "../messages/Inbox": viewStub("Inbox"),
@@ -256,7 +256,7 @@ const { MessagesHost } = await import(
       export function LeoChatTabs(){ return React.createElement("div", { role: "tablist" }); }
     `),
     "../replay/work/WorkReplayHost": dataModule(`export function WorkReplayHost(){ return null; }`),
-    "./conversation/ConversationView": viewStub("ConversationView", { back: true }),
+    "./conversation/LeoChatConversation": viewStub("LeoChatConversation", { back: true }),
     "./groups/ConversationInfoPanel": dialogStub("ConversationInfoPanel"),
     "./groups/NewConversationDialog": dialogStub("NewConversationDialog"),
     "./Inbox": viewStub("Inbox"),
@@ -295,6 +295,7 @@ const { MessagesHost } = await import(
         };
       }
       export function publishImDisabled(){}
+      export function setImNotificationTranslator(){}
       export function useImEvent(){}
       export function useImUnread(){ return { total: 0, requests: 0 }; }
     `),
@@ -348,13 +349,13 @@ test("LeoChatBody wide：左右两栏同时在；没选会话是提示；切到�
     host.showConversation("c1");
   });
   assert.equal(view.host.querySelector('[data-stub="Inbox"]') != null, true);
-  assert.equal(view.host.querySelector('[data-stub="ConversationView"]') != null, true);
+  assert.equal(view.host.querySelector('[data-stub="LeoChatConversation"]') != null, true);
   assert.doesNotMatch(view.host.textContent, /选一个聊天开始。/);
   await act(() => {
     host.setView("people");
   });
   assert.equal(view.host.querySelector('[data-stub="PeopleView"]') != null, true);
-  assert.equal(view.host.querySelector('[data-stub="ConversationView"]') != null, true);
+  assert.equal(view.host.querySelector('[data-stub="LeoChatConversation"]') != null, true);
   await view.unmount();
 });
 
@@ -370,8 +371,8 @@ test("LeoChatBody 窄：没会话只有列表；有会话只有会话；返回�
   });
   assert.equal(view.host.querySelector("[data-leochat-list]"), null);
   assert.ok(view.host.querySelector("[data-leochat-thread]"));
-  assert.equal(view.host.querySelector('[data-stub="ConversationView"]') != null, true);
-  await view.click('[data-stub="ConversationView"]');
+  assert.equal(view.host.querySelector('[data-stub="LeoChatConversation"]') != null, true);
+  await view.click('[data-stub="LeoChatConversation"]');
   assert.equal(host.getSnapshot().conversationId, null);
   assert.ok(view.host.querySelector("[data-leochat-list]"));
   assert.equal(view.host.querySelector("[data-leochat-thread]"), null);
@@ -387,7 +388,7 @@ test("交易会话 talent:t1 走 DealConversationView，threadId 是 t1", async 
   assert.ok(deal);
   assert.equal(deal.getAttribute("data-thread"), "t1");
   assert.equal(globalThis.__leoChat4Last.DealConversationView.threadId, "t1");
-  assert.equal(view.host.querySelector('[data-stub="ConversationView"]'), null);
+  assert.equal(view.host.querySelector('[data-stub="LeoChatConversation"]'), null);
   await view.unmount();
 });
 

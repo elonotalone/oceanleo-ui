@@ -12,6 +12,7 @@
 // Leo 实时通话（RealtimeCallHost）不依赖消息是否可用，挂在最外层，两种状态下是同一个实例。
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useUI } from "../../i18n/ui/useUI";
 import { useImEnabled } from "../../lib/im/client";
 import { cachedImSettings, refreshImSettingsInBackground } from "../../lib/im/notify-api";
 import { DealConversationView } from "../bay/deal";
@@ -19,7 +20,7 @@ import { BayAuthHost } from "../bay/shell/bay-auth-host";
 import { setBayNavigator } from "../bay/shell/bay-state";
 import { LeoChatTabs } from "../leochat/LeoChatTabs";
 import { WorkReplayHost } from "../replay/work/WorkReplayHost";
-import { ConversationView } from "./conversation/ConversationView";
+import { LeoChatConversation } from "./conversation/LeoChatConversation";
 import { ConversationInfoPanel } from "./groups/ConversationInfoPanel";
 import { NewConversationDialog } from "./groups/NewConversationDialog";
 import { Inbox } from "./Inbox";
@@ -38,7 +39,7 @@ import { IncomingCallHost } from "./call/incoming";
 import { CallControlHost } from "./call/control";
 import { RealtimeCallHost } from "../realtime-call/RealtimeCallHost";
 import { PrivacyNotice } from "./PrivacyNotice";
-import { attachImRealtime, imStore, publishImDisabled } from "./realtime/hooks";
+import { attachImRealtime, imStore, publishImDisabled, setImNotificationTranslator } from "./realtime/hooks";
 
 export function isTalentConversationId(id: string): boolean {
   return id.startsWith("talent:");
@@ -55,6 +56,8 @@ export function MessagesHost() {
 
 function MessagesHostBody() {
   const enabled = useImEnabled();
+  const tt = useUI();
+  useEffect(() => { setImNotificationTranslator(tt); }, [tt]);
   const state = useMessagesHost();
   const pathname = usePathname() || "/";
   const pathRef = useRef(pathname);
@@ -248,7 +251,7 @@ function MessagesOverlay() {
         onBack={() => host.showConversation(null)}
       />
     ) : (
-      <ConversationView
+      <LeoChatConversation
         key={state.conversationId}
         conversationId={state.conversationId}
         layout={state.layout}
@@ -261,7 +264,7 @@ function MessagesOverlay() {
     );
     detail = (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div data-conversation-thread hidden={infoOpen && !talent} style={{ display: infoOpen && !talent ? "none" : "flex" }} className="min-h-0 min-w-0 flex-1 flex-col">
+        <div data-conversation-thread className={infoOpen && !talent ? "hidden" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
           {conversation}
         </div>
         {infoOpen && !talent ? (

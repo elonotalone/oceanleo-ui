@@ -10,7 +10,7 @@ import type {
   ImUnread,
 } from "../../../lib/im/types";
 import { isInboxConversation } from "../inbox-view";
-import { previewLabelOf, type ImLastMessageWithLabel } from "../preview-label";
+import { inboxPreviewText, previewLabelOf, type ImLastMessageWithLabel } from "../preview-label";
 import type { ImSocket, SocketOutput, SocketState } from "./socket";
 
 export type ImConnectionState = SocketState;
@@ -306,6 +306,7 @@ export interface StoreDeps {
   selfId(): Promise<string | null>;
   /** 桌面通知里「某人发来消息」之类的兜底标题。 */
   fallbackTitle(): string;
+  translate?: (key: string) => string;
   /** Testable scheduling for the first-load retry loop. */
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
@@ -413,7 +414,7 @@ export function createImStore(deps: StoreDeps): ImStore {
     try {
       deps.notifyDesktop({
         title: conv?.title || conv?.peer?.display_name || deps.fallbackTitle(),
-        body: messagePreview(event.message),
+        body: inboxPreviewText(lastMessageOf(event.message), deps.translate ?? ((key) => key)),
         conversationId: event.conversation_id,
         icon: conv?.avatar_url ?? conv?.peer?.avatar_url ?? null,
       });

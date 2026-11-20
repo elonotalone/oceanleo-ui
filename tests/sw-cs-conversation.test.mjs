@@ -33,7 +33,7 @@ const hostStub = dataModule(`
 `);
 const threadStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
-  export function ConversationView({onOpenInfo}){
+  export function LeoChatConversation({onOpenInfo}){
     return React.createElement('div',{'data-test-thread':''},React.createElement('textarea',{'data-test-draft':''}),React.createElement('button',{'data-test-info':'',onClick:onOpenInfo},'info'))
   }
 `);
@@ -41,7 +41,7 @@ const infoStub = dataModule(`import React from ${JSON.stringify(reactUrl)};expor
 const baseHostStubs = {
   "../../i18n/ui/useUI": ui,
   "../bay/deal": no("DealConversationView"),
-  "../messages/conversation/ConversationView": threadStub,
+  "../messages/conversation/LeoChatConversation": threadStub,
   "../messages/groups/ConversationInfoPanel": infoStub,
   "../messages/groups/NewConversationDialog": no("NewConversationDialog"),
   "../messages/Inbox": no("Inbox"),
@@ -53,7 +53,7 @@ const baseHostStubs = {
 const { LeoChatBody } = await import(await compileModule("src/shell/leochat/leochat-body.tsx", baseHostStubs));
 const { MessagesHost } = await import(await compileModule("src/shell/messages/MessagesHost.tsx", {
   ...baseHostStubs,
-  "./conversation/ConversationView": threadStub,
+  "./conversation/LeoChatConversation": threadStub,
   "./groups/ConversationInfoPanel": infoStub,
   "./groups/NewConversationDialog": no("NewConversationDialog"),
   "./Inbox": no("Inbox"),
@@ -79,7 +79,7 @@ const { MessagesHost } = await import(await compileModule("src/shell/messages/Me
   "./call/control": no("CallControlHost"),
   "../realtime-call/RealtimeCallHost": no("RealtimeCallHost"),
   "./PrivacyNotice": no("PrivacyNotice"),
-  "./realtime/hooks": dataModule('const store={setForegroundConversation(){},clearConversationUnread(){},subscribe:()=>()=>{}};export function imStore(){return store}export function attachImRealtime(){return ()=>{}} export function publishImDisabled(){}'),
+  "./realtime/hooks": dataModule('const store={setForegroundConversation(){},clearConversationUnread(){},subscribe:()=>()=>{}};export function imStore(){return store}export function attachImRealtime(){return ()=>{}} export function publishImDisabled(){} export function setImNotificationTranslator(){}'),
 }));
 
 async function mount(element) {
@@ -105,12 +105,12 @@ for (const [name,component,props,layout] of [
     const thread=v.q('[data-test-thread]'); const draft=v.q('[data-test-draft]');
     draft.value="unsent words"; thread.scrollTop=187;
     await v.click('[data-test-info]');
-    assert.equal(v.q('[data-conversation-thread]').hidden,true);
-    assert.equal(v.q('[data-conversation-thread]').style.display,"none");
+    assert.ok(v.q('[data-conversation-thread]').classList.contains("hidden"));
+    assert.equal(v.q('[data-conversation-thread]').style.display,"");
     assert.ok(v.q('[data-conversation-info]').classList.contains('flex-1'));
     assert.ok(!v.q('[data-conversation-info]').className.includes('320'));
     await v.click('[data-test-close]');
-    assert.equal(v.q('[data-conversation-thread]').hidden,false);
+    assert.ok(v.q('[data-conversation-thread]').classList.contains("flex"));
     assert.equal(v.q('[data-test-thread]'),thread);
     assert.equal(v.q('[data-test-draft]'),draft);
     assert.equal(draft.value,"unsent words"); assert.equal(thread.scrollTop,187);
@@ -120,7 +120,7 @@ for (const [name,component,props,layout] of [
 const inbox={items:[]};
 const rt=dataModule(`export function useImEvent(){}export function useImResync(){}export function usePresence(){return {}} export function useImInbox(){return globalThis.__csInbox}`);
 globalThis.__csInbox=inbox;
-const apiStub=dataModule(`export const messagesApi={me:async()=>({profile:{user_id:'me'}}),getConversation:async()=>globalThis.__csDetail,profiles:async()=>[],markRead:async()=>{},getDraft:async()=>({body:''}),listDrafts:async()=>[],putDraft:async()=>{}}`);
+const apiStub=dataModule(`export const messagesApi={me:async()=>({profile:{user_id:'me'}}),getConversation:async()=>globalThis.__csDetail,profiles:async()=>[],listMessages:async(_id,p)=>globalThis.__csHistory(p),markRead:async()=>{},getDraft:async()=>({body:''}),listDrafts:async()=>[],putDraft:async()=>{}}`);
 const searchStub=dataModule(`export function normalizeSearchQuery(q){return q.trim()}export function searchQueryReady(q){return q.trim().length>=2}export const searchApi={search:async(p)=>{globalThis.__csSearchCalls.push(p);return globalThis.__csSearchReply},directory:async()=>[]}`);
 const frameStub=dataModule(`import React from ${JSON.stringify(reactUrl)};export const QUIET='';export function MessageSettingsHeader({onBack,title}){return React.createElement('header',{},React.createElement('button',{'data-search-back':'',onClick:onBack},title))}export function MessageConfirmDialog(){return null}`);
 const searchStubs={
@@ -136,12 +136,13 @@ const { ConversationView }=await import(await compileModule("src/shell/messages/
   "../../../lib/im/client":dataModule('export class ImApiError extends Error{} export async function imFetch() { return {}; }'),
   "../../../lib/im/people-api":dataModule('export function conversationDisplayTitle(c){return c.title}export function visiblePersonName(p){return p.display_name}'),
   "../../../lib/im/inbox-api":dataModule('export async function fetchConversations(){return {items:[]}}'),
+  "./ForwardCopyMenu":dataModule(`import React from ${JSON.stringify(reactUrl)};export function ForwardCopyMenu(props){globalThis.__csMenu=props;return React.createElement('button',{'data-test-share':'',onClick:props.onToggle})}`),
   "./conversation-store":dataModule('export function getConversationStore(){return globalThis.__csStore}export function unreadBoundary(){return null}'),
   "../../nav-source/route-boundary":no("RoutePageSkeleton"),
   "../composer/Composer":composerStub,
   "../host-state":hostStub,
   "../people/ProfileCard":no("ProfileCard"), "../report/ReportDialog":no("ReportDialog"),
-  "./MessageList":dataModule(`import React from ${JSON.stringify(reactUrl)};export function useStoreEvents(){}export function MessageList(){return React.createElement('div',{'data-test-messages':''})}`),
+  "./MessageList":dataModule(`import React from ${JSON.stringify(reactUrl)};export function useStoreEvents(){}export function MessageList(props){globalThis.__csListProps=props;return React.createElement('div',{'data-test-messages':''})}`),
   "./MessageItem":dataModule('export function useMessageHandlers(){return {}}'),
   "./PinnedBar":no("PinnedBar"),
   "./TypingLine":dataModule('export function TypingLine(){return null}export function useTypingUsers(){return []}'),
@@ -324,4 +325,35 @@ test('hidden thread neither changes its reading position nor reports new message
     await act(async()=>root.render(React.createElement(RealMessageList,{...props,snapshot,active:true})));
     assert.equal(scroll.scrollTop,250);assert.deepEqual(reads,[]);
   }finally{await act(async()=>root.unmount());container.remove()}
+});
+
+
+test("opening Forward / Copy selects the whole conversation; deselecting switches to explicit loaded IDs", async () => {
+  setupConversation();
+  const message = seq => ({ id: `m${seq}`, conversation_id: "conv", seq, sender_id: "me", sender_kind: "user", mentions: [], kind: "text", body: `line ${seq}`, created_at: "2026-11-21T00:00:00Z", attachments: [] });
+  const messages = [message(10), message(11)];
+  globalThis.__csStore = makeStore({ listMessages: async () => ({ items: messages, has_more_before: true, has_more_after: false }) });
+  await globalThis.__csStore.loadLatest();
+  globalThis.__csHistory = async () => ({ items: Array.from({ length: 11 }, (_, i) => message(i + 1)), has_more_before: false, has_more_after: false });
+  const view = await mount(React.createElement(ConversationView, { conversationId: "conv", layout: "full" }));
+  try {
+    await view.click("[data-test-share]");
+    assert.equal(globalThis.__csMenu.allSelected, true);
+    assert.equal(globalThis.__csMenu.selectedCount, null, "loaded 2 is not advertised as the conversation count");
+    let copied;
+    await act(async () => { copied = await globalThis.__csMenu.copyText(); });
+    assert.equal(copied.count, 11);
+    assert.equal(copied.text.split("\n").length, 11);
+    await act(async () => globalThis.__csListProps.onToggleSelected(messages[0]));
+    assert.equal(globalThis.__csMenu.allSelected, false);
+    assert.equal(globalThis.__csMenu.selectedCount, 1);
+    assert.deepEqual(globalThis.__csMenu.messageIds, ["m11"]);
+    await act(async () => { copied = await globalThis.__csMenu.copyText(); });
+    assert.equal(copied.count, 1);
+    assert.match(copied.text, /line 11$/);
+    await act(async () => globalThis.__csMenu.onToggleAll());
+    assert.equal(globalThis.__csMenu.allSelected, true);
+    await act(async () => globalThis.__csMenu.onToggleAll());
+    assert.equal(globalThis.__csMenu.selectedCount, 0);
+  } finally { await view.unmount(); }
 });
