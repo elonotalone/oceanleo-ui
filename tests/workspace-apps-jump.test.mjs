@@ -10,50 +10,33 @@ const marketUrl = await compileModule("src/lib/app-market.ts", {
 });
 const { marketAppOpenUrl, workspaceAppJumpUrl, openMarketApp } = await import(marketUrl);
 
-test("工作台打开成品 app 必须落到子站对应 app 页", () => {
+test("工作台打开成品 app 落到同源 /workspace/<site>/<app>（没有子站主机）", () => {
   assert.equal(
-    marketAppOpenUrl({
-      site_url: "https://image.oceanleo.com",
-      open_path: "",
-      app_key: "poster",
-    }),
-    "https://image.oceanleo.com/workspace/poster",
+    marketAppOpenUrl({ site_id: "image", site_url: "https://image.oceanleo.com", open_path: "", app_key: "poster" }),
+    "/workspace/image/poster",
   );
   assert.equal(
-    marketAppOpenUrl({
-      site_url: "https://resume.oceanleo.com/",
-      open_path: "/workspace/builder",
-      app_key: "builder",
-    }),
-    "https://resume.oceanleo.com/workspace/builder",
+    marketAppOpenUrl({ site_id: "resume", site_url: "https://resume.oceanleo.com/", open_path: "/workspace/builder", app_key: "builder" }),
+    "/workspace/resume/builder",
   );
   assert.equal(
-    workspaceAppJumpUrl({
-      site_url: "https://image.oceanleo.com",
-      open_path: "",
-      app_key: "poster",
-    }),
-    "https://image.oceanleo.com/workspace/poster",
+    workspaceAppJumpUrl({ site_id: "image", site_url: "https://image.oceanleo.com", open_path: "", app_key: "poster" }),
+    "/workspace/image/poster",
   );
-  assert.equal(
-    workspaceAppJumpUrl({
-      site_url: "",
-      open_path: "",
-      app_key: "poster",
-    }),
-    "",
-  );
+  assert.equal(workspaceAppJumpUrl({ site_id: "", site_url: "", open_path: "", app_key: "poster" }), "");
 });
 
-test("没有子站 origin 时不许 window.open 主站相对路径", () => {
+test("认不出站 key 时不导航、不开新标签", () => {
   const opened = [];
+  const assigned = [];
   const prev = globalThis.window;
-  globalThis.window = { open: (...args) => opened.push(args) };
+  globalThis.window = { open: (...args) => opened.push(args), location: { assign: (href) => assigned.push(href) } };
   try {
-    assert.equal(
-      openMarketApp({ site_url: "", open_path: "", app_key: "poster" }),
-      "",
-    );
+    assert.equal(openMarketApp({ site_id: "", open_path: "", app_key: "poster" }), "");
+    assert.equal(opened.length, 0);
+    assert.equal(assigned.length, 0);
+    assert.equal(openMarketApp({ site_id: "image", open_path: "", app_key: "poster" }), "/workspace/image/poster");
+    assert.deepEqual(assigned, ["/workspace/image/poster"]);
     assert.equal(opened.length, 0);
   } finally {
     if (prev === undefined) delete globalThis.window;
@@ -61,18 +44,21 @@ test("没有子站 origin 时不许 window.open 主站相对路径", () => {
   }
 });
 
-test("宿主提供外部打开器时，成品 app 不调用 WebView window.open", () => {
+test("宿主提供外部打开器时，成品 app 交给宿主门户的绝对地址", () => {
   const opened = [];
   const external = [];
   const prev = globalThis.window;
-  globalThis.window = { open: (...args) => opened.push(args) };
+  globalThis.window = {
+    open: (...args) => opened.push(args),
+    location: { origin: "https://oceanleo.com", host: "oceanleo.com", assign() { throw new Error("must not navigate"); } },
+  };
   try {
     const href = openMarketApp(
-      { site_url: "https://image.oceanleo.com", open_path: "", app_key: "poster" },
+      { site_id: "image", site_url: "https://image.oceanleo.com", open_path: "", app_key: "poster" },
       (url) => external.push(url),
     );
-    assert.equal(href, "https://image.oceanleo.com/workspace/poster");
-    assert.deepEqual(external, [href]);
+    assert.equal(href, "/workspace/image/poster");
+    assert.deepEqual(external, ["https://oceanleo.com/workspace/image/poster"]);
     assert.equal(opened.length, 0);
   } finally {
     if (prev === undefined) delete globalThis.window;
@@ -87,10 +73,10 @@ test("主站工作台 app 分区读 my_apps，优先打开站点作用域 surfac
   assert.match(source, /capabilityImageKey/);
   assert.match(source, /workspaceAppJumpUrl/);
   assert.match(source, /data-workspace-app-surface/);
-  assert.match(source, /workspaceEmbedSrc\(siteOrigin/);
+  assert.match(source, /workspaceEmbedSrc\(\{/);
+  assert.doesNotMatch(source, /siteOrigin/);
   assert.match(source, /getClientHostConfig\(\)\?\.openExternal/);
-  assert.match(source, /openWorkspaceExternal\(s\.href\)/);
-  assert.match(source, /money:\s*"finance"/);
+  assert.match(source, /openSiteWorkspace\(s\.key\)/);
   assert.match(
     source,
     /onOpen=\{\(it\) => \{\s*const app = workspaceApps\.find/,

@@ -338,15 +338,16 @@ test("算不出可玩落点就如实说，不假装能玩", async () => {
   }
 });
 
-test("就地内嵌只认 game 站的绝对地址，其余一律不嵌", () => {
+test("就地内嵌只认门户同源的 /play/… 地址，其余一律不嵌", () => {
   const embed = (value) =>
     gamePlayEmbedHref({ ...durableItem("game", "game"), meta: { play_embed_href: value } });
-  assert.equal(
-    embed("https://game.oceanleo.com/play/artifact/abc"),
-    "https://game.oceanleo.com/play/artifact/abc",
-  );
-  // 根相对路径在其余 35 个站上指向本站自己，嵌进去只会 404。
-  assert.equal(embed("/play/artifact/abc"), "");
+  // 播放页由门户自己提供（契约 §2.5）：同源路径可以嵌（沙箱仍是最严档）。
+  assert.equal(embed("/play/artifact/abc"), "/play/artifact/abc");
+  // 旧数据里 game 子站的绝对地址折成同源路径。
+  assert.equal(embed("https://game.oceanleo.com/play/artifact/abc"), "/play/artifact/abc");
+  // 不在 /play/ 下的同源路径不嵌。
+  assert.equal(embed("/workspace/game"), "");
+  assert.equal(embed("//evil.test/play/artifact/abc"), "");
   assert.equal(embed("https://game.oceanleo.app/play/artifact/abc"), "");
   assert.equal(embed("https://evil.test/play/artifact/abc"), "");
   assert.equal(embed("javascript:alert(1)"), "");

@@ -5,11 +5,6 @@ import test from "node:test";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const domainStub = dataModule(`
-  export const asked = [];
-  export function currentFamilySubsiteOrigin(label) {
-    asked.push(label);
-    return ["slide", "3d", "design", "e-commerce"].includes(label) ? "https://" + label + ".oceanleo.test" : undefined;
-  }
   export function portalHref(path) { return "https://oceanleo.test" + path; }
 `);
 const stateStub = dataModule(`
@@ -46,17 +41,18 @@ test("去处理：当前就在那个站时不给链接；异站给那个站 /bay
   assert.equal(links.handlingHref("ppt", null, target), null);
 });
 
-test("作品只读预览：站 key 先换子域名（ppt→slide、threed→3d），家族里没有那个站就不给链接", () => {
-  domain.asked.length = 0;
+test("作品只读预览：在门户上打开，站点工作台路径挪到 /workspace/<key>（没有子站主机）", () => {
   assert.equal(
     links.workPreviewHref({ site_key: "ppt", preview_url: "/history?task=t1&view=readonly" }),
-    "https://slide.oceanleo.test/history?task=t1&view=readonly",
+    "https://oceanleo.test/history?task=t1&view=readonly",
   );
-  assert.equal(links.workPreviewHref({ site_key: "threed", preview_url: "/w/1" }), "https://3d.oceanleo.test/w/1");
-  assert.equal(links.workPreviewHref({ site_key: "ecommerce", preview_url: "/w/1" }), "https://e-commerce.oceanleo.test/w/1");
-  assert.deepEqual(domain.asked, ["slide", "3d", "e-commerce"], "从不拿站 key 直接拼域名");
-  assert.equal(links.workPreviewHref({ site_key: "video", preview_url: "/w/1" }), null);
+  assert.equal(
+    links.workPreviewHref({ site_key: "threed", preview_url: "/workspace/model?id=1" }),
+    "https://oceanleo.test/workspace/threed/model?id=1",
+  );
+  assert.equal(links.workPreviewHref({ site_key: "video", preview_url: "/w/1" }), "https://oceanleo.test/w/1");
   assert.equal(links.workPreviewHref({ site_key: "oceanleo", preview_url: "/w/1" }), "https://oceanleo.test/w/1");
+  assert.equal(links.workPreviewHref({ site_key: "Bad Key!", preview_url: "/workspace/x" }), null);
   assert.equal(links.workPreviewHref({ site_key: "ppt", preview_url: null }), null);
 });
 

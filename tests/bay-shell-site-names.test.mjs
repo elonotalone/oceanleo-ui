@@ -120,14 +120,24 @@ test("SITE_ICONS 覆盖合同 §1.1 的 33 个功能站；finance 与 money 都�
   assert.ok(SITE_ICONS.money);
 });
 
-test("站名与子域标签各管各的：标签不同的三站名字照常", () => {
-  assert.equal(links.baySubsiteLabel("ppt"), "slide");
+test("站名照常；作品路径挪到门户上该站的 /workspace/<key>（没有子域标签了）", () => {
   assert.equal(links.baySiteName("ppt"), "LeoSlides");
-  assert.equal(links.baySubsiteLabel("ecommerce"), "e-commerce");
   assert.equal(links.baySiteName("ecommerce"), "LeoStudio");
-  assert.equal(links.baySubsiteLabel("threed"), "3d");
   assert.equal(links.baySiteName("threed"), "Leo3D");
-  assert.equal(links.baySubsiteLabel("oceanleo"), null);
+  assert.equal("baySubsiteLabel" in links, false);
+  assert.equal(links.bayWorkPath("ppt", "/workspace/lesson?doc=1"), "/workspace/ppt/lesson?doc=1");
+  assert.equal(links.bayWorkPath("threed", "/workspace?fn=x"), "/workspace/threed?fn=x");
+  assert.equal(links.bayWorkPath("image", "/workspace"), "/workspace/image");
+  assert.equal(links.bayWorkPath("image", "/workspace/image/poster"), "/workspace/image/poster", "已经挪过的不再挪");
+  assert.equal(links.bayWorkPath("money", "/workspace/budget"), "/workspace/finance/budget");
+  assert.equal(links.bayWorkPath("ppt", "/history?task=t1"), "/history?task=t1", "门户共用页原样");
+  assert.equal(links.bayWorkPath("ppt", "/workspaces/x"), "/workspaces/x");
+  assert.equal(links.bayWorkPath("oceanleo", "/workspace?pile=all"), "/workspace?pile=all");
+  assert.equal(links.bayWorkPath("", "/library"), "/library");
+  assert.equal(links.bayWorkPath("Bad Key!", "/workspace/x"), null);
+  for (const bad of ["//evil.test/x", "https://evil.test/x", "/a b", "/a\\b", "x"]) {
+    assert.equal(links.bayWorkPath("ppt", bad), null, bad);
+  }
 });
 
 test("类目标签去掉开头的 Leo；站点产品名不动", () => {

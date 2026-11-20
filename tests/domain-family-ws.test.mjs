@@ -83,7 +83,6 @@ test("ws/1 familyForHost / cookie 域：oceanbizs.com 是 ws，ws.oceanleo.app �
       assetOrigin: ws.assetOrigin,
       untrustedContentDomain: ws.untrustedContentDomain,
       hostedEditorDomain: ws.hostedEditorDomain,
-      availableSubsites: [...ws.availableSubsites],
     },
     {
       registrableDomain: "oceanbizs.com",
@@ -93,15 +92,13 @@ test("ws/1 familyForHost / cookie 域：oceanbizs.com 是 ws，ws.oceanleo.app �
       assetOrigin: "https://asset.oceanleo.com",
       untrustedContentDomain: "ws.oceanleo.app",
       hostedEditorDomain: "ws.oceanleo.app",
-      availableSubsites: ["3d", "agent", "aihuman", "bizdev", "chat", "converter", "design", "e-commerce", "edu", "excel", "finance", "game", "image", "interior", "law", "logo", "make", "med", "meeting", "music", "notebook", "novel", "paper", "prompt", "resume", "script", "search", "slide", "study", "travel", "video", "website", "word"],
     },
   );
-  assert.equal(m.familyHasSubsite("ws", "design"), true);
-  assert.equal(m.familyHasSubsite("ws", "website"), true);
-  assert.equal(m.familyHasSubsite("ws", "video"), true);
-  assert.equal(m.familyHasSubsite("ws", "excel"), true);
-  assert.equal(m.familyHasSubsite("ws", "slide"), true);
-  assert.equal(m.familyHasSubsite("ws", "aitools"), false);
+  // 2026-11-21：没有子站主机了（站点工作台在门户 /workspace/<siteKey>），家族表不再列子站。
+  assert.equal("availableSubsites" in ws, false);
+  for (const gone of ["familyHasSubsite", "currentFamilyHasSubsite", "currentFamilySubsiteOrigin"]) {
+    assert.equal(gone in m, false, gone);
+  }
   assert.deepEqual(
     [...m.UNTRUSTED_CONTENT_DOMAINS],
     ["oceanleo.app", "leoapp.cn", "ws.oceanleo.app"],
@@ -138,9 +135,7 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbi
         sandbox.embedEditorFrameSandbox(comBase),
       ),
       buildThrew,
-      subsiteOrigin: family.currentFamilySubsiteOrigin("design") ?? null,
-      excelOrigin: family.currentFamilySubsiteOrigin("excel") ?? null,
-      slideOrigin: family.currentFamilySubsiteOrigin("slide") ?? null,
+      subsiteHelper: typeof family.currentFamilySubsiteOrigin,
       hostedSandbox: sandbox.embedEditorFrameSandbox("https://slides.ws.oceanleo.app"),
       hostedProdSandbox: sandbox.embedEditorFrameSandbox("https://slides.oceanleo.app"),
       mcpOrigins: [...mcp.MCP_APPS_SANDBOX_ORIGINS],
@@ -188,9 +183,7 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbi
   assert.equal(ws.comBaseTrusted, false);
   assert.equal(ws.comBaseGrantsSameOrigin, false);
   assert.equal(ws.buildThrew, true, "ws 不得构造出指向 .com 编辑器的 embed URL");
-  assert.equal(ws.subsiteOrigin, "https://design.oceanbizs.com");
-  assert.equal(ws.excelOrigin, "https://excel.oceanbizs.com");
-  assert.equal(ws.slideOrigin, "https://slide.oceanbizs.com");
+  assert.equal(ws.subsiteHelper, "undefined", "没有子站主机：不再拼 https://<label>.oceanbizs.com");
   // Hosted 六件已下线：ws 的 slides.ws.oceanleo.app 与生产的 .app 全串一样不可信。
   assert.equal(ws.hostedSandbox, sandboxConst("UNTRUSTED_FRAME_SANDBOX"));
   assert.equal(ws.hostedProdSandbox, sandboxConst("UNTRUSTED_FRAME_SANDBOX"));

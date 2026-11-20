@@ -116,6 +116,7 @@ export function isTrustedWorkspaceEmbedUrl(value: string): boolean {
     return (
       parts.length === 3 &&
       `/${parts[1]}` === WORKSPACE_EMBED_PATH &&
+      parts[2] !== "" &&
       siteWorkspaceKey(parts[2]) === parts[2]
     );
   } catch {

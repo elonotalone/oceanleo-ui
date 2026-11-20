@@ -606,7 +606,6 @@ const PRE_EXISTING_GAPS = new Set([
   "PDF 加载失败",
   "URL 扩展名与服务器验证的真实素材类型不一致，已拒绝加入时间线",
   "agent 做过什么",
-  "agent 在境内版暂未开放。",
   "agent 还没有请过人。",
   "prompt 卡片",
   "{n} 条等你确认",

@@ -29,12 +29,7 @@ const disputes = await import(await compileModule("src/lib/bay/disputes.ts", STU
 const repeat = await import(await compileModule("src/lib/bay/repeat.ts", STUBS));
 
 const familyStub = dataModule(`
-  const FAMILY = { com: "oceanleo.com" };
-  export function currentFamilySubsiteOrigin(label) {
-    const domain = FAMILY[globalThis.__w07Family ?? "com"];
-    if (!domain || (globalThis.__w07MissingSubsites ?? []).includes(label)) return undefined;
-    return "https://" + label + "." + domain;
-  }
+  export function portalHref(path) { return "https://oceanleo.com" + path; }
 `);
 const links = await import(
   await compileModule("src/shell/bay/orders/order-links.ts", {
@@ -361,21 +356,15 @@ test("金额、状态与自动验收倒计时的文字", () => {
   assert.equal(orders.reviewExtensionWarning(tt, { review_extended_days: 0 }, 3), "");
 });
 
-test("作品链接：ppt 去 slide 子域、threed 去 3d 子域，路径原样接上", () => {
+test("作品链接：都在门户上打开；站点工作台路径挪到 /workspace/<key>，其余路径原样接上", () => {
   reset();
-  assert.equal(links.bayOrderWorkHref({ site_key: "ppt", open_path: "/editor?task=w1" }), "https://slide.oceanleo.com/editor?task=w1");
-  assert.equal(links.bayOrderWorkHref({ site_key: "threed", open_path: "/studio/w2" }), "https://3d.oceanleo.com/studio/w2");
-  assert.equal(links.bayOrderWorkHref({ site_key: "design", open_path: "/w3" }), "https://design.oceanleo.com/w3");
+  assert.equal(links.bayOrderWorkHref({ site_key: "ppt", open_path: "/workspace/editor?task=w1" }), "https://oceanleo.com/workspace/ppt/editor?task=w1");
+  assert.equal(links.bayOrderWorkHref({ site_key: "threed", open_path: "/studio/w2" }), "https://oceanleo.com/studio/w2");
+  assert.equal(links.bayOrderWorkHref({ site_key: "design", open_path: "/workspace/design/w3" }), "https://oceanleo.com/workspace/design/w3");
 });
 
-test("作品链接：拿不到域名、站 key 不认识、路径不安全时不给链接", () => {
+test("作品链接：站 key 不认识、路径不安全时不给链接", () => {
   reset();
-  globalThis.__w07MissingSubsites = ["slide"];
-  assert.equal(links.bayOrderWorkHref({ site_key: "ppt", open_path: "/editor?task=w1" }), null, "家族里没有这个子站");
-  globalThis.__w07Family = "cn";
-  assert.equal(links.bayOrderWorkHref({ site_key: "threed", open_path: "/studio/w2" }), null, "拿不到域名");
-  reset();
-  assert.equal(links.bayOrderWorkHref({ site_key: "oceanleo", open_path: "/w" }), null, "门户不是子站");
   assert.equal(links.bayOrderWorkHref({ site_key: "Not A Key", open_path: "/w" }), null);
   assert.equal(links.bayOrderWorkHref({ site_key: "ppt", open_path: "//evil.example.com/w" }), null);
   assert.equal(links.bayOrderWorkHref({ site_key: "ppt", open_path: "https://evil.example.com/w" }), null);

@@ -18,11 +18,8 @@ const httpStub = dataModule(`
   export const bayDelete = async () => ({});
 `);
 const familyStub = dataModule(`
-  // 域名家族肯给任何标签一个 origin（真实现也是这样）：认不认站 key 不是它的事。
-  export function currentFamilySubsiteOrigin(label) {
-    if ((globalThis.__w07ModelMissing ?? []).includes(label)) return undefined;
-    return "https://" + label + ".oceanleo.com";
-  }
+  // 没有子站主机：作品都在门户上打开。
+  export function portalHref(path) { return "https://oceanleo.com" + path; }
 `);
 const links = await import(
   await compileModule("src/shell/bay/orders/order-links.ts", {
@@ -60,14 +57,13 @@ function order(extra = {}) {
   };
 }
 
-test("作品链接按钮：ppt 去 LeoSlides、threed 去 Leo3D，地址拼对子域名", () => {
-  globalThis.__w07ModelMissing = [];
-  const ppt = links.bayOrderWorkLink({ site_key: "ppt", open_path: "/editor?task=w1" }, tt);
-  assert.deepEqual(ppt, { href: "https://slide.oceanleo.com/editor?task=w1", siteName: "LeoSlides", label: "去 LeoSlides 打开" });
+test("作品链接按钮：ppt 去 LeoSlides、threed 去 Leo3D，地址在门户上该站的 /workspace/<key>", () => {
+  const ppt = links.bayOrderWorkLink({ site_key: "ppt", open_path: "/workspace/editor?task=w1" }, tt);
+  assert.deepEqual(ppt, { href: "https://oceanleo.com/workspace/ppt/editor?task=w1", siteName: "LeoSlides", label: "去 LeoSlides 打开" });
   const threed = links.bayOrderWorkLink({ site_key: "threed", open_path: "/studio/w2" }, tt);
-  assert.deepEqual(threed, { href: "https://3d.oceanleo.com/studio/w2", siteName: "Leo3D", label: "去 Leo3D 打开" });
-  const ecommerce = links.bayOrderWorkLink({ site_key: "ecommerce", open_path: "/w3" }, tt);
-  assert.equal(ecommerce.href, "https://e-commerce.oceanleo.com/w3", "站 key 与子域名不同的第三处");
+  assert.deepEqual(threed, { href: "https://oceanleo.com/studio/w2", siteName: "Leo3D", label: "去 Leo3D 打开" });
+  const ecommerce = links.bayOrderWorkLink({ site_key: "ecommerce", open_path: "/workspace?item=w3" }, tt);
+  assert.equal(ecommerce.href, "https://oceanleo.com/workspace/ecommerce?item=w3", "站 key 直接进路径，不再换子域名");
   assert.equal(ecommerce.label, "去 LeoStudio 打开");
 });
 
@@ -82,15 +78,10 @@ test("作品链接按钮：aitools 的名字按界面语言显示（不是品牌
   assert.equal(link.label, "Open in AI Tools Directory");
 });
 
-test("作品链接按钮：拿不到域名、站 key 不认识、路径不安全：都不给链接", () => {
-  globalThis.__w07ModelMissing = ["slide"];
-  assert.equal(links.bayOrderWorkLink({ site_key: "ppt", open_path: "/editor?task=w1" }, tt), null, "拿不到域名");
-  assert.equal(links.bayOrderWorkHref({ site_key: "ppt", open_path: "/editor?task=w1" }), null);
-  globalThis.__w07ModelMissing = [];
-  // 域名家族对 newsite 肯给 origin，但 baySiteName 不认识它：不给链接，也不自己造产品名。
+test("作品链接按钮：站 key 不认识、路径不安全：都不给链接", () => {
+  // baySiteName 不认识 newsite：不给链接，也不自己造产品名。
   assert.equal(links.bayOrderWorkHref({ site_key: "newsite", open_path: "/w" }), null, "站 key 不认识");
   assert.equal(links.bayOrderWorkLink({ site_key: "newsite", open_path: "/w" }, tt), null);
-  assert.equal(links.bayOrderWorkLink({ site_key: "oceanleo", open_path: "/w" }, tt), null, "门户不是子站");
   assert.equal(links.bayOrderWorkLink({ site_key: "ppt", open_path: "//evil.example.com/w" }, tt), null);
   assert.equal(links.bayOrderWorkLink({ site_key: "ppt", open_path: "https://evil.example.com/w" }, tt), null);
   assert.equal(links.bayOrderWorkLink(null, tt), null);

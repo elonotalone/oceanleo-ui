@@ -31,8 +31,19 @@ test("document and PDF keep their real detail carriers within the same shelf", (
   assert.equal(doc.type, "document"); assert.equal(pdf.type, "pdf");
 });
 
-test("existing preview href handling keeps the same current-host and development behavior", () => {
-  const path = workspaceTemplatePreviewHref("landing", "artifact-id");
-  assert.equal(officialTemplatePreviewHref("landing", "artifact-id", "website", { host: "localhost:3000", embedOriginEnv: "" }), path);
-  assert.equal(officialTemplatePreviewHref("landing", "artifact-id", "ppt", { host: "localhost:3000", embedOriginEnv: "" }), path);
+test("official preview opens the app inside its site workspace on the main site", () => {
+  assert.equal(
+    officialTemplatePreviewHref("landing", "artifact-id", "website"),
+    "/workspace/website/landing?tab=materials&item=artifact-id&mode=preview",
+  );
+  assert.equal(
+    officialTemplatePreviewHref("lesson", "artifact-id", "ppt"),
+    workspaceTemplatePreviewHref("lesson", "artifact-id", { canonicalBasePath: "/workspace/ppt" }),
+  );
+  // Without a usable site key the old shape stays (no guessed site, no host).
+  assert.equal(
+    officialTemplatePreviewHref("landing", "artifact-id", ""),
+    workspaceTemplatePreviewHref("landing", "artifact-id"),
+  );
+  assert.equal(templateMaterialToBayAsset(material, "ppt").openHref.startsWith("/workspace/ppt/lesson?"), true);
 });

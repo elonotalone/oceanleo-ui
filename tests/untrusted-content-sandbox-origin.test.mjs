@@ -724,15 +724,17 @@ test("W8/3 嵌入 URL 构造：白名单为空，任何 base 都被拒绝（含�
 });
 
 // ===========================================================================
-// W24 —— 子站工作台内嵌 frame（此前完全没有 sandbox 属性的三处）
+// W24 —— 站点工作台内嵌 frame（Playground / WorkspaceMasterDetail / WorkspaceShell 三处）
 //
 // UC-3：docs/architecture/oceanleo-untrusted-content-isolation.md §8.3
 //       （契约 oceanleo.sandbox-origin.v1 §3 第三档「第一方内嵌」）
 //
-// 这三处的 src 不是写死字面量：origin 来自消费端注入的 siteOrigin 映射，key 来自
-// 后端 /v1/agents(/mine) 的 site_id。因此下面的断言必须**双向对账**：
+// 2026-11-21（session / sites wave 契约 §2.5）起没有子站主机：src 只能是门户
+// 同源的 `/workspace/<siteKey>?embed=1&solo=1…`。key 来自后端 /v1/agents(/mine) 的
+// site_id，不由本包控制。断言仍**双向对账**：
 //   (a) 锁死 sandbox 字符串本身（档位、禁用 token、与共享常量同一事实源）；
-//   (b) 锁死「什么 URL 才配拿到这个 sandbox」——第一方判定不通过就完全不渲染 frame。
+//   (b) 锁死「什么 URL 才配拿到这个 sandbox」——同源判定不通过就完全不渲染 frame；
+//       任何绝对 URL（包括曾经的第一方子站主机）都不再配拿。
 // 只锁 (a) 会被「保留 sandbox、把来源换成 oceanleo.app」绕过；
 // 只锁 (b) 会被「保留来源判定、把 sandbox 松开或删掉」绕过。
 // ===========================================================================
@@ -751,14 +753,15 @@ function extractRegion(text, name) {
 const W24_PLAYGROUND = source("../src/shell/Playground.tsx");
 const W24_TRUST_REGION = extractRegion(W24_PLAYGROUND, "workspace-embed-trust");
 // Playground 里那段信任判定是 `#region` 摘出来的片段，不是整份源文件；落到临时
-// 真文件再走共享编译台，相对/包名边同样自动解析，只钉一条显式桩把白名单模块接上。
+// 真文件再走共享编译台，相对/包名边同样自动解析，只钉显式桩把共享模块接上。
 const workspaceEmbedTrustScratch = join(
   mkdtempSync(join(tmpdir(), "oceanleo-workspace-embed-trust-")),
   "workspace-embed-trust.ts",
 );
 writeFileSync(
   workspaceEmbedTrustScratch,
-  `import { TRUSTED_EMBED_EDITOR_SANDBOX, isTrustedInteractiveViewerUrl } from "oceanleo-editor-sandbox-origin";\n${W24_TRUST_REGION}`,
+  `import { TRUSTED_EMBED_EDITOR_SANDBOX } from "oceanleo-editor-sandbox-origin";\n` +
+    `import { SITE_WORKSPACE_ROOT, siteWorkspaceHref, siteWorkspaceKey } from "oceanleo-site-path";\n${W24_TRUST_REGION}`,
   "utf8",
 );
 const workspaceEmbedTrust = await import(
@@ -766,14 +769,16 @@ const workspaceEmbedTrust = await import(
     "oceanleo-editor-sandbox-origin": realModule(
       "src/shell/editor-sandbox-origin.ts",
     ),
+    "oceanleo-site-path": realModule("src/lib/site-path.ts"),
   })
 );
 
-const W24_TRUSTED_ORIGINS = [
+// 曾经被当作第一方的子站主机：子站下线后它们一律不得再拿到 frame。
+const W24_FORMER_SUBSITE_ORIGINS = [
   "https://med.oceanleo.com",
   "https://website.oceanleo.com",
-  // 末尾斜杠是消费端常见写法，归一化后仍必须落在 /workspace。
   "https://design.oceanleo.com/",
+  "https://oceanleo.com",
 ];
 
 const W24_UNTRUSTED_ORIGINS = [
@@ -793,12 +798,9 @@ const W24_UNTRUSTED_ORIGINS = [
   "https://med.oceanleo.com:8443",
   "https://user:pw@med.oceanleo.com",
   "javascript:alert(1)",
-  // 相对地址会落回宿主 origin（= 共享 cookie 域），必须挡住。
-  "",
+  // 协议相对地址 = 换 host。
   "//evil.test",
-  "/proxy",
-  // origin 里带路径 → 拼出来的 path 不再是 /workspace。
-  "https://med.oceanleo.com/tenant",
+  "/\\evil.test",
 ];
 
 test("W24/1 三处内嵌 frame 的沙箱字符串锁死在第一方档位", () => {
@@ -824,7 +826,7 @@ test("W24/1 三处内嵌 frame 的沙箱字符串锁死在第一方档位", () =
     assert.equal(tokens.has(forbidden), false, forbidden);
   }
   // 同时拿到 allow-scripts 与 allow-same-origin 是第三档的第一方特权，
-  // 其正当性完全依赖 W24/2 的来源判定；两条断言必须一起看。
+  // 其正当性完全依赖 W24/2 的来源判定（只有门户自己的同源页面）；两条断言必须一起看。
   assert.equal(
     sandboxGrantsScriptedSameOrigin(
       workspaceEmbedTrust.WORKSPACE_EMBED_SANDBOX,
@@ -834,56 +836,75 @@ test("W24/1 三处内嵌 frame 的沙箱字符串锁死在第一方档位", () =
   assert.equal(workspaceEmbedTrust.WORKSPACE_EMBED_PATH, "/workspace");
 });
 
-test("W24/2 来源判定：不可信 origin 一律拿不到 src，因而拿不到沙箱", () => {
-  // UC-3 §8.3：判定不得依据域名后缀，必须逐个 URL 证明是第一方 /workspace。
+test("W24/2 来源判定：只有同源 /workspace/<siteKey> 拿得到 src，绝对地址一律不行", () => {
+  // UC-3 §8.3：判定不得依据域名后缀，必须逐个 URL 证明是同源站点工作台。
   const { workspaceEmbedSrc, isTrustedWorkspaceEmbedUrl } = workspaceEmbedTrust;
   assert.equal(
-    workspaceEmbedSrc(
-      { med: "https://med.oceanleo.com" },
-      { agent_id: "a 1", site_id: "med", fn_id: "fn/1" },
-    ),
-    "https://med.oceanleo.com/workspace?embed=1&solo=1&fn=fn%2F1&agent=a%201",
+    workspaceEmbedSrc({ agent_id: "a 1", site_id: "med", fn_id: "fn/1" }),
+    "/workspace/med?embed=1&solo=1&fn=fn%2F1&agent=a+1",
   );
   assert.equal(
-    workspaceEmbedSrc(
-      { design: "https://design.oceanleo.com/" },
-      { agent_id: "a", site_id: "design" },
-    ),
-    "https://design.oceanleo.com/workspace?embed=1&solo=1&agent=a",
+    workspaceEmbedSrc({ agent_id: "a", site_id: "design" }),
+    "/workspace/design?embed=1&solo=1&agent=a",
   );
-  for (const origin of W24_TRUSTED_ORIGINS) {
-    const src = workspaceEmbedSrc({ s: origin }, { agent_id: "a", site_id: "s" });
-    assert.notEqual(src, "", origin);
-    assert.equal(isTrustedWorkspaceEmbedUrl(src), true, origin);
-  }
-  for (const origin of W24_UNTRUSTED_ORIGINS) {
+  // 历史站 key 的别名。
+  assert.equal(
+    workspaceEmbedSrc({ agent_id: "a", site_id: "money" }),
+    "/workspace/finance?embed=1&solo=1&agent=a",
+  );
+  for (const origin of [...W24_FORMER_SUBSITE_ORIGINS, ...W24_UNTRUSTED_ORIGINS]) {
     assert.equal(
-      workspaceEmbedSrc({ s: origin }, { agent_id: "a", site_id: "s" }),
-      "",
-      `${origin} 必须拿不到 src`,
+      isTrustedWorkspaceEmbedUrl(`${origin.replace(/\/+$/, "")}/workspace/med?embed=1&solo=1&agent=a`),
+      false,
+      `${origin} 必须拿不到沙箱`,
     );
     assert.equal(
-      isTrustedWorkspaceEmbedUrl(`${origin}/workspace?embed=1&solo=1&agent=a`),
+      isTrustedWorkspaceEmbedUrl(`${origin.replace(/\/+$/, "")}/workspace?embed=1&solo=1&agent=a`),
       false,
       origin,
     );
   }
-  // 绑定断言：任何被渲染出去的 src 都必须自己通过第一方判定。
-  for (const origin of [...W24_TRUSTED_ORIGINS, ...W24_UNTRUSTED_ORIGINS]) {
-    const src = workspaceEmbedSrc({ s: origin }, { agent_id: "a", site_id: "s" });
-    assert.equal(src === "" || isTrustedWorkspaceEmbedUrl(src), true, origin);
+  for (const value of [
+    "",
+    "/workspace",
+    "/workspace/",
+    "/workspace/med/poster",
+    "/workspace/MED",
+    "/workspace/../proxy",
+    "/workspace/%2e%2e/proxy",
+    "/workspace/med#x",
+    "/workspace/me d",
+    "/workspace\\med",
+    "/proxy",
+    "/workspace/oceanleo",
+    "/workspace/home",
+  ]) {
+    assert.equal(isTrustedWorkspaceEmbedUrl(value), false, JSON.stringify(value));
   }
-  // site_id 命中 Object.prototype 的继承属性时不得拼出相对地址（会落回宿主 origin）。
-  for (const siteId of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+  assert.equal(isTrustedWorkspaceEmbedUrl("/workspace/med"), true);
+  assert.equal(isTrustedWorkspaceEmbedUrl("/workspace/med?embed=1&solo=1&agent=a"), true);
+  // 绑定断言：任何被渲染出去的 src 都必须自己通过同源判定。
+  for (const siteId of ["med", "design", "money", "a/b", "../x", "https://evil.test", "MED", " ", "oceanleo", "home"]) {
+    const src = workspaceEmbedSrc({ agent_id: "a", site_id: siteId });
+    assert.equal(src === "" || isTrustedWorkspaceEmbedUrl(src), true, siteId);
+    assert.equal(src === "" || src.startsWith("/workspace/"), true, siteId);
+  }
+  // 主站自己 / 非法字符：不拼地址。
+  for (const siteId of ["__proto__", "oceanleo", "home", "a/b", "https://evil.test", ""]) {
+    assert.equal(workspaceEmbedSrc({ agent_id: "a", site_id: siteId }), "", siteId);
+  }
+  // site_id 命中 Object.prototype 的继承属性时不得经别名表取到原型上的值：
+  // 要么不拼，要么就是它自己（同源的一个不存在的站，门户给 404）。
+  for (const siteId of ["constructor", "toString", "hasOwnProperty", "valueOf"]) {
+    const src = workspaceEmbedSrc({ agent_id: "a", site_id: siteId });
     assert.equal(
-      workspaceEmbedSrc({}, { agent_id: "a", site_id: siteId }),
-      "",
+      src === "" || src === `/workspace/${siteId.toLowerCase()}?embed=1&solo=1&agent=a`,
+      true,
       siteId,
     );
   }
-  assert.equal(workspaceEmbedSrc({}, null), "");
-  assert.equal(workspaceEmbedSrc({}, { agent_id: "a" }), "");
-  assert.equal(workspaceEmbedSrc({ s: "" }, { agent_id: "a", site_id: "s" }), "");
+  assert.equal(workspaceEmbedSrc(null), "");
+  assert.equal(workspaceEmbedSrc({ agent_id: "a" }), "");
 });
 
 test("W24/3 三处渲染面：iframe、sandbox 与 src 表达式集合相等且互相绑定", () => {
@@ -918,9 +939,11 @@ test("W24/3 三处渲染面：iframe、sandbox 与 src 表达式集合相等且�
       `${name}: embedSrc 只允许一个赋值点`,
     );
     assert.ok(
-      text.includes("workspaceEmbedSrc(siteOrigin, active)"),
+      text.includes("workspaceEmbedSrc(active)"),
       `${name}: embedSrc 必须来自 workspaceEmbedSrc`,
     );
+    // 子站 origin 映射已经删除，不得回来。
+    assert.equal(/\bsiteOrigin\b/.test(text), false, `${name}: 不得再接受 siteOrigin 映射`);
     // 渲染面不得内联沙箱串，也不得出现 PDF 那种免沙箱豁免。
     assert.equal(
       /["'`][^"'`\n]*allow-same-origin/.test(text),
@@ -953,17 +976,18 @@ test("W24/3 三处渲染面：iframe、sandbox 与 src 表达式集合相等且�
     assert.equal(
       code.includes("embed=1"),
       false,
-      `${name}: 不得自行拼子站内嵌 URL`,
+      `${name}: 不得自行拼内嵌 URL`,
     );
   }
-  // 判定逻辑只存在于 Playground 的这一个区块里。
+  // 判定逻辑只存在于 Playground 的这一个区块里，且是同源判定，不是主机判定。
   assert.equal(
     (W24_PLAYGROUND.match(/isTrustedInteractiveViewerUrl\(/g) || []).length,
-    1,
-    "Playground.tsx: 第一方判定只允许区块内这一个调用点",
+    0,
+    "Playground.tsx: 内嵌来源不再按主机判定（没有子站主机）",
   );
-  assert.ok(W24_TRUST_REGION.includes("isTrustedInteractiveViewerUrl(value)"));
-  assert.ok(W24_TRUST_REGION.includes("Object.prototype.hasOwnProperty.call"));
+  assert.ok(W24_TRUST_REGION.includes("url.origin !== SAME_ORIGIN_PROBE"));
+  assert.ok(W24_TRUST_REGION.includes('raw.startsWith("//")'));
+  assert.ok(W24_TRUST_REGION.includes("siteWorkspaceKey(parts[2]) === parts[2]"));
   // 规则编号与架构文档链接必须留在区块里，防止后人当噪音删掉。
   assert.ok(W24_TRUST_REGION.includes("UC-3"));
   assert.ok(

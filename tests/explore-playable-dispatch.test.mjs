@@ -23,7 +23,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { normalizeArtifactProjection } from "../src/shell/artifact-contract.ts";
 import { isAdvancedEditableShelfItem } from "../src/shell/advanced-features.ts";
 import {
-  ARTIFACT_PLAY_ORIGIN,
   ARTIFACT_PLAY_ROUTE_PREFIX,
   EXPLORE_PLAYABLE_MAX_PAGES,
   EXPLORE_PLAYABLE_PAGE_LIMIT,
@@ -207,15 +206,16 @@ test("W9 落库的 play_href 优先，但先过 fail-closed 校验", () => {
     artifactPlayHref(gameItem({ meta: { playHref: "/play/artifact/abc" } })),
     "/play/artifact/abc",
   );
-  // 放行名单上的绝对 URL：跨站开玩要用它（探索页也跑在 website 等站上，
-  // 根相对路径在那些站会 404）。
+  // 旧数据里 game 子站上的绝对地址：播放页现在由门户提供（契约 §2.5），
+  // 折成同源路径，绝不再把用户导航去别的主机。
   assert.equal(
     artifactPlayHref(
-      gameItem({ meta: { play_href: `${ARTIFACT_PLAY_ORIGIN}/play/artifact/xyz` } }),
+      gameItem({ meta: { play_href: "https://game.oceanleo.com/play/artifact/xyz?revision=r9" } }),
     ),
-    `${ARTIFACT_PLAY_ORIGIN}/play/artifact/xyz`,
+    "/play/artifact/xyz?revision=r9",
   );
-  assert.equal(ARTIFACT_PLAY_ORIGIN, "https://game.oceanleo.com");
+  // 第一方主机上但不是 /play/… 的绝对地址不认，回落推导路由。
+  assert.equal(safeArtifactPlayHref("https://game.oceanleo.com/workspace"), "");
 });
 
 test("外来 play_href 是导航 sink：越权形状一律丢弃并回落到推导路由", () => {
@@ -274,15 +274,15 @@ test("openArtifactPlay 真的接管可玩条目，并且只接管可玩条目", 
   assert.equal(openArtifactPlay(gameItem({ id: "game-1" }), navigate), true);
   assert.deepEqual(seen, [`${ARTIFACT_PLAY_ROUTE_PREFIX}game-1?revision=r1`]);
 
-  // W9 落库的绝对落点同样由它接管。
+  // W9 落库的旧绝对落点同样由它接管，并落到同源路径。
   assert.equal(
     openArtifactPlay(
-      gameItem({ id: "game-2", meta: { play_href: `${ARTIFACT_PLAY_ORIGIN}/play/artifact/g2` } }),
+      gameItem({ id: "game-2", meta: { play_href: "https://game.oceanleo.com/play/artifact/g2" } }),
       navigate,
     ),
     true,
   );
-  assert.equal(seen.at(-1), `${ARTIFACT_PLAY_ORIGIN}/play/artifact/g2`);
+  assert.equal(seen.at(-1), "/play/artifact/g2");
 
   // 素材**不**接管：返回 false，调用方照旧走编辑器派发，一步都没跳。
   const before = seen.length;

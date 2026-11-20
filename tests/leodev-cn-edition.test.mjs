@@ -82,7 +82,7 @@ test("UC-7 + UC-3: default env: production .com / LeoDev host behaviour is uncha
       family: family.currentDomainFamily(),
       gateway: family.currentDomainProfile().gatewayOrigin,
       portal: family.currentDomainProfile().portalOrigin,
-      website: family.currentFamilySubsiteOrigin("website"),
+      subsiteHelper: typeof family.currentFamilySubsiteOrigin,
       hostFamily: family.familyForHost(host),
       cookieDomain: config.cookieDomainFor(host) ?? null,
       help: help.helpCenterUrl({ host }),
@@ -100,7 +100,7 @@ test("UC-7 + UC-3: default env: production .com / LeoDev host behaviour is uncha
   assert.equal(clean.family, "com");
   assert.equal(clean.gateway, "https://api.oceanleo.com");
   assert.equal(clean.portal, "https://oceanleo.com");
-  assert.equal(clean.website, "https://website.oceanleo.com");
+  assert.equal(clean.subsiteHelper, "undefined");
   assert.equal(clean.hostFamily, "com");
   assert.equal(clean.cookieDomain, ".oceanleo.com");
   assert.equal(clean.help, "https://help.oceanleo.com/");
@@ -134,10 +134,7 @@ test("cn slot env: help, gateway overlay, host-only cookie, .cn subsites, LeoDev
       help: help.helpCenterUrl({ host, path: "/chat" }),
       cookieDomain: config.cookieDomainFor(host) ?? null,
       cookieHasDomain: "domain" in config.cookieOptions(host),
-      website: family.currentFamilySubsiteOrigin("website"),
-      excelMissing: family.currentFamilySubsiteOrigin("excel"),
-      ecom: family.currentFamilySubsiteOrigin("e-commerce"),
-      aitools: family.currentFamilySubsiteOrigin("aitools") ?? null,
+      subsiteHelper: typeof family.currentFamilySubsiteOrigin,
       leoDevFirstParty: family.isCurrentFamilyFirstPartyHost(host),
       leoDevOfCn: family.isFirstPartyHostOf(host, "cn"),
       websiteCom: family.isCurrentFamilyFirstPartyHost("website.oceanleo.com"),
@@ -162,10 +159,8 @@ test("cn slot env: help, gateway overlay, host-only cookie, .cn subsites, LeoDev
   assert.equal(got.help, "https://help.oceanleo.cn/chat");
   assert.equal(got.cookieDomain, null);
   assert.equal(got.cookieHasDomain, false);
-  assert.equal(got.website, "https://website.oceanleo.cn");
-  assert.equal(got.excelMissing, "https://excel.oceanleo.cn");
-  assert.equal(got.ecom, "https://e-commerce.oceanleo.cn");
-  assert.equal(got.aitools, null);
+  // 2026-11-21：没有子站主机（站点工作台在门户 /workspace/<siteKey>）。
+  assert.equal(got.subsiteHelper, "undefined");
   assert.equal(got.leoDevFirstParty, true);
   assert.equal(got.leoDevOfCn, true);
   assert.equal(got.websiteCom, false);

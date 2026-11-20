@@ -88,14 +88,14 @@ test("LeoDev 槽：bayHrefOnSite 的 host 等于当前槽，不指向正式站",
   }
 });
 
-test("正式宿主 design.oceanleo.com：仍可指向家族子站", async () => {
+test("正式宿主（含旧子站主机）：一律落到家族门户的 /bay，不再指向子站", async () => {
   const restore = installLocation(DESIGN_HOST, DESIGN_ORIGIN);
   try {
     const state = await loadState();
     const href = state.bayHrefOnSite("ppt", { kind: "demand", id: "d9" });
-    assert.equal(href, "https://slide.oceanleo.com/bay?bay=demand:d9");
-    assert.equal(hrefHost(href), "slide.oceanleo.com");
-    assert.equal(state.bayHrefOnSite("video", { kind: "order", id: "o1" }), "https://video.oceanleo.com/bay?bay=order:o1");
+    assert.equal(href, "https://oceanleo.com/bay?bay=demand:d9");
+    assert.equal(hrefHost(href), "oceanleo.com");
+    assert.equal(state.bayHrefOnSite("video", { kind: "order", id: "o1" }), "https://oceanleo.com/bay?bay=order:o1");
   } finally {
     restore();
   }

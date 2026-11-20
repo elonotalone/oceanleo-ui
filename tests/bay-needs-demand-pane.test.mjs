@@ -266,7 +266,8 @@ test("访客：标题、预算、发布者、附带作品的只读预览、报�
   assert.ok(work);
   assert.match(work.textContent, /旧稿/);
   const preview = work.querySelector("a");
-  assert.equal(preview.getAttribute("href"), "https://slide.oceanleo.test/history?task=t1&view=readonly");
+  // 没有子站主机：作品预览在门户上打开。
+  assert.equal(preview.getAttribute("href"), "https://oceanleo.test/history?task=t1&view=readonly");
   assert.equal(preview.getAttribute("target"), "_blank");
   assert.match(preview.getAttribute("rel"), /noopener/);
   assert.ok(view.host.querySelector('[data-bay-action="propose"]'));

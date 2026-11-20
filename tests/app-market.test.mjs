@@ -367,23 +367,41 @@ test("安装失败回滚成未装并给人话", async () => {
   });
 });
 
-test("卡片打开 site_url + open_path；空 open_path 落到 /workspace/<app_key>", async () => {
-  assert.equal(
-    appMarketOpenUrl(APPS[0]),
-    "https://resume.oceanleo.com/workspace?app=resume",
-  );
-  assert.equal(
-    appMarketOpenUrl(APPS[2]),
-    "https://word.oceanleo.com/workspace/minutes",
-  );
+test("卡片打开同源 /workspace/<site_id>/<app_key>；site_url 不再参与（契约 §2.5）", async () => {
+  // 旧数据的 open_path 写给子站根（/workspace?app=…），不能原样用在主站上。
+  assert.equal(appMarketOpenUrl(APPS[0]), "/workspace/resume/resume");
+  assert.equal(appMarketOpenUrl(APPS[2]), "/workspace/word/minutes");
   assert.equal(
     marketAppOpenUrl({
+      site_id: "image",
       site_url: "https://image.oceanleo.com",
       open_path: "",
       app_key: "poster",
     }),
-    "https://image.oceanleo.com/workspace/poster",
+    "/workspace/image/poster",
   );
+  // 已经是该站工作台下的同源路径 → 原样采用（保留 query）。
+  assert.equal(
+    marketAppOpenUrl({ site_id: "image", open_path: "/workspace/image/poster?fill=preset", app_key: "poster" }),
+    "/workspace/image/poster?fill=preset",
+  );
+  // 别人的站、协议相对、绝对地址都不采用。
+  assert.equal(
+    marketAppOpenUrl({ site_id: "image", open_path: "/workspace/video/x", app_key: "poster" }),
+    "/workspace/image/poster",
+  );
+  assert.equal(
+    marketAppOpenUrl({ site_id: "image", open_path: "//evil.test/workspace/image", app_key: "poster" }),
+    "/workspace/image/poster",
+  );
+  assert.equal(
+    marketAppOpenUrl({ site_id: "image", open_path: "https://evil.test/workspace/image/x", app_key: "poster" }),
+    "/workspace/image/poster",
+  );
+  // 历史站 key 别名；认不出站 key → 不给链接。
+  assert.equal(marketAppOpenUrl({ site_id: "money", open_path: "", app_key: "budget" }), "/workspace/finance/budget");
+  assert.equal(marketAppOpenUrl({ site_id: "", open_path: "", app_key: "poster" }), "");
+  assert.equal(marketAppOpenUrl({ site_id: "oceanleo", open_path: "", app_key: "poster" }), "");
 
   await withDom(async ({ window, container, render, click }) => {
     const opened = [];
@@ -394,11 +412,8 @@ test("卡片打开 site_url + open_path；空 open_path 落到 /workspace/<app_k
         '[data-market-app="resume-maker"] [data-market-app-open]',
       ),
     );
-    assert.deepEqual(opened[0], [
-      "https://resume.oceanleo.com/workspace?app=resume",
-      "_blank",
-      "noopener,noreferrer",
-    ]);
+    // 同站：同一标签页内导航（jsdom 不实现跨路径导航），绝不新开标签页。
+    assert.equal(opened.length, 0);
   });
 });
 

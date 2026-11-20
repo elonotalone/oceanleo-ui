@@ -310,12 +310,12 @@ test("买家交付后能验收和要求修改；卖家看不到这两项，能�
   await seller.unmount();
 });
 
-test("作品链接：ppt 去 slide 子域，只认 https，带 rel=noopener noreferrer", async () => {
+test("作品链接：在门户上打开（没有子站主机），带 rel=noopener noreferrer", async () => {
   reset();
   const view = await mount(React.createElement(OrderPane, paneProps()));
   const link = view.q("[data-bay-work-link]");
   assert.ok(link);
-  assert.equal(link.getAttribute("href"), "https://slide.oceanleo.com/editor?task=w1");
+  assert.equal(link.getAttribute("href"), "https://oceanleo.com/editor?task=w1");
   assert.equal(link.getAttribute("rel"), "noopener noreferrer");
   assert.equal(link.getAttribute("target"), "_blank");
   assert.match(link.textContent, /打开/);

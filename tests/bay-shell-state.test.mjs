@@ -182,19 +182,14 @@ test("/bay 路径识别", () => {
   assert.equal(links.isBayPath(""), false);
 });
 
-test("跨站地址：子站按子域标签拼，门户与未知站落到门户", () => {
-  const origins = {
-    portalOrigin: "https://oceanleo.com",
-    subsiteOrigin: (label) => `https://${label}.oceanleo.com`,
-  };
-  assert.equal(links.bayHrefWith("video", { kind: "demand", id: "d1" }, origins), "https://video.oceanleo.com/bay?bay=demand:d1");
-  assert.equal(links.bayHrefWith("ppt", { kind: "order", id: "o1" }, origins), "https://slide.oceanleo.com/bay?bay=order:o1");
-  assert.equal(links.bayHrefWith("threed", { kind: "feed" }, origins), "https://3d.oceanleo.com/bay?bay=feed");
-  assert.equal(links.bayHrefWith("ecommerce", { kind: "call-human" }, origins), "https://e-commerce.oceanleo.com/bay?bay=call-human");
+test("跨站地址：Bay 只在门户上，站 key 不再改变地址；LeoDev 槽停在当前 origin", () => {
+  const origins = { portalOrigin: "https://oceanleo.com" };
+  assert.equal(links.bayHrefWith("video", { kind: "demand", id: "d1" }, origins), "https://oceanleo.com/bay?bay=demand:d1");
+  assert.equal(links.bayHrefWith("ppt", { kind: "order", id: "o1" }, origins), "https://oceanleo.com/bay?bay=order:o1");
+  assert.equal(links.bayHrefWith("threed", { kind: "feed" }, origins), "https://oceanleo.com/bay?bay=feed");
   assert.equal(links.bayHrefWith("oceanleo", { kind: "service", id: "s1" }, origins), "https://oceanleo.com/bay?bay=service:s1");
   assert.equal(links.bayHrefWith("Bad Key!", { kind: "feed" }, origins), "https://oceanleo.com/bay?bay=feed");
-  const noSubsites = { portalOrigin: "https://oceanbizs.com", subsiteOrigin: () => undefined };
-  assert.equal(links.bayHrefWith("video", { kind: "feed" }, noSubsites), "https://oceanbizs.com/bay?bay=feed");
+  assert.equal(links.bayHrefWith("video", { kind: "feed" }, { portalOrigin: "https://oceanbizs.com/" }), "https://oceanbizs.com/bay?bay=feed");
   const slot = "https://p-9eb457fcce0b00b75abc9133119f56f8.dev.oceanleo.com";
   const stay = { ...origins, stayOnOrigin: slot };
   assert.equal(links.bayHrefWith("ppt", { kind: "demand", id: "d1" }, stay), `${slot}/bay?bay=demand:d1`);
@@ -209,7 +204,8 @@ test("境内与海外未登录都能逛 Bay", async () => {
   assert.equal(com.bayEnabledHere(), true);
   const unknown = await loadState("unknown");
   assert.equal(unknown.bayEnabledHere(), false);
-  assert.equal(com.bayHrefOnSite("ppt", { kind: "demand", id: "d9" }), "https://slide.oceanleo.com/bay?bay=demand:d9");
+  // 没有子站主机：任何站的 Bay 深链都落到家族门户。
+  assert.equal(com.bayHrefOnSite("ppt", { kind: "demand", id: "d9" }), "https://oceanleo.com/bay?bay=demand:d9");
 });
 
 test("CN SSR still starts with Bay disabled to keep hydration stable", async () => {
