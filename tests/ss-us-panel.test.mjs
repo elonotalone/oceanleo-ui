@@ -149,6 +149,24 @@ test("open-task-panel without a task id opens a draft: in the host's project, or
   });
 });
 
+// VU (integration): a forward to the task / draft already in the panel is taken by that mounted AgentChat on the event
+// itself (takePendingForward), so the view must not remount (new key) or the chip would be lost.
+test("open-task-panel for the task or draft already shown keeps the same view mounted (same key)", async () => {
+  await withHarness({}, async (api) => {
+    await api.request(TASK_EVENT, { taskId: "task-1", title: "Draft the plan" });
+    const key = api.entry.key;
+    await api.request(TASK_EVENT, { taskId: "task-1", title: "Draft the plan" });
+    assert.equal(api.entry.key, key, "same task: same view");
+    await api.request(TASK_EVENT, { taskId: "task-2", title: "Check" });
+    assert.notEqual(api.entry.key, key, "another task: a new view");
+    await api.request(TASK_EVENT, {});
+    const draftKey = api.entry.key;
+    await api.request(TASK_EVENT, {});
+    assert.equal(api.entry.kind, "draft");
+    assert.equal(api.entry.key, draftKey, "draft while a draft is open: same view");
+  });
+});
+
 test("open-quote-panel shows the quote view with that message; bad details are ignored", async () => {
   await withHarness({}, async (api) => {
     await api.request(QUOTE_EVENT, { message: { id: "m", card: { type: "task", child_id: "t" } } });

@@ -246,7 +246,13 @@ export function useWorkspaceViewState(
 
   const show = useCallback((request: PanelRequest, from: TaskOpenOrigin) => {
     if (!taskOn) return;
-    const key = ++panelKey.current;
+    // The same task (or a draft while a draft is open) keeps its view mounted: a forward to the task already shown
+    // is taken by that AgentChat on this very event, and a remount would drop the chip and the typed prompt.
+    const current = taskPanelRef.current;
+    const same = current !== null && (
+      (request.kind === "task" && current.kind === "task" && current.id === request.id) ||
+      (request.kind === "draft" && current.kind === "draft"));
+    const key = same ? current.key : ++panelKey.current;
     const next: WorkspaceTaskPanelEntry = request.kind === "task"
       ? { kind: "task", key, id: request.id, title: request.title }
       : request.kind === "quote"

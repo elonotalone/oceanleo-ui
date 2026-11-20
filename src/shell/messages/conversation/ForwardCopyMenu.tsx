@@ -8,7 +8,6 @@
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { SS_UC_COPY as copy } from "../../../i18n/ui/messages/ss-uc-copy";
-import { BackButton } from "../../../ui/BackButton";
 import { FloatingMenuItem, FloatingMenuLabel, FloatingMenuSeparator } from "../../../ui/menu/FloatingMenu";
 import { AccessPopover } from "../../access/AccessPopover";
 import { ForwardPicker } from "../../forward";
@@ -132,11 +131,7 @@ export function ForwardCopyMenu(props: ForwardCopyMenuProps) {
           </div>
         ) : (
           <div data-forward-copy-page="forward">
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="shrink-0"><BackButton label={tt("返回")} onClick={() => onPage("actions")} /></div>
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{tt("转发")}</span>
-            </div>
-            <FloatingMenuSeparator />
+            {/* The picker's own first row is Back (→ `onCancel`); a second back row here would duplicate it. */}
             <ForwardPicker
               source={{ conversationId, title }}
               messageIds={messageIds}
