@@ -1,16 +1,22 @@
 import type { AcpView, AvailableCommand } from "../../acp/types";
-import type { PendingSend } from "./pending-send";
 import { request } from "../../lib/acp-frames-api";
 
-/** A receipt may beat the socket; don't start another prompt until its turn is visible. */
-export function nextHeldMessage(
-  entries: readonly PendingSend[], view: Pick<AcpView, "open" | "exited">,
-  ready: boolean, receiptVisible: (entry: PendingSend) => boolean,
-): PendingSend | null {
-  if (!ready || view.open || view.exited) return null;
-  const pending = entries.filter((entry) => !receiptVisible(entry));
-  if (pending.some((entry) => ["sending", "retrying", "accepted", "queued", "failed"].includes(entry.status))) return null;
-  return pending.find((entry) => entry.status === "held") ?? null;
+/**
+ * The page believes a turn is open while the gateway's task state (computed from the stored frames) says idle: the
+ * page missed rows and must read them again. `waiting_user` agrees with an open turn; without a snapshot nothing is decided.
+ */
+export function pageBehindGateway(activity: { activity_state?: string } | null | undefined, view: Pick<AcpView, "open">): boolean {
+  return Boolean(view.open && activity?.activity_state === "idle");
+}
+
+/**
+ * After a Stop and a catch-up the gateway still says idle while the page shows these turns open: nothing is running,
+ * so the page closes exactly these turns (open at the Stop). No stop reason is invented for them.
+ */
+export function endTurns<V extends Pick<AcpView, "turns" | "open">>(view: V, rowIds: readonly number[]): V {
+  if (!rowIds.length || !view.turns.some((turn) => turn.open && rowIds.includes(turn.rowId))) return view;
+  const turns = view.turns.map((turn) => turn.open && rowIds.includes(turn.rowId) ? { ...turn, open: false, queued: false } : turn);
+  return { ...view, turns, open: turns.some((turn) => turn.open) };
 }
 
 export function sessionCanFork(capabilities: Record<string, unknown>): boolean {

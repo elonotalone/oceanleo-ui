@@ -56,17 +56,15 @@ export function PendingSendBubble({
   pending,
   errorText,
   onRetry,
-  onStopAndSend,
   onOpenAttachment,
 }: {
   pending: PendingSend;
   errorText: string;
   onRetry?: () => void;
-  onStopAndSend?: () => void;
   onOpenAttachment?: (attachment: AgentAttachment) => void | Promise<boolean>;
 }) {
   const tt = useUI();
-  const statusText = pending.status === "held" ? tt("已排队") : pending.status === "sending" ? tt("发送中")
+  const statusText = pending.status === "sending" ? tt("发送中")
     : pending.status === "retrying" ? tt("正在重试")
     : pending.status === "queued" ? tt("已排队") : pending.status === "failed" ? tt("没有发出") : "";
   const detail = (errorText === PENDING_STORAGE_ERROR || errorText === ACP_REQUEST_TIMEOUT_ERROR) ? tt(errorText) : errorText;
@@ -76,10 +74,6 @@ export function PendingSendBubble({
       {(statusText || errorText) && <div className={`flex items-center justify-end gap-2 px-1 text-[12px] ${pending.status === "failed" ? "text-rose-500" : "text-stone-400"}`}>
         {statusText && <span data-acp-pending-state="">{statusText}</span>}
         {detail && <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" role="alert" data-acp-pending-error="">{detail}</span>}
-        {pending.status === "held" && onStopAndSend && <button type="button" onClick={onStopAndSend}
-          className="rounded-lg px-2 py-0.5 text-stone-600 hover:bg-stone-100" data-acp-stop-and-send="">
-          {tt("停止这一轮并发送")}
-        </button>}
         {pending.status === "failed" && onRetry && (
           <button
             type="button"

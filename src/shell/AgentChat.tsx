@@ -72,7 +72,7 @@ import type { ExecutionTarget } from "../lib/execution-target";
 // Computer tasks (thin-gateway 2026-11-07): one stream per task, the raw ACP rows the
 // gateway stored (`AcpTranscript`) in this same stream frame and LeoComposer;
 // CLI/terminal show the host-styled surface with the same dock below.
-import { AcpBackgroundTaskStrip, AcpTranscript, acpShareItems, reduceRows } from "../acp";
+import { AcpBackgroundTaskStrip, AcpTranscript, acpShareItems, reduceRows, resendable } from "../acp";
 import {
   acpErrorText,
   answer as answerAcp,
@@ -85,10 +85,9 @@ import {
 import { changedChoices, forgetPending, putPending, retryPending, settlePending, useAcpCatalogPicker, useAcpFrames, usePending, useTaskPending } from "./acp-task";
 import { McpAppConversationProvider } from "./mcp-apps/TranscriptApp";
 import { PendingSendBubble, pendingAttachmentTiles, pendingConversation } from "./acp-task/PendingSendBubble";
-import { holdPending } from "./acp-task/pending-send";
 import { useAcpSessionControls } from "./acp-task/useAcpSessionControls";
 import { AcpSessionControls } from "./acp-task/AcpSessionControls";
-import { forkConversation, nextHeldMessage, sessionCanFork } from "./acp-task/acp-conversation";
+import { endTurns, forkConversation, pageBehindGateway, sessionCanFork } from "./acp-task/acp-conversation";
 import { useTaskActivity, withTaskActivity } from "./acp-task/useTaskActivity";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
 import { ConversationBar } from "./cloud-computer/ConversationBar";
@@ -1498,9 +1497,25 @@ function AgentChatInner({
   const reducedAcpView = useMemo(() => reduceRows(frames.rows, acpRowsProgram), [frames.rows, acpRowsProgram]);
   // The gateway's background projection (W17): a task whose session ended is never shown as running.
   const taskActivity = useTaskActivity(computerTask && taskId ? taskId : null, 10_000);
-  const acpView = useMemo(() => withTaskActivity(reducedAcpView, taskActivity.activity), [reducedAcpView, taskActivity.activity]);
+  // Turns a Stop found already finished on the gateway (see `settleAfterStop`); only for this task.
+  const [acpEnded, setAcpEnded] = useState<{ taskId: string; rowIds: number[] } | null>(null);
+  const acpEndedRows = acpEnded && acpEnded.taskId === taskId ? acpEnded.rowIds : null;
+  const acpView = useMemo(() => {
+    const view = withTaskActivity(reducedAcpView, taskActivity.activity);
+    return acpEndedRows ? endTurns(view, acpEndedRows) : view;
+  }, [reducedAcpView, taskActivity.activity, acpEndedRows]);
   const acpViewRef = useRef(acpView);
   useLayoutEffect(() => { acpViewRef.current = acpView; }, [acpView]);
+  // The gateway's task state is computed from the stored frames. It says idle while this page still shows a turn
+  // open: the page missed rows (a dropped connection, 2026-11-20). Read them again, once per snapshot.
+  const caughtUpForRef = useRef<object | null>(null);
+  const catchUpFrames = frames.catchUp;
+  useEffect(() => {
+    const activity = taskActivity.activity;
+    if (!activity || activity.task_id !== taskId || caughtUpForRef.current === activity || !pageBehindGateway(activity, acpView)) return;
+    caughtUpForRef.current = activity;
+    void catchUpFrames().catch(() => undefined);
+  }, [taskActivity.activity, acpView, taskId, catchUpFrames]);
   const acpComposerDisabled = readOnly;
   const acpPicker = useAcpCatalogPicker({
     computerId: acpComputerId,
@@ -2156,10 +2171,8 @@ function AgentChatInner({
       entry.rowId === null && entry.clientMessageId === clientMessageId && acpMessageKey(entry.text, entry.attachments) === key,
     );
     if (retryingTaskPending) retryPending(retryingTaskPending.id);
-    const held = Boolean(retry?.taskId || taskId) && (acpViewRef.current.open || !retry && acpPendingSends.some((entry) => entry.status === "held" || entry.status === "accepted" && !acpPromptRowVisible(entry, frames.rows)));
     const optimisticId = reuseHomePending && pendingShown ? pendingShown.id : retryingTaskPending?.id ?? putPending({
       clientMessageId,
-      held,
       computerId: acpComputerId || "",
       program: acpProgram || "",
       text,
@@ -2176,8 +2189,6 @@ function AgentChatInner({
       atts.clear();
     }
     void acpScroll.resumeFollowing();
-    if (held) { holdPending(optimisticId); acpMessageIdRef.current = null; return; }
-    if (retry?.status === "held") retryPending(retry.id);
     setAcpBusy(true);
     setAcpError(null);
     let id = retry?.taskId || taskId || "";
@@ -2247,40 +2258,89 @@ function AgentChatInner({
     void sendAcpMessage(entry);
   }, [pending, acpPendingSends, readOnly, acpBusy, pendingInFlight, acpComposerDisabled]);
 
+  // A Stop while the page shows a turn the agent already finished (the page missed its end): read the stored rows
+  // again; when the gateway then still says idle, nothing is running and the turns open at the Stop end on the page.
+  const refreshActivity = taskActivity.refresh;
+  const settleAfterStop = useCallback(async (id: string, rowIds: number[]) => {
+    if (!rowIds.length) return;
+    await catchUpFrames().catch(() => undefined);
+    const activity = await refreshActivity();
+    if (activity?.activity_state !== "idle" || activity.task_id !== id) return;
+    const still = acpViewRef.current.turns.filter((turn) => turn.open && rowIds.includes(turn.rowId)).map((turn) => turn.rowId);
+    if (still.length) setAcpEnded((current) => ({ taskId: id, rowIds: [...(current?.taskId === id ? current.rowIds : []), ...still] }));
+  }, [catchUpFrames, refreshActivity]);
+
   /** Stop = `session/cancel` (the agent stays); its answer to the prompt ends the turn on the page. */
   const stopAcpTurn = useCallback(async () => {
     if (!taskId || readOnly) return false;
+    const open = acpViewRef.current.turns.filter((turn) => turn.open).map((turn) => turn.rowId);
     setAcpStopping(true);
     setAcpError(null);
-    try { await stopAcp(taskId); return true; }
+    try {
+      await stopAcp(taskId);
+      void settleAfterStop(taskId, open);
+      return true;
+    }
     catch (caught) { setAcpError({ taskId, text: acpErrorText(caught) }); return false; }
     finally { setAcpStopping(false); }
-  }, [readOnly, taskId]);
-  // Held prompts have never reached the adapter. Cancel only the active turn,
-  // then wait for its standard stopReason before allowing the outbox to drain.
-  const [acpCancelWait, setAcpCancelWait] = useState<{ taskId: string; rowIds: number[] } | null>(null);
-  const stopAndSendAcp = useCallback(() => {
-    const open = acpViewRef.current.turns.filter((turn) => turn.open);
-    if (!taskId || !open.length || acpCancelWait) return;
-    setAcpCancelWait({ taskId, rowIds: open.map((turn) => turn.rowId) });
-    void stopAcpTurn().then((stopped) => {
-      if (!stopped) setAcpCancelWait(null);
-    });
-  }, [stopAcpTurn, taskId, acpCancelWait]);
+  }, [readOnly, taskId, settleAfterStop]);
+  // 「停止这一轮并发送」 under a queued prompt: Stop, and once the stop has ended every turn, the prompts that were
+  // queued go again as new prompts, in order. An adapter that ends every queued prompt `cancelled` on a cancel
+  // without running it gets them again; a program that runs them after the cancel starts their turns, and nothing
+  // is sent.
+  const [acpResend, setAcpResend] = useState<{ taskId: string; rowIds: number[] } | null>(null);
+  const stopAndSendAcp = useCallback((rowId: number) => {
+    const queued = acpViewRef.current.turns.filter((turn) => turn.open && turn.queued);
+    if (!taskId || !queued.some((turn) => turn.rowId === rowId)) return;
+    setAcpResend({ taskId, rowIds: queued.map((turn) => turn.rowId) });
+    void stopAcpTurn().then((stopped) => { if (!stopped) setAcpResend(null); });
+  }, [stopAcpTurn, taskId]);
   useEffect(() => {
-    if (!acpCancelWait) return;
-    if (acpCancelWait.taskId !== taskId) { setAcpCancelWait(null); return; }
-    const turns = acpView.turns.filter((turn) => acpCancelWait.rowIds.includes(turn.rowId));
-    if (turns.length === acpCancelWait.rowIds.length && turns.every((turn) => !turn.open && turn.stopReason)) {
-      setAcpCancelWait(null);
-    }
-  }, [acpCancelWait, acpView.turns, taskId]);
-  useEffect(() => {
-    const entry = nextHeldMessage(acpPendingSends, acpView,
-      Boolean(taskId && acpConnected && !readOnly && !acpBusy && !acpStopping && !acpCancelWait && !pendingInFlight),
-      (item) => acpPromptRowVisible(item, frames.rows));
-    if (entry) void sendAcpMessage(entry);
-  }, [acpPendingSends, acpView, taskId, acpConnected, readOnly, acpBusy, acpStopping, acpCancelWait, pendingInFlight, frames.rows]);
+    if (!acpResend) return;
+    const queued = acpView.turns.filter((turn) => acpResend.rowIds.includes(turn.rowId));
+    // Another task, or the socket went down: the click does not carry over (nothing is sent later on its own).
+    if (acpResend.taskId !== taskId || !acpConnected || queued.length !== acpResend.rowIds.length) { setAcpResend(null); return; }
+    const ran = queued.some((turn) => !turn.queued);
+    if (!ran && acpView.open) return;
+    setAcpResend(null);
+    if (ran) return;
+    const again = queued.filter((turn) => turn.stopReason === "cancelled" && resendable(turn));
+    if (!again.length) return;
+    const id = acpResend.taskId;
+    setAcpBusy(true);
+    void (async () => {
+      let optimisticId = "";
+      try {
+        for (const turn of again) {
+          const clientMessageId = crypto.randomUUID();
+          optimisticId = putPending({
+            clientMessageId,
+            computerId: acpComputerId || "",
+            program: acpProgram || "",
+            text: turn.text,
+            attachments: [],
+            choice: {},
+            taskId: id,
+            afterRowId: acpView.turns.reduce((max, item) => Math.max(max, item.rowId), 0),
+          });
+          setAcpPendingIds((current) => [...current, optimisticId]);
+          const result = await sendAcp(id, {
+            client_message_id: clientMessageId,
+            program: acpProgram || undefined,
+            computer_id: acpComputerId || undefined,
+            text: turn.text,
+          });
+          settlePending(optimisticId, {
+            taskId: id,
+            rowId: typeof result?.row_id === "number" ? result.row_id : null,
+            queued: acpQueuedValue(result),
+          });
+        }
+      }
+      catch (caught) { if (optimisticId) settlePending(optimisticId, { error: caught }); }
+      finally { setAcpBusy(false); }
+    })();
+  }, [acpComputerId, acpConnected, acpProgram, acpResend, acpView, taskId]);
   const forkAcpSession = useCallback(async () => {
     if (!taskId || !canManageTask || !sessionCanFork(acpControls.capabilities)) return;
     try {
@@ -3462,6 +3522,7 @@ function AgentChatInner({
         onAnswer={acpConnected && !readOnly ? answerAcpRequest : undefined}
         onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined}
         highlightQuery={highlightQuery || undefined}
+        onStopAndSend={acpConnected && !readOnly && !acpStopping && !acpResend ? stopAndSendAcp : undefined}
         onOpenAttachment={openTaskAttachment}
         select={acpTranscriptSelect}
       />
@@ -3470,7 +3531,6 @@ function AgentChatInner({
           key={entry.id}
           pending={entry}
           errorText={entry.error != null && !refusedByAgent(entry.error) ? sendFailureText(entry.error, tt) : ""}
-          onStopAndSend={entry.status === "held" && acpView.open && acpConnected && !readOnly && !acpStopping && !acpCancelWait ? stopAndSendAcp : undefined}
           onRetry={() => void sendAcpMessage(entry)}
           onOpenAttachment={openTaskAttachment}
         />

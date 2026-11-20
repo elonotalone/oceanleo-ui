@@ -194,14 +194,16 @@ test("storage refusal leaves the text and makes no request", async () => {
 });
 
 
-test("locally held messages restore as held, retaining order, attachments and choices", async () => {
-  const one = pending({ held: true, text: "first", attachments: [{ name: "a.txt", artifact_id: "a", url: "signed" }] });
-  const two = pending({ held: true, text: "second" });
-  assert.equal(readPending(one.id).status, "held");
-  assert.equal(readPending(two.id).status, "held");
+test("a message the 2026-11-19 page kept locally as held restores as sending and goes out, keeping attachments and choices", async () => {
+  const one = pending({ text: "first", attachments: [{ name: "a.txt", artifact_id: "a", url: "signed" }] });
+  const two = pending({ text: "second" });
+  // What that page wrote to disk for a message it held while a turn was open.
+  for (const key of keys()) storage.setItem(key, JSON.stringify({ ...JSON.parse(storage.getItem(key)), status: "held", held: true }));
   const fresh = await import(new URL("../src/shell/acp-task/pending-send.ts?held=" + crypto.randomUUID(), import.meta.url));
-  assert.equal(fresh.readPending(one.id).status, "held");
-  assert.equal(fresh.readPending(two.id).status, "held");
+  for (const entry of [one, two]) {
+    assert.equal(fresh.readPending(entry.id).status, "sending", "no local hold any more: it is sent on restore");
+    assert.equal(fresh.readPending(entry.id).restored, true);
+  }
   assert.equal(fresh.readPending(one.id).attachments[0].artifact_id, "a");
   assert.equal(fresh.readPending(one.id).attachments[0].url, "");
   assert.deepEqual(fresh.readPending(one.id).choice, { model: "opus" });

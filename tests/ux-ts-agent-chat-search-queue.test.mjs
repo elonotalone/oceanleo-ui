@@ -6,7 +6,7 @@ import { act } from "react";
 // client, fake fetch / WebSocket): the header search counts hits in a computer task's rows, and 「停止这一轮并发送」
 // under a queued prompt stops the turn and sends that prompt again once the stop ended it unread.
 await import("./agent-chat-conversations.test.mjs");
-const { mount, settle, session, computerTask, connect, deliver, posts, socket, type, submit } = globalThis.__agentChatHarness;
+const { mount, settle, session, computerTask, connect, deliver, posts, socket } = globalThis.__agentChatHarness;
 
 const sessions = [session("cts_claude", "acp", "claude")];
 // Rows as the gateway stores them; ids above the harness's own so each test's order is the commit order.
@@ -60,80 +60,74 @@ test("search on a computer task counts the hits in its rows and counts again whe
   } finally { await view.unmount(); }
 });
 
-async function hold(view, text) {
-  await type(view, "acp", text);
-  await submit(view, "acp");
-}
-
-test("「停止这一轮并发送」 waits for every running turn to stop before sending the local prompt", async () => {
+test("「停止这一轮并发送」: Stop now, the queued text goes again only after the stop ended every turn", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions });
   try {
     await connect();
-    await deliver(prompt(1, "一直做下去"), chunk("在做"), prompt(2, "另一个已在运行的请求"));
-    await hold(view, "先回答这个问题");
-    const line = pane(view).querySelector('[data-acp-pending-status="held"]');
-    assert.ok(line, "the queued prompt stays in the client outbox");
-    assert.equal(posts("/send").length, 0);
+    await deliver(prompt(1, "一直做下去"), chunk("在做"), prompt(2, "先回答这个问题"));
+    const line = pane(view).querySelector("[data-acp-queued]");
+    assert.ok(line.textContent.includes("排队中：这一轮做完后它会看到"));
     await click(line.querySelector("[data-acp-stop-and-send]"));
-    assert.equal(posts("/stop").length, 1);
-    assert.equal(pane(view).querySelector("[data-acp-stop-and-send]"), null);
+    assert.equal(posts("/stop").length, 1, "Stop went out");
+    assert.equal(posts("/send").length, 0, "nothing sent while the turns are open");
+    assert.equal(pane(view).querySelector("[data-acp-stop-and-send]"), null, "one click: the button is gone");
     await deliver(cancel(), answered(2, "cancelled"));
-    assert.equal(posts("/send").length, 0, "the first running turn is still open");
+    assert.equal(posts("/send").length, 0, "the running turn has not answered yet");
     await deliver(answered(1, "cancelled"));
-    assert.deepEqual(posts("/send").map(call => call.body.text), ["先回答这个问题"]);
-    assert.ok(posts("/send")[0].body.client_message_id);
+    const sends = posts("/send");
+    assert.equal(sends.length, 1);
+    assert.equal(sends[0].body.text, "先回答这个问题");
+    assert.ok(sends[0].body.client_message_id, "a new message id");
+    assert.equal(sends[0].body.attachments, undefined);
     await deliver(prompt(3, "先回答这个问题"));
-    assert.equal(pane(view).querySelector('[data-acp-pending-status="held"]'), null);
-    assert.equal(posts("/send").length, 1);
+    assert.equal(pane(view).querySelector("[data-acp-queued]"), null, "the new prompt is not queued");
+    await settle();
+    assert.equal(posts("/send").length, 1, "sent once");
   } finally { await view.unmount(); }
 });
 
-test("two local prompts drain in FIFO order, one completed turn at a time", async () => {
+test("two queued prompts go again in order after the stop", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions });
   try {
     await connect();
-    await deliver(prompt(1, "长任务"), chunk("在做"));
-    await hold(view, "问题一"); await hold(view, "问题二");
-    assert.equal(pane(view).querySelectorAll('[data-acp-pending-status="held"]').length, 2);
+    await deliver(prompt(1, "长任务"), chunk("在做"), prompt(2, "问题一"), prompt(3, "问题二"));
+    assert.equal(pane(view).querySelectorAll("[data-acp-queued]").length, 2);
     await click(pane(view).querySelectorAll("[data-acp-stop-and-send]")[1]);
-    await deliver(cancel(), answered(1, "cancelled"));
-    assert.deepEqual(posts("/send").map(call => call.body.text), ["问题一"]);
-    await deliver(prompt(2, "问题一"));
-    assert.equal(posts("/send").length, 1, "an accepted prompt still owns the next turn");
-    await deliver(answered(2, "end_turn"));
-    assert.deepEqual(posts("/send").map(call => call.body.text), ["问题一", "问题二"]);
+    await deliver(cancel(), answered(2, "cancelled"), answered(3, "cancelled"), answered(1, "cancelled"));
+    assert.deepEqual(posts("/send").map((call) => call.body.text), ["问题一", "问题二"]);
   } finally { await view.unmount(); }
 });
 
-test("a local prompt drains once after a natural end without sending cancel", async () => {
+test("a program that runs the queued prompt after the cancel gets nothing sent again", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions });
   try {
     await connect();
-    await deliver(prompt(1, "一"), chunk("在做"));
-    await hold(view, "二");
+    await deliver(prompt(1, "一"), chunk("在做"), prompt(2, "二"));
+    await click(pane(view).querySelector("[data-acp-stop-and-send]"));
+    await deliver(cancel(), answered(1, "cancelled"), chunk("这是二的回答"), answered(2, "end_turn"));
     assert.equal(posts("/send").length, 0);
-    await deliver(answered(1, "end_turn"));
-    await deliver(prompt(2, "二"), chunk("这是二的回答"), answered(2, "end_turn"));
-    assert.equal(posts("/send").length, 1);
-    assert.equal(posts("/stop").length, 0);
   } finally { await view.unmount(); }
 });
 
-test("a refused Stop retains the local prompt; a disconnected socket cannot drain it", async () => {
+test("a refused Stop sends nothing and the button comes back; the socket going down drops the click", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions });
   try {
     await connect();
-    globalThis.__acpRoute = path => path.endsWith("/stop") ? { status: 409, body: { error: { code: "agent_not_running", message: "agent_not_running" } } } : null;
-    await deliver(prompt(1, "一"), chunk("在做"));
-    await hold(view, "二");
+    globalThis.__acpRoute = (path) => (path.endsWith("/stop") ? { status: 409, body: { error: { code: "agent_not_running", message: "agent_not_running" } } } : null);
+    await deliver(prompt(1, "一"), chunk("在做"), prompt(2, "二"));
     await click(pane(view).querySelector("[data-acp-stop-and-send]"));
     assert.equal(posts("/stop").length, 1);
-    assert.ok(view.host.querySelector("[data-acp-error]").closest("[data-agent-stream-scroller]"), "the error is in the stream");
-    assert.ok(pane(view).querySelector("[data-acp-stop-and-send]"), "retry is available");
+    assert.ok(view.host.querySelector("[data-acp-error]").closest("[data-agent-stream-scroller]"), "the gateway's words in the stream");
+    assert.ok(pane(view).querySelector("[data-acp-stop-and-send]"), "the button is back");
+    await deliver(answered(2, "cancelled"), answered(1, "cancelled"));
     assert.equal(posts("/send").length, 0);
-    await act(async () => socket().drop()); await settle();
-    assert.equal(pane(view).querySelector("[data-acp-stop-and-send]"), null);
-    assert.equal(posts("/send").length, 0);
-    assert.equal(pane(view).querySelectorAll('[data-acp-pending-status="held"]').length, 1, "disconnect preserves the unsent prompt");
+
+    globalThis.__acpRoute = null;
+    await deliver(prompt(3, "三"), chunk("在做"), prompt(4, "四"));
+    await click(pane(view).querySelector("[data-acp-stop-and-send]"));
+    await act(async () => { socket().drop(); });
+    await settle();
+    assert.equal(pane(view).querySelector("[data-acp-stop-and-send]"), null, "no button while disconnected");
+    assert.equal(posts("/send").length, 0, "nothing is sent later on its own");
   } finally { await view.unmount(); }
 });

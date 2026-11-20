@@ -518,16 +518,9 @@ test("a send blocks silently only for its HTTP request, then accepts another mes
     assert.equal(view.composer("acp").__props.sendBlocked, false, "no stream row is needed");
     globalThis.__acpRoute = null;
     await submit(view, "acp");
-    assert.equal(posts("/send").length, 1, "next message waits locally for the preceding receipt and turn completion");
-    assert.equal(view.host.querySelectorAll("[data-acp-pending-send]").length, 2, "both messages retain their bubbles");
-    const echo = rows.prompt(7, "first request");
-    echo.id = 90000;
-    rowSeq = 90000;
-    await deliver(echo);
-    assert.equal(posts("/send").length, 1, "the first prompt is still running");
-    await deliver(rows.done(7));
-    assert.equal(posts("/send").length, 2);
+    assert.equal(posts("/send").length, 2, "the next message goes out at once, before the first one's stream echo");
     assert.equal(posts("/send")[1].body.text, "second request");
+    assert.equal(view.host.querySelectorAll("[data-acp-pending-send]").length, 2, "both messages retain their bubbles");
   } finally { complete?.({ body: { row_id: 90000 } }); await view.unmount(); }
 });
 
@@ -734,7 +727,6 @@ test("the catalog pill: unknown session model is labelled unknown, disabled unti
     await act(async () => { globalThis.__pickerDialog.setSelectedModel("gpt-5-mini"); });
     await type(view, "acp", "一");
     await submit(view, "acp");
-    await deliver(rows.prompt(71, "一"), rows.done(71));
     await type(view, "acp", "二");
     await submit(view, "acp");
     const bodies = posts("/send").map((call) => call.body);
@@ -855,35 +847,116 @@ test("keep-alive pings never become rows or advance the reconnect cursor", async
 
 
 for (const program of ["claude", "codex", "hermes", "cursor"]) {
-  test(`${program}: local FIFO waits for stopReason after cancel and sends only one held prompt at a time`, async () => {
+  test(`${program}: a message sent while the agent works goes to the program at once; the server's queued line offers Stop and send`, async () => {
     const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_queue", "acp", program)] });
     try {
       await connect();
       await deliver(rows.prompt(101, "running"), rows.chunk("working"));
-      await type(view, "acp", "held one");
+      await type(view, "acp", "next one");
       await submit(view, "acp");
-      await type(view, "acp", "held two");
+      await type(view, "acp", "and another");
       await submit(view, "acp");
-      assert.equal(posts("/send").length, 0, "nothing reaches an adapter during its active turn");
-      assert.equal(view.host.querySelectorAll('[data-acp-pending-status="held"]').length, 2);
-      const stop = view.host.querySelector('[data-acp-stop-and-send]');
-      assert.ok(stop);
-      await act(async () => stop.click());
-      await settle();
-      assert.equal(posts("/stop").length, 1);
-      assert.equal(posts("/send").length, 0, "HTTP stop acknowledgement does not release the queue");
-      await deliver(row("agent", { id: 101, result: { stopReason: "cancelled" } }));
-      assert.equal(posts("/send").length, 1);
-      assert.equal(posts("/send")[0].body.text, "held one");
+      assert.deepEqual(posts("/send").map((call) => call.body.text), ["next one", "and another"], "nothing waits in the page");
       assert.equal(posts("/send")[0].body.program, program);
-      await deliver(rows.prompt(102, "held one"));
-      assert.equal(posts("/send").length, 1);
-      await deliver(rows.done(102));
-      assert.equal(posts("/send").length, 2);
-      assert.equal(posts("/send")[1].body.text, "held two");
+      assert.equal(view.host.querySelector('[data-acp-pending-status="held"]'), null);
+      assert.equal(view.composer("acp").__props.loading, true, "the running turn is still open");
+      await deliver(rows.prompt(102, "next one"));
+      const line = view.host.querySelector("[data-acp-queued]");
+      assert.match(line?.textContent || "", /排队中：这一轮做完后它会看到/);
+      assert.ok(line.querySelector("[data-acp-stop-and-send]"), "Stop this turn and send, under the server's queued prompt");
     } finally { await view.unmount(); }
   });
 }
+
+// 2026-11-20 14:58 (B6): the page's socket stopped delivering before the turn's end_turn row (stored at 292542); the
+// page showed "working" for 32 minutes. Every way back must read the rows after the newest one the page has.
+const frameReads = () => globalThis.__acpCalls.filter((call) => call.method === "GET" && /\/v1\/tasks\/t1\/frames\?/.test(call.path));
+const loading = (view) => view.composer("acp").__props.loading;
+
+test("catch-up: a socket that goes silent is replaced from the last row it delivered and the missed end of the turn ends it", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: Date.now() });
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
+  try {
+    await connect();
+    const prompt = rows.prompt(201, "长任务"), working = rows.chunk("最后一段");
+    await deliver(prompt, working);
+    assert.equal(loading(view), true);
+    const silent = socket();
+    // No close ever reaches the page (network drop, sleep); only the gateway's pings would have.
+    await act(async () => { t.mock.timers.tick(41_000); });
+    await settle();
+    assert.equal(silent.closed, true, "the silent socket is dropped");
+    assert.notEqual(socket(), silent);
+    assert.match(socket().url, new RegExp(`after=${working.id}$`), "the new socket starts after the last row the page has");
+    await act(async () => { socket().open(); });
+    await deliver(rows.done(201));
+    assert.equal(loading(view), false, "the stored end_turn arrives and the page is idle");
+  } finally { await view.unmount(); }
+});
+
+test("catch-up: the tab becoming visible reads the rows the socket missed, adds them and replaces the socket", async () => {
+  const end = { current: null };
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions,
+    acpRoute: (path, method) => method === "GET" && /\/frames\?after=/.test(path) ? { body: end.current ? [end.current] : [] } : null });
+  try {
+    await connect();
+    const prompt = rows.prompt(211, "跑一下"), last = rows.chunk("在做");
+    await deliver(prompt, last);
+    end.current = rows.done(211);
+    const first = socket();
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    await settle();
+    assert.ok(frameReads().some((call) => call.path.includes(`after=${last.id}&`)), "read from the newest row the page has");
+    assert.equal(loading(view), false, "the missed end_turn ends the turn");
+    assert.notEqual(socket(), first, "a socket that missed rows is replaced");
+    assert.match(socket().url, new RegExp(`after=${last.id}$`));
+  } finally { await view.unmount(); }
+});
+
+test("catch-up: the gateway says idle while the page shows a turn open, so the page reads the rows after its newest one", async () => {
+  const prompt = rows.prompt(221, "做完了吗"), chunk = rows.chunk("做完了"), done = rows.done(221);
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions,
+    acpRoute: (path, method) => path.includes("/history?") ? { body: historyPage([prompt, chunk]) }
+      : path.endsWith("/activity") ? { body: { task_id: "t1", activity_state: "idle", working: false, background_tasks: [] } }
+        : method === "GET" && /\/frames\?after=/.test(path) ? { body: [done] } : null });
+  try {
+    await settle();
+    assert.ok(frameReads().some((call) => call.path.includes(`after=${chunk.id}&`)));
+    assert.equal(loading(view), false, "the stored end_turn is shown and the page is idle");
+  } finally { await view.unmount(); }
+});
+
+test("Stop while the page wrongly shows a turn open: the page catches up, and when nothing is running it is not left working", async () => {
+  // (a) The end is stored: Stop's catch-up finds it.
+  let end = null;
+  let view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions,
+    acpRoute: (path, method) => method === "GET" && /\/frames\?after=/.test(path) ? { body: end ? [end] : [] } : null });
+  try {
+    await connect();
+    await deliver(rows.prompt(231, "早就结束了"), rows.chunk("结束"));
+    end = rows.done(231);
+    await act(async () => { view.composer("acp").__props.onStop(); });
+    await settle();
+    assert.equal(posts("/v1/tasks/t1/stop").length, 1);
+    assert.equal(loading(view), false);
+  } finally { await view.unmount(); }
+  // (b) No answer is stored at all and the gateway, read after the Stop, says idle: the turn that was open ends.
+  let stopped = false;
+  view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions,
+    acpRoute: (path, method) => path.endsWith("/stop") ? (stopped = true, { body: {} })
+      : path.endsWith("/activity") ? { body: { task_id: "t1", activity_state: stopped ? "idle" : "working", working: !stopped, background_tasks: [] } }
+        : method === "GET" && /\/frames\?after=/.test(path) ? { body: [] } : null });
+  try {
+    await connect();
+    await deliver(rows.prompt(232, "没有回音"), rows.chunk("…"));
+    assert.equal(loading(view), true);
+    await act(async () => { view.composer("acp").__props.onStop(); });
+    await settle();
+    assert.equal(loading(view), false, "the gateway's idle after the Stop ends the turn on the page");
+    await deliver(rows.prompt(233, "新的一轮"));
+    assert.equal(loading(view), true, "a later turn is not affected");
+  } finally { await view.unmount(); }
+});
 
 test("advertised slash commands and context usage are visible in the real task composer area", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
