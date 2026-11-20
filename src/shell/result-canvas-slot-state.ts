@@ -36,7 +36,7 @@ export interface WorkspaceSlotStateInput {
 }
 
 /** 右侧栏此刻给人看的是哪一层。`slot` = 看 `selected`；`task` = 任务栈顶那一项（sub task 或 task）。 */
-export type WorkspaceLayer = "home" | "slot" | WorkspacePanelId | WorkspaceManagedPanelId | "task";
+export type WorkspaceLayer = "home" | "slot" | WorkspacePanelId | WorkspaceManagedPanelId | "task" | "quote";
 
 /** 受控 `active` 的这两个值表示「卡片首页」，不对应任何槽位。 */
 export function isWorkspaceHomeId(id: string | undefined): boolean {

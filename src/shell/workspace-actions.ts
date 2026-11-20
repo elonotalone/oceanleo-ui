@@ -17,30 +17,27 @@ export type WorkspacePanelId = "bay" | "leochat";
 
 /** 右侧栏此刻显示的是什么：卡片首页、某个槽位，或上面那两块之一。 */
 export type WorkspaceManagedPanelId = "devices" | "projects" | "settings" | "tasks";
-export type WorkspaceViewId = "home" | WorkspaceSlotId | WorkspacePanelId | WorkspaceManagedPanelId | "task";
+export type WorkspaceViewId = "home" | WorkspaceSlotId | WorkspacePanelId | WorkspaceManagedPanelId | "task" | "quote";
 
 /**
- * One level of the right panel's task stack: a sub task (agent run) or a task (people's conversation).
- * The top entry is shown; Back pops. Same shape as the `oceanleo:open-task-child` event detail.
+ * The one task the right panel shows (session / sites wave 2026-11-21: no stack, no rooms). `kind` stays so a
+ * caller written as `{ kind: "agent_task", id, title }` keeps compiling.
  */
 export interface WorkspaceTaskEntry {
-  kind: "agent_task" | "room";
+  kind: "agent_task";
   id: string;
   title: string;
 }
 
-/** Opening a child from anywhere (`openTaskChild` in `task-room/open-child.ts` dispatches it, cancelable). One name, defined there. */
-export { OPEN_TASK_CHILD_EVENT } from "./task-room/open-child";
-
-/** The event detail as trusted UI data: a known kind, an id, a bounded title. Anything else is ignored. */
+/** A task id and title as trusted UI data: a safe id, a bounded title. Anything else is ignored. */
 export function normalizeTaskEntry(value: unknown): WorkspaceTaskEntry | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
-  const kind = raw.kind === "agent_task" || raw.kind === "room" ? raw.kind : null;
+  if (raw.kind !== undefined && raw.kind !== "agent_task") return null;
   const id = typeof raw.id === "string" ? raw.id.trim() : "";
-  if (!kind || !id || id.length > 80 || !/^[A-Za-z0-9_-]+$/.test(id)) return null;
+  if (!id || id.length > 80 || !/^[A-Za-z0-9_-]+$/.test(id)) return null;
   const title = typeof raw.title === "string" ? raw.title.trim().slice(0, 200) : "";
-  return { kind, id, title };
+  return { kind: "agent_task", id, title };
 }
 
 /**
@@ -401,7 +398,7 @@ let revealSequence = 0;
 /**
  * Ask the split that hosts this workspace to show its right pane (it opens on any workspace action for
  * its instance). `tab: "task"` is deliberately not in `WORKSPACE_ACTION_TABS`: no receipt can send it and
- * every action receiver ignores it, so this only reveals the pane the task stack is already in.
+ * every action receiver ignores it, so this only reveals the pane the task / quote view is already in.
  */
 export function revealWorkspacePane(instanceId: string): boolean {
   return dispatchWorkspaceAction({ instanceId, nonce: `task-reveal:${++revealSequence}`, action: { version: 2, tab: "task" } });

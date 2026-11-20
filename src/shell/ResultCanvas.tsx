@@ -47,7 +47,7 @@ import {
   type WorkspaceSlotId,
 } from "./workspace-actions";
 import { useWorkspaceSlotState } from "./result-canvas-slot-state";
-import { useWorkspaceViewState, type TaskOpenOrigin, type WorkspaceTaskRequest } from "./result-canvas-view-state";
+import { useWorkspaceViewState, type TaskOpenOrigin } from "./result-canvas-view-state";
 import { useBayEnabled } from "./bay/shell/bay-state";
 import { useImEnabled } from "../lib/im/client";
 import { BayPanel } from "./bay/panel";
@@ -185,10 +185,10 @@ export interface ResultCanvasProps {
   /** Controlled right-pane visibility, used to distinguish open from closed LeoChat toggles. */
   workspaceOpen?: boolean;
   /**
-   * Open these sub tasks / tasks in the right panel's task stack (each nonce once): the task page passes
-   * `[this sub task]` beside its parent task, and a card in the main column replaces the stack this way.
+   * A new task draft opened in this panel (`oceanleo:open-task-panel` without a task id) is created in this project
+   * (the project page passes its id). Without it, a `ProjectSessionView` in this split's main column decides.
    */
-  taskStackRequest?: WorkspaceTaskRequest | null;
+  taskProjectId?: string | null;
   /** Server-issued exact binding context for the Primary material shelf. */
   materialContext?: ArtifactContextRef;
   /**
@@ -280,7 +280,7 @@ export function ResultCanvas({
   siteId = "",
   leoChatRequestNonce = null,
   workspaceOpen,
-  taskStackRequest = null,
+  taskProjectId = null,
   materialContext,
   openItem,
   openEntry,
@@ -611,8 +611,8 @@ export function ResultCanvas({
   const panels = useMemo(() => ({ bay: bayOn && showBay, leochat: imOn && showLeoChat, tasks: showMyTasks, devices: true, projects: true, settings: true }), [bayOn, imOn, showBay, showLeoChat, showMyTasks]);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  // A click inside this right pane pushes onto the stack; a click in this split's main column replaces it.
-  // Any other click belongs to another workspace. A request made in code counts as the main column.
+  // A click inside this right pane or this split's main column opens the task / quote here; any other click belongs
+  // to another workspace. A request made in code counts as the main column.
   const taskOrigin = useCallback((target: Element | null): TaskOpenOrigin | null => {
     const root = canvasRootRef.current;
     if (!root?.isConnected) return null;
@@ -632,29 +632,37 @@ export function ResultCanvas({
       slot.setRightMaximized(true);
     }
   }, [instanceId]);
-  const { view, openSlot, openPanel, goHome, bayRequest, chatRequest, openChat, taskStack, openTask, popTask } = useWorkspaceViewState({
+  const taskProjectIdRef = useRef(taskProjectId);
+  taskProjectIdRef.current = taskProjectId;
+  const draftProjectId = useCallback((): string | null => {
+    if (taskProjectIdRef.current) return taskProjectIdRef.current;
+    const split = canvasRootRef.current?.closest("[data-workspace-split]");
+    return split?.querySelector("[data-session-project-id]")?.getAttribute("data-session-project-id") || null;
+  }, []);
+  const { view, openSlot, openPanel, goHome, bayRequest, chatRequest, openChat, taskPanel, openTask, draftCreated, closeTask } = useWorkspaceViewState({
     selected, layer, setLayer, panelAction, select, panels,
     onHome: () => onChangeRef.current?.("home"),
     taskOrigin,
-    taskRequest: taskStackRequest,
+    draftProjectId,
     onTaskReveal: revealTaskStack,
   });
-  const taskTop = taskStack[taskStack.length - 1] || null;
+  const taskTop = taskPanel;
+  const taskViewShown = (view === "task" || view === "quote") && Boolean(taskTop);
   const backFromTask = useCallback(() => {
-    // Narrow screens: Back from the last entry returns to the task in the main column.
-    if (taskStack.length <= 1 && taskMaximizedRef.current) {
+    // Narrow screens: Back returns to the main column.
+    if (taskMaximizedRef.current) {
       taskMaximizedRef.current = false;
       rightSlotRef.current?.setRightMaximized(false);
       rightSlotRef.current?.closeRightPane?.();
     }
-    popTask();
-  }, [popTask, taskStack.length]);
+    closeTask();
+  }, [closeTask]);
   useEffect(() => {
-    if (view === "task" || !taskMaximizedRef.current) return;
+    if (view === "task" || view === "quote" || !taskMaximizedRef.current) return;
     taskMaximizedRef.current = false;
     rightSlotRef.current?.setRightMaximized(false);
   }, [view]);
-  const pushTask = useCallback((entry: { kind: "agent_task" | "room"; id: string; title: string }) => openTask(entry, "panel"), [openTask]);
+  const pushTask = useCallback((entry: { id: string; title: string }) => openTask(entry, "panel"), [openTask]);
   const bayPanelRequest = useMemo(() => bayRequest
     ? { ...bayRequest, href: panelAction?.action.url }
     : null, [bayRequest, panelAction?.action.url]);
@@ -792,7 +800,7 @@ export function ResultCanvas({
   }, [view, projectRequest?.nonce]);
   const handleBack = useCallback(() => {
     if (returnToTask()) return;
-    if (view === "task") {
+    if (view === "task" || view === "quote") {
       backFromTask();
       return;
     }
@@ -811,11 +819,11 @@ export function ResultCanvas({
   const [projectsVisited, setProjectsVisited] = useState(false);
   useEffect(() => { if (view === "tasks") setTasksVisited(true); }, [view]);
   const [taskStackVisited, setTaskStackVisited] = useState(false);
-  useEffect(() => { if (view === "task") setTaskStackVisited(true); }, [view]);
+  useEffect(() => { if (view === "task" || view === "quote") setTaskStackVisited(true); }, [view]);
   useEffect(() => { if (view === "bay") setBayVisited(true); }, [view]);
   useEffect(() => { if (view === "leochat") setChatVisited(true); }, [view]);
   useEffect(() => { if (view === "projects") setProjectsVisited(true); }, [view]);
-  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("项目配置") : view === "settings" ? tt("Settings") : view === "tasks" ? tt("侧栏任务") : view === "task" ? (taskTop?.title || tt("任务")) : tt(WORKSPACE_SLOT_LABELS[view]);
+  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("项目配置") : view === "settings" ? tt("Settings") : view === "tasks" ? tt("侧栏任务") : view === "task" ? ((taskTop?.kind === "task" && taskTop.title) || tt("任务")) : view === "quote" ? tt("引用的消息") : tt(WORKSPACE_SLOT_LABELS[view]);
 
   const selectedTemplateTab = workspaceSurfacePrimaryTab(
     surfaceModel,
@@ -1150,9 +1158,9 @@ export function ResultCanvas({
             {managedContent.tasks}
           </div>
         ) : null}
-        {taskStackVisited || view === "task" ? (
-          <div data-workspace-managed-panel="task" hidden={view !== "task"} inert={view !== "task" || undefined} className="h-full min-h-0 overflow-hidden">
-            {taskTop ? <TaskStackPanel stack={taskStack} onPush={pushTask} onBack={backFromTask} host={taskStackHost} /> : null}
+        {taskStackVisited || taskViewShown ? (
+          <div data-workspace-managed-panel="task" data-workspace-task-view={taskTop?.kind} hidden={!taskViewShown} inert={!taskViewShown || undefined} className="h-full min-h-0 overflow-hidden">
+            {taskTop ? <TaskStackPanel entry={taskTop} onOpenTask={pushTask} onDraftCreated={draftCreated} onBack={backFromTask} host={taskStackHost} /> : null}
           </div>
         ) : null}
         {(view === "devices" || view === "settings") ? (
@@ -1192,8 +1200,8 @@ export function ResultCanvas({
   // insertion drawers own their data/UI independently of this sidebar.
   useLayoutEffect(() => {
     if (!rightSlot) return;
-    // An open task (My tasks detail, or the task stack) carries its own header with Back and its title.
-    if (((view === "tasks" && taskDetailOpen) || (view === "task" && taskTop)) && !foregroundVisible && !openingEntry) {
+    // An open task (My tasks detail, or the task / quote view) carries its own header with Back and its title.
+    if (((view === "tasks" && taskDetailOpen) || taskViewShown) && !foregroundVisible && !openingEntry) {
       rightSlot.setRightEditorHeader(false);
       rightSlot.setRightLabel(null);
       rightSlot.setRightFrameless(true);
@@ -1239,6 +1247,7 @@ export function ResultCanvas({
   }, [
     taskDetailOpen,
     taskTop,
+    taskViewShown,
     foregroundVisible,
     openingEntry,
     foregroundSuspended,
@@ -1263,7 +1272,7 @@ export function ResultCanvas({
 
   return (
     <StandaloneWorkspaceFrame
-      header={view === "home" || (view === "tasks" && taskDetailOpen) || (view === "task" && taskTop) ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />}
+      header={view === "home" || (view === "tasks" && taskDetailOpen) || taskViewShown ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />}
       className={className}
     >
       {rightMainContent}
