@@ -15,7 +15,8 @@
   "clean": [
     ["  Elon 　 Lee ", "Elon Lee"],
     ["Elon\t\tLee", "Elon Lee"],
-    ["测试甲", "测试甲"]
+    ["测试甲", "测试甲"],
+    ["\ufeffElon Lee ", "\ufeffElon Lee"]
   ],
   "problem": [
     ["Elon​Lee", "name_invalid"],
@@ -28,6 +29,7 @@
     ["Ｏｃｅａｎｌｅｏ team", "name_reserved"],
     ["官方客服", "name_reserved"],
     ["客服", "name_reserved"],
-    ["Leo Fan", null]
+    ["Leo Fan", null],
+    ["\ufeffElon Lee", "name_invalid"]
   ]
 }

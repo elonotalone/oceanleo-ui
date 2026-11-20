@@ -29,7 +29,8 @@ export type NameRuleCode = "name_invalid" | "name_reserved";
 
 /** The name as stored: whitespace runs become one space, ends trimmed. */
 export function cleanName(raw: string): string {
-  return String(raw ?? "").replace(WHITESPACE_RUN, " ").trim();
+  // Trim spaces only (not String#trim, which also drops U+FEFF): identical to SQL btrim(…, ' ').
+  return String(raw ?? "").replace(WHITESPACE_RUN, " ").replace(/^ +| +$/g, "");
 }
 
 /** Uniqueness key: NFKC → lower case → format characters removed → whitespace collapsed. */
