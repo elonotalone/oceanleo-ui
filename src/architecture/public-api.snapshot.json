@@ -7833,6 +7833,12 @@
         },
         {
           "kind": "named",
+          "name": "WorkspaceEntryMenu",
+          "importedName": "WorkspaceEntryMenu",
+          "source": "./workspace-library-view"
+        },
+        {
+          "kind": "named",
           "name": "WorkspaceLibrary",
           "importedName": "WorkspaceLibrary",
           "source": "./WorkspaceLibrary"
@@ -8464,6 +8470,12 @@
           "name": "UseConsoleDraftReturn",
           "importedName": "UseConsoleDraftReturn",
           "source": "./useConsoleDraft"
+        },
+        {
+          "kind": "type",
+          "name": "WorkspaceEntryMenuItem",
+          "importedName": "WorkspaceEntryMenuItem",
+          "source": "./workspace-library-view"
         },
         {
           "kind": "type",
@@ -10467,6 +10479,12 @@
         },
         {
           "kind": "named",
+          "name": "Breadcrumb",
+          "importedName": "Breadcrumb",
+          "source": "./Breadcrumb"
+        },
+        {
+          "kind": "named",
           "name": "BUTTON_DEFAULT_SIZE",
           "importedName": "BUTTON_DEFAULT_SIZE",
           "source": "./Button"
@@ -10604,6 +10622,18 @@
           "name": "BackButtonProps",
           "importedName": "BackButtonProps",
           "source": "./BackButton"
+        },
+        {
+          "kind": "type",
+          "name": "BreadcrumbItem",
+          "importedName": "BreadcrumbItem",
+          "source": "./Breadcrumb"
+        },
+        {
+          "kind": "type",
+          "name": "BreadcrumbProps",
+          "importedName": "BreadcrumbProps",
+          "source": "./Breadcrumb"
         },
         {
           "kind": "type",
