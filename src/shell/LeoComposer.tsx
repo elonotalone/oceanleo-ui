@@ -6,8 +6,6 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
-  Suspense,
-  lazy,
   useCallback,
   useEffect,
   useId,
@@ -50,10 +48,6 @@ import { useComposerDraft } from "./composer-draft";
 import { useComposerMaxHeight } from "./composer-max-height";
 import { ComposerLibraryPicker, warmComposerLibraryFiles } from "./ComposerLibraryPicker";
 import { AnchoredPopover } from "./anchored-popover";
-import type { SendToPeopleOptions } from "./messages/tasks/SendToPeople";
-
-// 「发给人」只在传了 `sendToPeople` 的输入框里出现：按需加载（找人、建任务那一串不进每个输入框）。
-const SendToPeopleButton = lazy(() => import("./messages/tasks/SendToPeople").then((mod) => ({ default: mod.SendToPeopleButton })));
 import { attachmentFailureText, failedAttachments, stopClickAllowed, stopPressArmed } from "./composer-send-guard";
 import {
   composerSlashAdapter,
@@ -350,11 +344,6 @@ export interface LeoComposerProps {
    * 模板实填模式下不启用。逻辑全在 `composer-skill-slash.tsx`。
    */
   skillSlash?: ComposerSkillSlashOption;
-  /**
-   * 新任务输入框（首页 / 任务起步）：发送键旁边加「发给人」——选几个人，打的字成为一个新任务
-   * （人的会话）的第一条消息，建好后打开它。发送键 / Enter 仍是交给 agent。不传 = 没有这个按钮。
-   */
-  sendToPeople?: boolean | SendToPeopleOptions;
 }
 
 export function LeoComposer({
@@ -416,7 +405,6 @@ export function LeoComposer({
   appsHost,
   onOpenPlugins,
   skillSlash,
-  sendToPeople,
 }: LeoComposerProps) {
   const tt = useUI();
   // `disabled` remains a full lock for older callers. Network callers use the
@@ -873,16 +861,6 @@ export function LeoComposer({
               >
                 {stopping ? <span className="v-spinner text-[12px]" aria-hidden="true" /> : <StopGlyph />}
               </button>
-          )}
-          {sendToPeople && onSubmit && !stopShown && (
-            <Suspense fallback={null}>
-              <SendToPeopleButton
-                text={value}
-                options={typeof sendToPeople === "object" ? sendToPeople : undefined}
-                blockedReason={attachments?.length ? tt("带文件的内容只能交给 agent；发给人前请先移除文件。") : readOnly ? tt("现在不能发送") : null}
-                onSent={() => onChange("")}
-              />
-            </Suspense>
           )}
           {onSubmit && !stopShown && (
               <button

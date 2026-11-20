@@ -3,11 +3,8 @@
 import { AutoRecovery } from "./AutoRecovery";
 
 import { BackButton } from "../ui/BackButton";
-import { Breadcrumb, type BreadcrumbItem } from "../ui/Breadcrumb";
-import { ConfirmDialog } from "../ui";
-import { TR_PANEL_COPY as trPanel } from "../i18n/ui/messages/tr-panel-copy";
+import { Breadcrumb } from "../ui/Breadcrumb";
 import { useTaskStack } from "./workspace-panels/task-stack-context";
-import { resolveTaskLinkKind, startTaskDiscussion, useTaskChain } from "./workspace-panels/task-chain";
 import { sameTaskProject, taskProjectHref, taskProjectLink, useNarrowWidth, type TaskProjectLink } from "./task-header-project";
 import { accessToken, getUserId, AUTH_STATE_EVENT } from "../lib/auth/client";
 
@@ -896,11 +893,8 @@ function AgentChatInner({
   const [taskSiteId, setTaskSiteId] = useState<string>("");
   // The project this task belongs to, only for project owners/members (contract §1.4): the top bar's breadcrumb.
   const [taskProject, setTaskProject] = useState<TaskProjectLink | null>(null);
-  // Where this task sits in the task tree (Project / Task / Sub task); unavailable = today's header.
-  const taskChain = useTaskChain(taskId);
   // Under the right panel's task stack, task links open in place (pushed on the stack).
   const taskStack = useTaskStack();
-  const [discussOpen, setDiscussOpen] = useState(false);
   // 本次对话「总结」= 后端自动生成的 task.title（首轮收尾时 AI 概括，见 refresh）。
   // A project task's mode as the server last reported it (owner sees project_id).
   const [projectTask, setProjectTask] = useState<{ taskId: string; projectId: string; mode: ProjectTaskMode } | null>(null);
@@ -3080,66 +3074,30 @@ function AgentChatInner({
       {convoSummary}
     </span>
   );
-  const trailLink = (href: string): BreadcrumbItem["onClick"] => (event) => {
-    if (!href.startsWith("/") || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-    event.preventDefault();
-    headerRouter.push(href);
-  };
-  // The chain ends with this task; what comes before it are its parent tasks (root first).
-  const chainItems = taskChain.state === "ready" ? taskChain.chain : [];
-  const chainAncestors = chainItems.length >= 2 && chainItems[chainItems.length - 1]?.id === taskId ? chainItems.slice(0, -1) : [];
-  // A project's root task is the project chat: the project crumb already stands for it.
-  const trailAncestors = taskProject && chainAncestors[0]?.kind === "room" && chainAncestors[0].title === taskProject.name
-    ? chainAncestors.slice(1) : chainAncestors;
-  const trail: BreadcrumbItem[] = [
-    ...(taskProject ? [{ label: taskProject.name, href: taskProjectHref(taskProject.id), onClick: trailLink(taskProjectHref(taskProject.id)) }] : []),
-    ...trailAncestors.map((item) => {
-      const href = `/tasks/${encodeURIComponent(item.id)}`;
-      return { label: item.title || tt("任务"), href, onClick: trailLink(href) };
-    }),
-  ];
+  // The plain project breadcrumb (session/sites wave: no task chain, no "Discuss with people").
   const summaryNode = (
     <div data-agent-chat-title className="flex min-w-0 flex-1 items-center" hidden={searchOpen && headerNarrow}>
-      {trail.length ? (
+      {taskProject ? (
         <Breadcrumb
           className="text-[13px]"
-          label={chainAncestors.length ? tt(trPanel.trail) : undefined}
-          items={[...trail, { label: convoSummary }]}
+          items={[
+            {
+              label: taskProject.name,
+              href: taskProjectHref(taskProject.id),
+              onClick: (event) => {
+                const href = taskProjectHref(taskProject.id);
+                if (!href.startsWith("/") || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                event.preventDefault();
+                headerRouter.push(href);
+              },
+            },
+            { label: convoSummary },
+          ]}
           current={titleText}
         />
       ) : titleText}
     </div>
   );
-  // "Discuss with people": a sub task with other people and no parent task yet becomes a sub task of a new task.
-  const discussAccess = accessState.access;
-  const onOwnTaskPage = typeof window !== "undefined" && !sidebarHost &&
-    window.location.pathname.replace(/\/+$/, "").endsWith(`/tasks/${encodeURIComponent(taskId || "")}`);
-  // Who may turn this agent task into a sub task of a new task (the server's rule: owner or accepted collaborator),
-  // only while task rooms answer and the task has no parent task yet.
-  const canDiscuss = Boolean(taskId && !hostReadOnly && (onOwnTaskPage || sidebarHost) &&
-    taskChain.state === "ready" && chainAncestors.length === 0 && discussAccess &&
-    (discussAccess.role === "owner" || (discussAccess.role === "collaborate" && discussAccess.state === "member")));
-  // The header entry shows once other people are involved; Collaborate always offers "Invite people to discuss".
-  const showDiscuss = canDiscuss && Boolean(discussAccess &&
-    (discussAccess.role !== "owner" || discussAccess.general_access === "restricted" ||
-      (currentProjectMode !== null && currentProjectMode !== "private")));
-  const discuss = async () => {
-    if (!taskId) return;
-    const result = await startTaskDiscussion(taskId);
-    setDiscussOpen(false);
-    if (!result.ok) {
-      setError(tt(trPanel.discussFailed));
-      return;
-    }
-    // On this task's own page the page reads its place again and shows the task with this sub task beside it.
-    if (!onOwnTaskPage) headerRouter.push(`/tasks/${encodeURIComponent(taskId)}`);
-  };
-  const discussButton = showDiscuss ? (
-    <button type="button" data-task-discuss="" onClick={() => setDiscussOpen(true)} title={tt(trPanel.discussNote)}
-      className="inline-flex shrink-0 items-center rounded-lg px-2 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-900 focus-visible:ring-2 focus-visible:ring-stone-300">
-      {tt(trPanel.discuss)}
-    </button>
-  ) : null;
   const searchControl = searchOpen ? (
     <div
       data-agent-chat-search
@@ -3250,16 +3208,10 @@ function AgentChatInner({
           onChange={mode => setProjectTask(current => current?.taskId === taskId ? { ...current, mode } : current)} />
       )}
       {canManageTask && headerExtra}
-      {discussButton}
-      {discussOpen && (
-        <ConfirmDialog title={trPanel.discuss} body={trPanel.discussNote} confirmLabel={trPanel.discussStart}
-          onConfirm={discuss} onCancel={() => setDiscussOpen(false)} />
-      )}
       {searchControl}
       {taskId && accessState.access && accessRights.canView && sharePaneShown && (
         <TaskSharePanel key={taskId} taskId={taskId} taskUrl={taskQuoteHref(taskId)}
-          access={{...accessState.access, can_manage: canManageTask}} share={share}
-          onDiscuss={canDiscuss ? () => setDiscussOpen(true) : undefined} />
+          access={{...accessState.access, can_manage: canManageTask}} share={share} />
       )}
       {taskId && !sidebarHost && (
         <TaskActionsMenu
@@ -3823,7 +3775,7 @@ function AgentChatInner({
             event.preventDefault();
             event.stopPropagation();
             const title = (anchor.textContent || "").trim().slice(0, 200);
-            void resolveTaskLinkKind(linked).then((kind) => taskStack.push({ kind, id: linked, title }));
+            taskStack.push({ kind: "agent_task", id: linked, title });
             return;
           }
           const action = workspaceActionForHref(anchor.href, window.location.origin);
