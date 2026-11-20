@@ -80,7 +80,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
         <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-stone-100 text-stone-400">
           <NoticeBellIcon className="h-6 w-6" />
         </span>
-        <p className="mt-3 text-[14px] font-semibold tracking-tight">{tt("还没有通知")}</p>
+        <p className="mt-3 text-[14px] font-medium text-stone-800">{tt("还没有通知")}</p>
         <p className="mt-1 max-w-xs text-[12px] text-stone-500">
           {tt("订单、任务、账单和内容处置等平台消息会出现在这里。")}
         </p>
@@ -125,7 +125,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                         />
                       ) : null}
                       <span
-                        className={`min-w-0 flex-1 truncate text-[13px] tracking-tight ${
+                        className={`min-w-0 flex-1 truncate text-[13px] ${
                           unread ? "font-semibold" : "font-medium text-stone-500"
                         }`}
                       >

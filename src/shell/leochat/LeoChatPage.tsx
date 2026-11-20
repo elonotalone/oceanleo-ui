@@ -3,6 +3,8 @@
 // 各站 `/leochat` 整页。属性是合同定的，不许改。栏目和会话读写 host-state；挂上就认领 page 这一处。
 // 境内外同一页、同一条代码路径：这里不看域名家族，也不看 LeoBay 在不在本站（2026-10-23：此前境内显示「暂未开放」，与小窗不一致）。
 // 登录后左边是聊天列表（最上面固定一行「通知」），右边是会话 / 通知 / 内容处置。
+// 右侧栏：会话里的任务卡片、引用卡片、转发到任务（`oceanleo:open-task-panel` / `oceanleo:open-quote-panel`）由
+// TaskWorkspaceShell 自己接住并打开（US 的约定，signals/US-panel.md）；这一页只需保持会话在 shell 的 left 里、library 受控。
 import { useEffect, useSyncExternalStore, type ReactElement } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { accessToken } from "../../lib/auth/client";
@@ -13,7 +15,6 @@ import { BaySignInPrompt } from "../bay/shell/BayMine";
 import { setBaySiteKey } from "../bay/shell/bay-state";
 import { hostState, tabOfView, useMessagesHost } from "../messages/host-state";
 import { LEOCHAT_ICON_BUTTON } from "../messages/messages-surface";
-import { OPEN_TASK_PANEL_EVENT } from "../forward";
 import { useLeoChatUnread } from "../messages/notices/use-notices";
 import { consumeCallDeepLink } from "../messages/call/incoming/deep-link";
 import { LeoChatBody } from "./leochat-body";
@@ -61,8 +62,6 @@ function useWide(): boolean {
 }
 
 const NO_CHAT_TABS = ["bay", "leochat"] as const;
-/** 引用卡片在右侧栏里以只读消息打开（合同 §2.4 `onOpenQuote` 的默认事件）。 */
-const OPEN_QUOTE_PANEL_EVENT = "oceanleo:open-quote-panel";
 /** 页头标题：与任务页标题同一套字。 */
 const PAGE_TITLE = "truncate text-[13px] font-medium text-stone-700";
 
@@ -80,17 +79,6 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
     setBaySiteKey(siteKey);
   }, [siteKey]);
 
-  // 会话里的任务卡片 / 引用卡片、转发到任务（合同 §2.3、§2.4）：右侧栏在这一页打开，栏里画什么由右侧栏自己接同一个事件。
-  const setRightOpen = workspace.setRightOpen;
-  useEffect(() => {
-    const open = () => setRightOpen(true);
-    window.addEventListener(OPEN_TASK_PANEL_EVENT, open);
-    window.addEventListener(OPEN_QUOTE_PANEL_EVENT, open);
-    return () => {
-      window.removeEventListener(OPEN_TASK_PANEL_EVENT, open);
-      window.removeEventListener(OPEN_QUOTE_PANEL_EVENT, open);
-    };
-  }, [setRightOpen]);
 
   useEffect(() => hostState().claimSurface("page"), []);
 

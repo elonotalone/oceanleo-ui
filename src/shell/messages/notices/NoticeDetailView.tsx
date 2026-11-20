@@ -68,7 +68,7 @@ function NoticeDetailContent({ item, tt }: { item: NotificationItem; tt: ReturnT
           <NoticeBellIcon className="h-[18px] w-[18px]" />
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="break-words text-[15px] font-semibold leading-snug tracking-tight text-neutral-900">
+          <h3 className="break-words text-[15px] font-medium leading-snug text-stone-900">
             {item.kind === SERVER_NOTICE_KIND ? item.title : noticeText(item, "title", tt)}
           </h3>
           <ServerNoticeMeta item={item} />

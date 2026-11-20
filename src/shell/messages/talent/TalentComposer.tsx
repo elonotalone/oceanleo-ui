@@ -75,7 +75,7 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
         </button>
       </div>
       {openUrl && (
-        <p className="pt-1.5 text-[11.5px] text-neutral-500">
+        <p className="pt-1.5 text-[12px] text-neutral-500">
           {tt("发报价、传文件、签合同和付款，请")}
           <a href={openUrl} target="_blank" rel="noopener noreferrer" data-composer-open className="font-medium text-neutral-800 underline-offset-2 hover:underline">
             {tt("在 LeoBay 打开")}

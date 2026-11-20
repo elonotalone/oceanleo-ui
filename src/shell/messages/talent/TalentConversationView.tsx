@@ -252,7 +252,7 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
           <BackButton data-action="back" onClick={onBack} label={tt("返回")} />
         )}
         <div className="min-w-0 flex-1 px-1">
-          <p data-talent-title className="truncate text-[13px] font-semibold tracking-tight">
+          <p data-talent-title className="truncate text-[13px] font-medium text-stone-900">
             {title}
           </p>
           <p className="text-[12px] text-neutral-400">{tt("交易会话")}</p>

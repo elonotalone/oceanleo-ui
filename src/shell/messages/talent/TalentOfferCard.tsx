@@ -80,7 +80,7 @@ export function TalentOfferCard({ card, offer, viewerId, busy = false, error = n
             {offer.revisions < 0 ? tt("不限改稿") : tt("改稿 {n} 次", { n: offer.revisions })}
           </p>
           {offer.description ? (
-            <p className="mt-1.5 line-clamp-4 whitespace-pre-wrap break-words text-[12.5px] text-neutral-600">{offer.description}</p>
+            <p className="mt-1.5 line-clamp-4 whitespace-pre-wrap break-words text-[13px] text-neutral-600">{offer.description}</p>
           ) : null}
           {offer.contract_id && offer.state === "accepted" ? (
             <p className="mt-1.5 text-[12px] text-neutral-500">{tt("草稿订单已生成，可在 LeoBay 的订单里继续。")}</p>
