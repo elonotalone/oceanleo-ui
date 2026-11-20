@@ -5,7 +5,7 @@ import { AutoRecovery } from "./AutoRecovery";
 import { BackButton } from "../ui/BackButton";
 import { Breadcrumb } from "../ui/Breadcrumb";
 import { sameTaskProject, taskProjectHref, taskProjectLink, useNarrowWidth, type TaskProjectLink } from "./task-header-project";
-import { getUserId, AUTH_STATE_EVENT } from "../lib/auth/client";
+import { accessToken, getUserId, AUTH_STATE_EVENT } from "../lib/auth/client";
 
 import { isComputerWorkspaceTask, taskExecutionTarget } from "../lib/execution-target";
 import { TranscriptPane, TranscriptStream, StreamLatestButton, StreamWaitingLine, useMeasuredFooter, CLOUD_TRANSCRIPT_CAPABILITIES } from "./transcript/TranscriptStream";
@@ -116,6 +116,7 @@ import { TaskSharePanel } from "./share/TaskSharePanel";
 import { useTaskAccess } from "./access/useTaskAccess";
 import { taskAccessRights, type TaskAccess } from "./access/task-access-client";
 import { TaskAccessComposer, TaskAccessStatus } from "./access/TaskAccessComposer";
+import { isProjectTaskMode, ProjectTaskModeControl, type ProjectTaskMode } from "./access/ProjectTaskModeControl";
 import { TaskContentPanel } from "./access/TaskContentPanel";
 import { TaskActionsMenu, type TaskActionCallbacks, taskQuoteHref } from "./TaskActionsMenu";
 import { ShareCardPreview } from "./share/ShareCard";
@@ -200,6 +201,7 @@ import { sendFailureText } from "./acp-task/send-failure";
 import { markSend, noteFirstVisibleReply } from "./agent-thread/ttfv";
 import { userTurnCount } from "./agent-thread/turn";
 import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAgentThreadPolling";
+import { useTaskEvents } from "./agent-thread/useTaskEvents";
 // W5 (2026-10-31): one loading look per task switch, per-conversation scroll memory.
 import { useTaskLoadingReport } from "./task-loading-gate";
 import { recallConversationAnchor } from "./task-scroll-memory";
@@ -600,6 +602,8 @@ function openTaskHelpSidebar(
   });
 }
 
+const TASK_EVENTS_AUTH = { token: accessToken };
+
 export function AgentChat(props: AgentChatProps) {
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const router = useRouter();
@@ -889,6 +893,8 @@ function AgentChatInner({
   // The project this task belongs to, only for project owners/members (contract §1.4): the top bar's breadcrumb.
   const [taskProject, setTaskProject] = useState<TaskProjectLink | null>(null);
   // 本次对话「总结」= 后端自动生成的 task.title（首轮收尾时 AI 概括，见 refresh）。
+  // A project task's mode as the server last reported it (owner sees project_id).
+  const [projectTask, setProjectTask] = useState<{ taskId: string; projectId: string; mode: ProjectTaskMode } | null>(null);
   const [taskTitle, setTaskTitle] = useState<string>(
     () => String(initialTask?.task?.title || initialTitle || ""),
   );
@@ -1061,6 +1067,13 @@ function AgentChatInner({
     }
     // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
     if (data.task?.title) setTaskTitle(data.task.title);
+    const projectId = typeof data.task?.project_id === "string" ? data.task.project_id : "";
+    const projectMode = data.task?.project_mode;
+    setProjectTask(current => {
+      if (!projectId || !isProjectTaskMode(projectMode)) return current?.taskId === id ? null : current;
+      return current?.taskId === id && current.projectId === projectId && current.mode === projectMode
+        ? current : { taskId: id, projectId, mode: projectMode };
+    });
     const plan = data.task?.plan as { continued_copy?: boolean; _fork_bound?: boolean } | null;
     const unbound = Boolean(data.task?.forked_from_task_id && plan?.continued_copy && !plan?._fork_bound);
     setContinuedCopy(current => current.taskId === id && current.unbound === unbound ? current : { taskId: id, unbound });
@@ -1323,6 +1336,14 @@ function AgentChatInner({
   // A computer run that is paused, stuck or stopping keeps refreshing until it is terminal.
   // A native task's conversation is its frames socket; only OceanLeo's stream polls.
   useAgentThreadPolling(nativeTask ? null : taskId, status, refresh, pollEpoch, isLocalExecution && localAgentRunLive(localRun));
+  // Someone else may start a turn on an idle OceanLeo task this page shows
+  // (a collaborator, a project member, the owner): follow the task's push
+  // stream until it runs, then the polling above takes over.
+  const currentProjectMode = projectTask?.taskId === taskId ? projectTask.mode : null;
+  const sharedWithOthers = Boolean(accessState.access && (accessState.access.role !== "owner"
+    || accessState.access.general_access !== "private" || (currentProjectMode && currentProjectMode !== "private")));
+  const followIdleTask = useCallback((id: string) => { void refresh(id); }, [refresh]);
+  useTaskEvents(!nativeTask && taskId && sharedWithOthers && status !== "running" ? taskId : null, followIdleTask, TASK_EVENTS_AUTH);
   const taskModeKnown = Boolean(taskId) && (computerTask || taskMode.taskId === taskId || messagesTaskId === taskId);
 
   // The URL names the conversation; a change from outside (back/forward, a link
@@ -3178,6 +3199,10 @@ function AgentChatInner({
         </span>
       )}
       {accessRights.canSend && <CollabTaskPresence taskId={taskId} />}
+      {taskId && canManageTask && projectTask?.taskId === taskId && (
+        <ProjectTaskModeControl projectId={projectTask.projectId} taskId={taskId} mode={projectTask.mode}
+          onChange={mode => setProjectTask(current => current?.taskId === taskId ? { ...current, mode } : current)} />
+      )}
       {canManageTask && headerExtra}
       {searchControl}
       {taskId && accessState.access && accessRights.canView && sharePaneShown && (
