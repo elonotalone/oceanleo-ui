@@ -57,15 +57,6 @@ test("@leo button inserts '@leo ' at the caret and the typed-mention rule recogn
   }
 });
 
-test("composer extra @ rows (task rooms) filter by label and picking removes the typed @query", async () => {
-  const { extraMentionCandidates, removeMentionQuery } = mentionPicker;
-  const extras = [{ key: "new", label: "New agent task…", onPick() {} }, { key: "t1", label: "Codex · Draft", onPick() {} }];
-  assert.deepEqual(extraMentionCandidates(extras, "").map((c) => c.id), ["new", "t1"]);
-  assert.deepEqual(extraMentionCandidates(extras, "draft").map((c) => [c.id, c.kind]), [["t1", "extra"]]);
-  assert.deepEqual(extraMentionCandidates(undefined, "x"), []);
-  assert.deepEqual(removeMentionQuery("ask @cod now", 8, { start: 4, query: "cod" }), { text: "ask  now", caret: 4 });
-});
-
 test("task-room calls ride the one client: unavailable / missing route read as unavailable; others carry their code", async () => {
   // The real client with a fake transport: the thin LeoChat calls add no second fetch path.
   const transport = dataModule(`

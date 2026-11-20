@@ -285,21 +285,17 @@ const { Composer: RealComposer } = await import(await compileModule('src/shell/m
   '../realtime/hooks': dataModule('export function sendTyping(){}'),
   './ArtifactPickerDialog': no('ArtifactPickerDialog'),
 }));
-const { MESSAGES_SURFACE_CSS }=await import(await compileModule('src/shell/messages/messages-surface.tsx'));
 test('composer keeps one card around input and action row; textarea stays transparent on focus',async()=>{
-  const style=document.createElement('style');style.textContent=MESSAGES_SURFACE_CSS.slice(MESSAGES_SURFACE_CSS.indexOf('[data-im-composer] {'),MESSAGES_SURFACE_CSS.indexOf('[data-im-send] {'));document.head.append(style);
+  // Session / sites wave (UM): the frame is styled by its own Tailwind classes only, no data-im-composer CSS.
   const v=await mount(React.createElement(RealComposer,{store:makeStore(),conversationId:'frame-test',conversation:null,viewerId:'me',layout:'full'}));
   try{
-    const card=v.q('[data-im-composer]'); const input=card.querySelector('textarea');
-    assert.ok(card.querySelector('[data-im-composer-actions]'));
-    assert.equal(window.getComputedStyle(card).borderRadius,'16px');
-    for(const focused of [false,true]){
-      if(focused) await act(async()=>input.focus());
-      assert.ok(['transparent','rgba(0, 0, 0, 0)'].includes(window.getComputedStyle(input).backgroundColor));
-      assert.equal(window.getComputedStyle(input).boxShadow,'none');
-    }
+    const card=v.q('[data-composer]'); const input=card.querySelector('textarea');
+    assert.equal(v.q('[data-im-composer]'),null);
+    assert.ok(card.querySelector('[data-composer-actions]'));
+    assert.ok(card.classList.contains('rounded-2xl'));
+    assert.ok(input.classList.contains('bg-transparent')&&input.classList.contains('focus:outline-none'));
     for(const label of ['发文件或作品','表情','录音']) assert.ok(card.querySelector(`button[aria-label="${label}"]`),label);
-  }finally{await v.unmount();style.remove()}
+  }finally{await v.unmount()}
 });
 
 const { MessageList: RealMessageList }=await import(await compileModule('src/shell/messages/conversation/MessageList.tsx',{

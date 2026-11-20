@@ -1,10 +1,12 @@
 "use client";
 
-// 输入框：多行文字、@ 候选、表情、附件（粘贴 / 拖拽 / 选择）、语音、回形针（分享作品 / 工作回放）、草稿、引用与编辑。
-// Enter 发送 / Shift+Enter 换行（手机上 Enter 换行、按钮发送）。
+// 输入框：多行文字、@ 候选、表情、附件（粘贴 / 拖拽 / 选择）、语音、「+」菜单（上传 / 分享作品 / 工作回放 / 会话里的任务卡片）、
+// 草稿、引用与编辑。Enter 发送 / Shift+Enter 换行（手机上 Enter 换行、按钮发送）。
+// Look = the task composer (`LeoComposer.tsx`): one Tailwind frame, round 28–32 px icon buttons, 36 px send circle.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { SendMessageInput } from "../../../lib/im/messages-api";
+import { ImApiError } from "../../../lib/im/client";
 import type { ImAttachment, ImCard, ImConversationDetail, ImMessage } from "../../../lib/im/types";
 import { ReplayPickerDialog } from "../../replay/work/ReplayPickerDialog";
 import type { ConversationStore } from "../conversation/conversation-store";
@@ -13,19 +15,18 @@ import { payerRequestField } from "../../../lib/im/leo-api";
 import { sendTyping } from "../realtime/hooks";
 import { ArtifactPickerDialog } from "./ArtifactPickerDialog";
 import { AttachmentTray } from "./AttachmentTray";
+import { AttachMenu } from "./AttachMenu";
 import { EmojiPicker } from "./EmojiPicker";
-import { ImCloseIcon, ImEmojiIcon, ImSendIcon } from "../messages-surface";
+import { ArrowUpGlyph, AtGlyph, CheckGlyph, CloseGlyph, EmojiGlyph } from "./icons";
 import {
   MentionPicker,
   activeMentionQuery,
   applyMention,
   collectMentions,
-  extraMentionCandidates,
   mentionCandidates,
-  removeMentionQuery,
-  type ComposerExtraMention,
   type MentionCandidate,
 } from "./MentionPicker";
+import { postTaskCard, taskIdsFromLinkOnlyText, type TaskCardChoice } from "./task-card";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { insertLeoMention } from "./leo-insert";
 import { WORK_REPLY_NOTICE, type WorkSendPolicy } from "../conversation/work-policy";
@@ -40,6 +41,21 @@ import {
 
 export const MAX_BODY_CHARS = 8000;
 const TYPING_THROTTLE_MS = 3000;
+const NOTICE_MS = 4000;
+const LINE_PX = 24;
+
+/** The frame, defined once (same classes as the task composer's frame). */
+export const COMPOSER_FRAME_CLASS =
+  "relative shrink-0 rounded-2xl border bg-white shadow-sm transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] focus-within:border-neutral-300 focus-within:shadow-md";
+/** Round icon button of the toolbar (emoji, @leo, voice): 32 px, press motion. */
+export const COMPOSER_ICON_BUTTON_CLASS =
+  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700 active:scale-95 active:duration-[var(--leo-dur-1)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100";
+/** 36 px send circle with the up arrow; grey when there is nothing to send. */
+export function composerSendButtonClass(enabled: boolean): string {
+  return `flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] ${
+    enabled ? "bg-neutral-900 hover:scale-105 hover:bg-neutral-800 active:scale-95" : "cursor-not-allowed bg-neutral-300"
+  }`;
+}
 
 export type ComposerKeyAction = "send" | "newline" | "none";
 
@@ -84,13 +100,15 @@ export interface ComposerProps {
   disabled?: boolean;
   disabledReason?: string;
   workPolicy?: WorkSendPolicy;
-  /** 紧挨在发送按钮前面画的东西（任务里：「交给 agent」）。 */
-  sendAccessory?: React.ReactNode;
   /**
-   * 追加在 @ 列表末尾的动作行（任务里：「新建 agent 任务…」、每个子任务一行）。标签包含所打查询才出现；
-   * 选中（点或 Enter/Tab）= 删掉打的 `@查询`、不算提到任何人、调 onPick()。@leo 和人的行仍在前面、不变。
+   * Project sessions only (contract §2.4): the "+" menu gains "Task" (posts a task card), and a message that is
+   * nothing but links to tasks is posted as task cards instead of the URL text.
    */
-  extraMentions?: ComposerExtraMention[];
+  attachTaskCard?: boolean;
+  /** Test seam: posts one task card. Defaults to `POST /v1/im/conversations/{id}/task-card`. */
+  postTaskCardImpl?: (conversationId: string, taskId: string) => Promise<ImMessage>;
+  /** Test seam: the task list of the "Task" page. */
+  loadTaskChoices?: (options: { signal?: AbortSignal }) => Promise<TaskCardChoice[]>;
 }
 
 function isCoarsePointer(): boolean {
@@ -100,18 +118,6 @@ function isCoarsePointer(): boolean {
 
 function filesFrom(list: FileList | File[] | null | undefined): File[] {
   return list ? Array.from(list) : [];
-}
-
-function PaperclipIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-      <path
-        d="M21.4 11.1 12.2 20.3a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 export function Composer(props: ComposerProps) {
@@ -132,8 +138,9 @@ export function Composer(props: ComposerProps) {
     placeholder,
     disabled,
     disabledReason,
-    sendAccessory,
-    extraMentions,
+    attachTaskCard = false,
+    postTaskCardImpl = postTaskCard,
+    loadTaskChoices,
   } = props;
   const tt = useUI();
   const workPolicy = props.workPolicy ?? conversation?.send_policy;
@@ -146,18 +153,27 @@ export function Composer(props: ComposerProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [jobs, setJobs] = useState<UploadJob[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [plusOpen, setPlusOpen] = useState(false);
   const [artifactOpen, setArtifactOpen] = useState(false);
   const [replayOpen, setReplayOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
+  // One short notice (no microphone, voice failed, task card failed …). It floats above the frame and goes away
+  // by itself, so the composer never changes height because of it.
+  const [notice, setNotice] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const controllers = useRef(new Map<string, AbortController>());
   const lastTypingAt = useRef(0);
   const restoredRef = useRef<string>("");
 
   const mobile = layout === "mobile" || isCoarsePointer();
+  // A task card is a message of the session itself, never a thread reply.
+  const taskCardsHere = attachTaskCard && !threadRootId;
   const allLabel = tt("所有人");
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   // ── 草稿：打开会话时恢复，停止输入 1 秒后存 ─────────────────────────────
   useEffect(() => {
@@ -204,19 +220,13 @@ export function Composer(props: ComposerProps) {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 8 * 22)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 8 * LINE_PX)}px`;
   }, [text]);
 
   const active = useMemo(() => activeMentionQuery(text, caret), [text, caret]);
   const candidates = useMemo(
-    () =>
-      active
-        ? [
-            ...mentionCandidates({ conversation, viewerId, query: active.query, allLabel }),
-            ...extraMentionCandidates(extraMentions, active.query),
-          ]
-        : [],
-    [active, conversation, viewerId, allLabel, extraMentions],
+    () => (active ? mentionCandidates({ conversation, viewerId, query: active.query, allLabel }) : []),
+    [active, conversation, viewerId, allLabel],
   );
   useEffect(() => setActiveIndex(0), [active?.query, candidates.length]);
 
@@ -247,7 +257,7 @@ export function Composer(props: ComposerProps) {
   const addFiles = useCallback(
     (files: File[]) => {
       if (files.length === 0) return;
-      if (textOnly) { setVoiceError(tt(WORK_REPLY_NOTICE)); return; }
+      if (textOnly) { setNotice(tt(WORK_REPLY_NOTICE)); return; }
       const fresh: UploadJob[] = files.map((file) => ({
         id: globalThis.crypto.randomUUID(),
         file,
@@ -299,6 +309,25 @@ export function Composer(props: ComposerProps) {
     onSent?.();
   };
 
+  // Session only: post task cards. "refused" = the server will not card this task here (no access, not a
+  // session …); "failed" = anything else (network, server error).
+  const sendTaskCards = async (taskIds: readonly string[]): Promise<"ok" | "refused" | "failed"> => {
+    let posted = 0;
+    for (const taskId of taskIds) {
+      try {
+        const message = await postTaskCardImpl(conversationId, taskId);
+        if (message) store.ingestMessage(message);
+        posted += 1;
+      } catch (error) {
+        if (posted > 0) onSent?.();
+        const status = error instanceof ImApiError ? error.status : 0;
+        return posted === 0 && status >= 400 && status < 500 && status !== 401 && status !== 429 ? "refused" : "failed";
+      }
+    }
+    onSent?.();
+    return "ok";
+  };
+
   const submit = async () => {
     if (!canSend) return;
     if (editing) {
@@ -310,6 +339,23 @@ export function Composer(props: ComposerProps) {
         onCancelEdit?.();
       }
       return;
+    }
+    // A session message that is only links to tasks becomes task cards (the server checks the sender may view
+    // each task). A link the server refuses to card is sent as ordinary text; any other failure keeps the text.
+    const linkedTasks = taskCardsHere && readyAttachments.length === 0 && !quote ? taskIdsFromLinkOnlyText(trimmed) : null;
+    if (linkedTasks) {
+      setSending(true);
+      const outcome = await sendTaskCards(linkedTasks);
+      setSending(false);
+      if (outcome === "ok") {
+        afterSend();
+        return;
+      }
+      if (outcome === "failed") {
+        setNotice(tt("没能发出任务卡片，请重试。"));
+        return;
+      }
+      // refused: a link to a task that cannot be carded here goes out as ordinary text
     }
     const mentions = collectMentions(trimmed, picked, leoEnabled);
     const kind = readyAttachments.length > 0 ? messageKindForAttachments(readyAttachments) : "text";
@@ -351,7 +397,7 @@ export function Composer(props: ComposerProps) {
           });
           onSent?.();
         })
-        .catch(() => setVoiceError(tt("语音没能发出去，请重试。")));
+        .catch(() => setNotice(tt("语音没能发出去，请重试。")));
     },
     [store, threadRootId, onSent, tt, textOnly],
   );
@@ -359,16 +405,6 @@ export function Composer(props: ComposerProps) {
   // ── 输入事件 ────────────────────────────────────────────────────────────
   const pickMention = (candidate: MentionCandidate) => {
     if (!active) return;
-    if (candidate.kind === "extra") {
-      const extra = extraMentions?.find((item) => item.key === candidate.id);
-      const removed = removeMentionQuery(text, caret, active);
-      setText(removed.text);
-      draftBook.write(conversationId, removed.text, threadRootId);
-      setCaret(removed.caret);
-      requestAnimationFrame(() => textareaRef.current?.setSelectionRange(removed.caret, removed.caret));
-      extra?.onPick();
-      return;
-    }
     const next = applyMention(text, caret, active, candidate);
     setText(next.text);
     setPicked((list) => (list.some((c) => c.kind === candidate.kind && c.id === candidate.id) ? list : [...list, candidate]));
@@ -485,7 +521,6 @@ export function Composer(props: ComposerProps) {
   const hintFor = (candidate: MentionCandidate): string | null => {
     if (candidate.kind === "all") return tt("通知全体成员");
     if (candidate.kind === "leo") return tt("AI 助手");
-    if (candidate.kind === "extra") return extraMentions?.find((item) => item.key === candidate.id)?.hint ?? null;
     if (candidate.external) return tt("外部");
     return null;
   };
@@ -499,9 +534,10 @@ export function Composer(props: ComposerProps) {
   }
 
   const quoteName = quoteLabel ?? "";
+  const sendEnabled = canSend;
   return (
     <div
-      className={"relative mx-3 mb-3 mt-2 shrink-0 rounded-2xl border border-neutral-200 bg-white shadow-sm focus-within:border-neutral-300 focus-within:shadow-md " + (dragging ? "ring-2 ring-inset ring-neutral-300" : "")}
+      className={`${COMPOSER_FRAME_CLASS} mx-3 mb-3 mt-2 ${dragging ? "border-neutral-300 ring-2 ring-neutral-200" : "border-neutral-200"}`}
       onDragOver={(event) => {
         if (event.dataTransfer?.types?.includes("Files")) {
           event.preventDefault();
@@ -518,32 +554,58 @@ export function Composer(props: ComposerProps) {
         }
       }}
       data-composer=""
-      data-im-composer=""
     >
-      {textOnly ? <p className="px-3 pt-2 text-xs text-neutral-500" data-await-reply="">{tt(WORK_REPLY_NOTICE)}</p> : null}
+      {notice ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 mb-2 flex justify-center px-3">
+          <p
+            role="alert"
+            data-composer-notice=""
+            className="pointer-events-auto flex max-w-full items-center gap-1.5 rounded-full border border-neutral-200/80 bg-white py-1 pl-3 pr-1 text-[12px] text-rose-600 shadow-sm dark:border-white/10 dark:bg-neutral-950"
+          >
+            <span className="min-w-0 truncate">{notice}</span>
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              aria-label={tt("关闭")}
+              className="rounded-full p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 active:scale-95"
+            >
+              <CloseGlyph />
+            </button>
+          </p>
+        </div>
+      ) : null}
+      {textOnly ? <p className="px-4 pt-3 text-[12px] text-neutral-500" data-await-reply="">{tt(WORK_REPLY_NOTICE)}</p> : null}
       {editing ? (
-        <div className="flex items-center justify-between px-3 py-1.5 text-[12px] text-neutral-500">
+        <div className="flex items-center justify-between gap-2 px-4 pt-2.5 text-[12px] text-neutral-500">
           <span>{tt("正在编辑消息")}</span>
-          <button type="button" onClick={onCancelEdit} className="underline">
+          <button
+            type="button"
+            onClick={onCancelEdit}
+            className="rounded-full px-2 py-0.5 text-neutral-600 transition hover:bg-neutral-100 hover:text-neutral-900 active:scale-95"
+          >
             {tt("取消")}
           </button>
         </div>
       ) : null}
       {quote && !editing ? (
-        <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[12px] text-neutral-500">
+        <div className="mx-3 mt-2.5 flex items-center justify-between gap-2 rounded-lg bg-stone-50 py-1 pl-2.5 pr-1 text-[12px] text-neutral-500" data-composer-quote="">
           <span className="min-w-0 truncate">
             {tt("回复")} <b className="font-medium text-neutral-700">{quoteName}</b>
             {"："}
             {plainTextOf(quote.body).replace(/\s+/g, " ").slice(0, 60) || quote.card?.title || quote.attachments[0]?.name || ""}
           </span>
-          <button type="button" onClick={onClearQuote} aria-label={tt("取消引用")} data-im-chrome-btn className="shrink-0">
-            <ImCloseIcon />
+          <button
+            type="button"
+            onClick={onClearQuote}
+            aria-label={tt("取消引用")}
+            className="shrink-0 rounded-lg p-1.5 text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 active:scale-95"
+          >
+            <CloseGlyph />
           </button>
         </div>
       ) : null}
       <AttachmentTray jobs={jobs} onCancel={cancelJob} onRetry={retryJob} onRemove={removeJob} />
-      {voiceError ? <div className="px-3 pt-1 text-[12px] text-red-600">{voiceError}</div> : null}
-      <div className="relative px-3 pb-2 pt-2">
+      <div className="relative">
         <MentionPicker
           candidates={candidates}
           activeIndex={activeIndex}
@@ -566,117 +628,93 @@ export function Composer(props: ComposerProps) {
           onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          className="block max-h-44 min-h-[40px] w-full resize-none bg-transparent px-3 py-2 text-[14px] leading-[22px] text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+          className="block max-h-48 min-h-[48px] w-full resize-none bg-transparent px-4 pb-1 pt-3 text-[15px] leading-6 text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
         />
-        <div className="mt-1.5 flex items-center gap-1" data-im-composer-actions>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setPlusOpen((v) => !v)}
-              aria-haspopup="menu"
-              aria-expanded={plusOpen}
-              aria-label={tt("发文件或作品")}
-              disabled={textOnly || disabled}
-              title={tt("发文件或作品")}
-              className="min-h-11 min-w-11 flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100"
-            >
-              <PaperclipIcon />
-            </button>
-            {plusOpen && !textOnly ? (
-              <div role="menu" className="absolute bottom-9 left-0 z-30 min-w-[160px] overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
-                {[
-                  { label: tt("上传文件"), run: () => fileInputRef.current?.click() },
-                  { label: tt("分享作品"), run: () => setArtifactOpen(true) },
-                  { label: tt("分享工作回放"), run: () => setReplayOpen(true) },
-                ].map((entry) => (
-                  <button
-                    key={entry.label}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setPlusOpen(false);
-                      entry.run();
-                    }}
-                    className="block w-full px-3 py-1.5 text-left text-[13px] text-neutral-700 hover:bg-neutral-50"
-                  >
-                    {entry.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            hidden
-            onChange={(event) => {
-              addFiles(filesFrom(event.target.files));
-              event.target.value = "";
-            }}
-          />
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setEmojiOpen((v) => !v)}
-              aria-label={tt("表情")}
-              aria-expanded={emojiOpen}
-              className="min-h-11 min-w-11 flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100"
-            >
-              <ImEmojiIcon />
-            </button>
-            {emojiOpen ? (
-              <div className="absolute bottom-9 left-0">
-                <EmojiPicker
-                  onClose={() => setEmojiOpen(false)}
-                  onPick={(emoji) => {
-                    setEmojiOpen(false);
-                    insertAtCaret(emoji);
-                  }}
-                />
-              </div>
-            ) : null}
-          </div>
-          {leoEnabled && !editing ? (
-            <button
-              type="button"
-              onClick={insertLeo}
-              disabled={disabled}
-              aria-label={tt("问 leo")}
-              title={tt("问 leo")}
-              data-composer-leo=""
-              className="min-h-11 min-w-11 flex h-8 w-8 items-center justify-center rounded-lg text-[13px] font-semibold text-neutral-500 hover:bg-neutral-100"
-            >
-              @
-            </button>
-          ) : null}
-          {!editing ? (
-            <VoiceRecorder
-              disabled={disabled || textOnly}
-              onRecorded={sendVoice}
-              onError={(code) => setVoiceError(code === "denied" ? tt("没有麦克风权限") : tt("这个浏览器不支持录音"))}
-            />
-          ) : null}
-          <span className="flex-1" />
-          {text.length > MAX_BODY_CHARS - 500 ? (
-            <span className={"text-[11.5px] tabular-nums " + (text.length >= MAX_BODY_CHARS ? "text-red-600" : "text-neutral-400")}>
-              {text.length}/{MAX_BODY_CHARS}
-            </span>
-          ) : null}
-          {sendAccessory}
+      </div>
+      <div className="flex items-center gap-1.5 px-4 pb-3 pt-1" data-composer-actions="">
+        <AttachMenu
+          disabled={textOnly || disabled}
+          attachTaskCard={taskCardsHere}
+          onUpload={() => fileInputRef.current?.click()}
+          onShareArtifact={() => setArtifactOpen(true)}
+          onShareReplay={() => setReplayOpen(true)}
+          onPickTask={async (choice) => {
+            if ((await sendTaskCards([choice.id])) === "ok") return;
+            setNotice(tt("没能发出任务卡片，请重试。"));
+            throw new Error("task_card_failed");
+          }}
+          loadTasks={loadTaskChoices}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(event) => {
+            addFiles(filesFrom(event.target.files));
+            event.target.value = "";
+          }}
+        />
+        <div className="relative">
           <button
             type="button"
-            disabled={!canSend}
-            onClick={() => void submit()}
-            className={editing ? "rounded-lg px-3 py-1.5 text-[13px] font-medium text-neutral-900 disabled:opacity-30" : "disabled:opacity-20"}
-            data-send-button=""
-            data-im-send={editing ? undefined : ""}
-            aria-label={editing ? tt("保存") : tt("发送")}
-            title={editing ? tt("保存") : tt("发送")}
+            onClick={() => setEmojiOpen((v) => !v)}
+            aria-label={tt("表情")}
+            aria-expanded={emojiOpen}
+            title={tt("表情")}
+            className={`${COMPOSER_ICON_BUTTON_CLASS} ${emojiOpen ? "bg-neutral-100 text-neutral-700" : ""}`}
           >
-            {editing ? tt("保存") : <ImSendIcon />}
+            <EmojiGlyph />
           </button>
+          {emojiOpen ? (
+            <div className="absolute bottom-full left-0 z-30 mb-2">
+              <EmojiPicker
+                onClose={() => setEmojiOpen(false)}
+                onPick={(emoji) => {
+                  setEmojiOpen(false);
+                  insertAtCaret(emoji);
+                }}
+              />
+            </div>
+          ) : null}
         </div>
+        {leoEnabled && !editing ? (
+          <button
+            type="button"
+            onClick={insertLeo}
+            disabled={disabled}
+            aria-label={tt("问 leo")}
+            title={tt("问 leo")}
+            data-composer-leo=""
+            className={COMPOSER_ICON_BUTTON_CLASS}
+          >
+            <AtGlyph />
+          </button>
+        ) : null}
+        {!editing ? (
+          <VoiceRecorder
+            disabled={disabled || textOnly}
+            onRecorded={sendVoice}
+            onError={(code) => setNotice(code === "denied" ? tt("没有麦克风权限") : tt("这个浏览器不支持录音"))}
+          />
+        ) : null}
+        <span className="flex-1" />
+        {text.length > MAX_BODY_CHARS - 500 ? (
+          <span className={"text-[12px] tabular-nums " + (text.length >= MAX_BODY_CHARS ? "text-rose-600" : "text-neutral-400")}>
+            {text.length}/{MAX_BODY_CHARS}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          disabled={!sendEnabled}
+          onClick={() => void submit()}
+          className={composerSendButtonClass(sendEnabled)}
+          data-send-button=""
+          aria-label={editing ? tt("保存") : tt("发送")}
+          title={editing ? tt("保存") : tt("发送")}
+        >
+          {sending ? <span className="v-spinner text-[12px]" aria-hidden="true" /> : editing ? <CheckGlyph /> : <ArrowUpGlyph />}
+        </button>
       </div>
       <ArtifactPickerDialog
         open={artifactOpen}

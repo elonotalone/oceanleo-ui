@@ -76,6 +76,7 @@ import { rwTmCopy } from "./rw-tm-copy";
 import { rwStCopy } from "./rw-st-copy";
 import { trRoomCopy } from "./tr-room-copy";
 import { trChatCopy } from "./tr-chat-copy";
+import { ssUmCopy } from "./ss-um-copy";
 import { swSTCopy } from "./sw-st-copy";
 import { swPfCopy } from "./sw-pf-copy";
 import { swHuCopy } from "./sw-hu-copy";
@@ -555,6 +556,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...rwStCopy(language),
       ...trRoomCopy(language),
       ...trChatCopy(language),
+      ...ssUmCopy(language),
       ...swSTCopy(language),
       ...swPfCopy(language),
       ...swHuCopy(language),

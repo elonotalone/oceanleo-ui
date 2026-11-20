@@ -33,16 +33,16 @@ export function AttachmentTray({
   const tt = useUI();
   if (jobs.length === 0) return null;
   return (
-    <ul className="space-y-1 px-3 pt-2" data-attachment-tray="">
+    <ul className="space-y-1 px-4 pt-3" data-attachment-tray="">
       {jobs.map((job) => (
         <li
           key={job.id}
-          className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-[12.5px]"
+          className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-[13px]"
           data-upload-status={job.status}
         >
           <span className="min-w-0 flex-1">
             <span className="block truncate text-neutral-800">{job.file.name}</span>
-            <span className="block text-[11.5px] text-neutral-400">
+            <span className="block text-[12px] text-neutral-400">
               {job.status === "uploading" ? (
                 <>
                   <span className="mr-2 inline-block h-1 w-24 overflow-hidden rounded-full bg-neutral-200 align-middle">
@@ -52,7 +52,7 @@ export function AttachmentTray({
                 </>
               ) : null}
               {job.status === "done" ? `${formatBytes(job.file.size)} · ${tt("已上传")}` : null}
-              {job.status === "failed" ? <span className="text-red-600">{errorText(tt, job.error)}</span> : null}
+              {job.status === "failed" ? <span className="text-rose-600">{errorText(tt, job.error)}</span> : null}
             </span>
           </span>
           {job.status === "uploading" ? (
