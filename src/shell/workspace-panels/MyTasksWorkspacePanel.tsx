@@ -6,7 +6,6 @@ import { AgentChat } from "../AgentChat";
 import { HistoryInlineList } from "../HistoryMasterDetail";
 import { isRestorableAppSession, isShellTask, isTaskThreadSession, type HistoryListEntry } from "../history-model";
 import type { LibraryItem } from "../library-data";
-import { openTaskRoom } from "../messages/tasks/open-task";
 import type { WorkspaceActionEnvelope } from "../workspace-actions";
 
 export interface SidebarTaskHost {
@@ -52,8 +51,7 @@ export function MyTasksWorkspacePanel({ host, onTaskOpenChange }: {
             {tt("新任务")}
           </button>
         </div>
-        {/* A task (people conversation) opens in this panel's task stack (`oceanleo:open-task-child`). */}
-        <HistoryInlineList onOpenEntry={openEntry} onOpenRoom={(room) => openTaskRoom(room.id, room.title, "panel")} />
+        <HistoryInlineList onOpenEntry={openEntry} />
       </div>
       {selected && <div className="h-full min-h-0" data-sidebar-task={selected.taskId || "draft"}>
         <AgentChat key={selected.key} siteId={selected.siteId} taskId={selected.taskId} initialTitle={selected.title}
