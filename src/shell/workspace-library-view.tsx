@@ -32,7 +32,8 @@ export interface WorkspaceEntryMenuItem {
   disabled?: boolean;
 }
 
-function WorkspaceEntryMenu({ items }: { items: readonly WorkspaceEntryMenuItem[] }) {
+/** Card/row "…" menu (top-right of a collection card). Shared by Library and Projects cards. */
+export function WorkspaceEntryMenu({ items }: { items: readonly WorkspaceEntryMenuItem[] }) {
   const tt = useUI();
   const anchorRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);

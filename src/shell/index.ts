@@ -290,6 +290,7 @@ export { MenuSelect } from "./menu-select";
 export type { MenuSelectOption, MenuSelectProps } from "./menu-select";
 export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibrary";
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
+export { WorkspaceEntryMenu, type WorkspaceEntryMenuItem } from "./workspace-library-view";
 export { PublishToOrgButton } from "./PublishToOrgButton";
 export { AdvancedContentWorkbench, type AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
 // 空件挂载（合同 §3.2）：`item` 可以先不给，工作台先给空框，第一件素材落成后再挂编辑器。
