@@ -6,10 +6,10 @@ import type { ImConversationDetail, ImRole } from "../../../lib/im/types";
 import { LEO_MENTION } from "../leo/leo-mention";
 
 export interface MentionCandidate {
-  /** 用户 id；`all` / `leo` 是特殊项。 */
+  /** 用户 id；`all` / `leo` 是特殊项；`extra` 是宿主给的动作行（id = 它的 key）。 */
   id: string;
   label: string;
-  kind: "user" | "all" | "leo";
+  kind: "user" | "all" | "leo" | "extra";
   avatar_url?: string | null;
   external?: boolean;
 }
@@ -75,6 +75,34 @@ export function mentionCandidates(input: {
     .sort((a, b) => a.rank - b.rank || a.order - b.order)
     .slice(0, MAX_MENTION_CANDIDATES)
     .map((entry) => entry.item);
+}
+
+/**
+ * 宿主追加在 @ 列表末尾的动作行（任务里：「新建 agent 任务…」、每个子任务一行）。
+ * 不是提到某人：选中后把打的 `@查询` 删掉、调宿主的 onPick。
+ */
+export interface ComposerExtraMention {
+  key: string;
+  label: string;
+  hint?: string;
+  onPick: () => void;
+}
+
+/** 按打的查询筛动作行：标签包含查询（不分大小写；空查询 = 全部）。 */
+export function extraMentionCandidates(extras: readonly ComposerExtraMention[] | undefined, query: string): MentionCandidate[] {
+  const q = query.trim().toLowerCase();
+  return (extras ?? [])
+    .filter((extra) => !q || extra.label.toLowerCase().includes(q))
+    .map((extra) => ({ id: extra.key, label: extra.label, kind: "extra" as const }));
+}
+
+/** 选中动作行：把 `@查询` 从正文里拿掉，光标停在原来 @ 的位置。 */
+export function removeMentionQuery(
+  text: string,
+  caret: number,
+  active: { start: number; query: string },
+): { text: string; caret: number } {
+  return { text: text.slice(0, active.start) + text.slice(caret), caret: active.start };
 }
 
 /** 光标前是不是正在输入一个 @：`@` 前面是行首或空白，`@` 到光标之间没有空白。 */
@@ -169,7 +197,7 @@ export function MentionPicker({
               }
             >
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-[11px] font-medium text-neutral-600">
-                {candidate.kind === "all" ? "@" : Array.from(candidate.label)[0]?.toUpperCase()}
+                {candidate.kind === "all" ? "@" : candidate.kind === "extra" ? "+" : Array.from(candidate.label)[0]?.toUpperCase()}
               </span>
               <span className="min-w-0 flex-1 truncate text-neutral-800">{candidate.label}</span>
               {hint ? <span className="shrink-0 text-[11px] text-neutral-400">{hint}</span> : null}

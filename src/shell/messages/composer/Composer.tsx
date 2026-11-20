@@ -20,10 +20,14 @@ import {
   activeMentionQuery,
   applyMention,
   collectMentions,
+  extraMentionCandidates,
   mentionCandidates,
+  removeMentionQuery,
+  type ComposerExtraMention,
   type MentionCandidate,
 } from "./MentionPicker";
 import { VoiceRecorder } from "./VoiceRecorder";
+import { insertLeoMention } from "./leo-insert";
 import { WORK_REPLY_NOTICE, type WorkSendPolicy } from "../conversation/work-policy";
 import { draftBook } from "./drafts";
 import {
@@ -80,6 +84,13 @@ export interface ComposerProps {
   disabled?: boolean;
   disabledReason?: string;
   workPolicy?: WorkSendPolicy;
+  /** 紧挨在发送按钮前面画的东西（任务里：「交给 agent」）。 */
+  sendAccessory?: React.ReactNode;
+  /**
+   * 追加在 @ 列表末尾的动作行（任务里：「新建 agent 任务…」、每个子任务一行）。标签包含所打查询才出现；
+   * 选中（点或 Enter/Tab）= 删掉打的 `@查询`、不算提到任何人、调 onPick()。@leo 和人的行仍在前面、不变。
+   */
+  extraMentions?: ComposerExtraMention[];
 }
 
 function isCoarsePointer(): boolean {
@@ -121,6 +132,8 @@ export function Composer(props: ComposerProps) {
     placeholder,
     disabled,
     disabledReason,
+    sendAccessory,
+    extraMentions,
   } = props;
   const tt = useUI();
   const workPolicy = props.workPolicy ?? conversation?.send_policy;
@@ -198,9 +211,12 @@ export function Composer(props: ComposerProps) {
   const candidates = useMemo(
     () =>
       active
-        ? mentionCandidates({ conversation, viewerId, query: active.query, allLabel })
+        ? [
+            ...mentionCandidates({ conversation, viewerId, query: active.query, allLabel }),
+            ...extraMentionCandidates(extraMentions, active.query),
+          ]
         : [],
-    [active, conversation, viewerId, allLabel],
+    [active, conversation, viewerId, allLabel, extraMentions],
   );
   useEffect(() => setActiveIndex(0), [active?.query, candidates.length]);
 
@@ -343,6 +359,16 @@ export function Composer(props: ComposerProps) {
   // ── 输入事件 ────────────────────────────────────────────────────────────
   const pickMention = (candidate: MentionCandidate) => {
     if (!active) return;
+    if (candidate.kind === "extra") {
+      const extra = extraMentions?.find((item) => item.key === candidate.id);
+      const removed = removeMentionQuery(text, caret, active);
+      setText(removed.text);
+      draftBook.write(conversationId, removed.text, threadRootId);
+      setCaret(removed.caret);
+      requestAnimationFrame(() => textareaRef.current?.setSelectionRange(removed.caret, removed.caret));
+      extra?.onPick();
+      return;
+    }
     const next = applyMention(text, caret, active, candidate);
     setText(next.text);
     setPicked((list) => (list.some((c) => c.kind === candidate.kind && c.id === candidate.id) ? list : [...list, candidate]));
@@ -370,6 +396,21 @@ export function Composer(props: ComposerProps) {
       const pos = start + value.length;
       el.setSelectionRange(pos, pos);
       setCaret(pos);
+    });
+  };
+
+  // 输入框下方的 @leo 按钮：在光标处插入 `@leo `（发送时手打 @leo 的识别会把它算成提到 leo）。
+  const insertLeo = () => {
+    const el = textareaRef.current;
+    const next = insertLeoMention(text, el?.selectionStart ?? text.length, el?.selectionEnd ?? text.length);
+    if (next.text.length > MAX_BODY_CHARS) return;
+    setText(next.text);
+    draftBook.write(conversationId, next.text, threadRootId);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(next.caret, next.caret);
+      setCaret(next.caret);
     });
   };
 
@@ -444,6 +485,7 @@ export function Composer(props: ComposerProps) {
   const hintFor = (candidate: MentionCandidate): string | null => {
     if (candidate.kind === "all") return tt("通知全体成员");
     if (candidate.kind === "leo") return tt("AI 助手");
+    if (candidate.kind === "extra") return extraMentions?.find((item) => item.key === candidate.id)?.hint ?? null;
     if (candidate.external) return tt("外部");
     return null;
   };
@@ -595,6 +637,19 @@ export function Composer(props: ComposerProps) {
               </div>
             ) : null}
           </div>
+          {leoEnabled && !editing ? (
+            <button
+              type="button"
+              onClick={insertLeo}
+              disabled={disabled}
+              aria-label={tt("问 leo")}
+              title={tt("问 leo")}
+              data-composer-leo=""
+              className="min-h-11 min-w-11 flex h-8 w-8 items-center justify-center rounded-lg text-[13px] font-semibold text-neutral-500 hover:bg-neutral-100"
+            >
+              @
+            </button>
+          ) : null}
           {!editing ? (
             <VoiceRecorder
               disabled={disabled || textOnly}
@@ -608,6 +663,7 @@ export function Composer(props: ComposerProps) {
               {text.length}/{MAX_BODY_CHARS}
             </span>
           ) : null}
+          {sendAccessory}
           <button
             type="button"
             disabled={!canSend}
