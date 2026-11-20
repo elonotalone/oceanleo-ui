@@ -1502,7 +1502,7 @@ function AgentChatInner({
     if (!activityTaskId || !seen || seen.taskId !== activityTaskId || last <= seen.rowId) return;
     for (let index = rows.length - 1; index >= 0 && rows[index].id > seen.rowId; index -= 1) {
       const row = rows[index];
-      const prompt = row.direction === "client" && row.raw.includes('"session/prompt"');
+      const prompt = row.direction === "client" && (row.raw.includes('"session/prompt"') || row.raw.includes('"_session/steering"'));
       const turnEnd = row.direction === "agent" && row.raw.includes('"stopReason"');
       if (!prompt && !turnEnd) continue;
       notifyHistoryActivity({ taskId: activityTaskId, user: prompt, at: row.received_at });

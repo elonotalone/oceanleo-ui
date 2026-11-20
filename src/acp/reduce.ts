@@ -6,8 +6,12 @@
 // response row with its id follows. Everything else is placed in the turn it arrived in, in row order.
 // The `session/update` rows between a client `session/load` and its response are the agent replaying a conversation
 // the task already shows from its earlier session rows: they render nothing (parent update 1, no dedupe).
+// A client `_session/steering` row is a user message the program reads at its next step inside the running turn: it
+// shows as its own message, the output after it is its, and it ends when the turn it joined ends. A steering answer
+// other than "injected"/"startedNewTurn" means the program did not take it; the gateway then sends the same words as a
+// `session/prompt`, so the refused steering message shows nothing.
 
-import { parseRow } from "./parse";
+import { parseRow, STEER_METHOD } from "./parse";
 import { chunkNotice, noticeCode, type AcpNoticeFields } from "./notices";
 import type {
   AcpBackgroundTask,
@@ -103,6 +107,9 @@ function permissionOptions(params: unknown): PermissionOption[] {
 
 type PendingClient = { method: string; params: unknown; turn: AcpTurn | null };
 
+/** `_session/steering` answers that mean the program has the message. */
+const STEER_TAKEN = new Set(["injected", "startedNewTurn"]);
+
 export function reduceRows(rows: readonly AcpFrameRow[], _program = ""): AcpView {
   const view: AcpView = {
     preamble: [],
@@ -133,9 +140,16 @@ export function reduceRows(rows: readonly AcpFrameRow[], _program = ""): AcpView
   const openTurns = () => view.turns.filter((turn) => turn.open);
   const replaying = () => [...clientRequests.values()].some((request) => request.method === "session/load");
   // The client serializes prompts for every adapter. For historical overlapping requests,
-  // output belongs to the oldest unanswered prompt, independent of the program name.
+  // output belongs to the oldest unanswered prompt, independent of the program name — or to the newest message
+  // steered into that prompt's turn.
+  const current = (): AcpTurn | undefined => {
+    const open = openTurns();
+    const host = open.find((turn) => !turn.steered) ?? open[0];
+    if (!host) return undefined;
+    return [...open].reverse().find((turn) => turn.steered && turn.steerOf === host.key) ?? host;
+  };
   const target = (): AcpItem[] => {
-    const turn = openTurns()[0];
+    const turn = current();
     if (turn) turn.queued = false;
     return (turn ?? view.turns[view.turns.length - 1])?.items ?? view.preamble;
   };
@@ -331,7 +345,33 @@ export function reduceRows(rows: readonly AcpFrameRow[], _program = ""): AcpView
       return;
     }
     clientRequests.delete(key);
+    if (request.turn && request.method === STEER_METHOD) {
+      const steered = request.turn;
+      const outcome = isRecord(result) ? str(result.outcome) : "";
+      if (!error && STEER_TAKEN.has(outcome)) {
+        // A program that ignored idleBehavior ran it as a turn of its own; no answer of its own will follow.
+        if (outcome === "startedNewTurn") steered.open = false;
+        return;
+      }
+      // Not taken: the same words follow as a prompt. Output that arrived meanwhile stays where it belongs.
+      view.turns.splice(view.turns.indexOf(steered), 1);
+      for (const item of steered.items) push(item);
+      return;
+    }
     if (request.turn) {
+      const joined = view.turns.filter((turn) => turn.open && turn.steered && turn.steerOf === request.turn?.key);
+      for (const turn of joined) {
+        turn.open = false;
+        turn.model = row.model ?? null;
+        if (!error && isRecord(result) && typeof result.stopReason === "string") turn.stopReason = result.stopReason;
+      }
+      if (error && joined.length) {
+        // One error for the whole turn, after the last thing it said.
+        joined[joined.length - 1].error = error;
+        request.turn.open = false;
+        request.turn.model = row.model ?? null;
+        return;
+      }
       request.turn.open = false;
       // Completed legacy turns have no recorded attribution. Never relabel
       // them with a session's later selection.
@@ -404,11 +444,14 @@ export function reduceRows(rows: readonly AcpFrameRow[], _program = ""): AcpView
       case "update":
         if (!replaying()) sessionUpdate(row, parsed.sessionId, parsed.update);
         return;
+      case "steer":
       case "prompt": {
         if (parsed.sessionId) mainSessions.add(parsed.sessionId);
+        const steer = parsed.kind === "steer";
         // A prompt after an exit went to a process the gateway started again.
-        view.exited = null;
-        const queued = openTurns().some((turn) => turn.sessionId === parsed.sessionId);
+        if (!steer) view.exited = null;
+        const host = steer ? openTurns().find((turn) => !turn.steered) : undefined;
+        const queued = !steer && openTurns().some((turn) => turn.sessionId === parsed.sessionId);
         const modelOption = view.configOptions?.find(option => option.category === "model" || option.id === "model");
         const modelId = typeof modelOption?.currentValue === "string" ? modelOption.currentValue : view.modelId;
         const optionName = (options: unknown): string => Array.isArray(options) ? options.reduce((label: string, option: unknown) => {
@@ -433,9 +476,10 @@ export function reduceRows(rows: readonly AcpFrameRow[], _program = ""): AcpView
           cancelRequested: false,
           exited: false,
           queued,
+          ...(steer ? { steered: true, steerOf: host?.key ?? null } : {}),
         };
         view.turns.push(turn);
-        clientRequests.set(idKey(parsed.id), { method: "session/prompt", params: null, turn });
+        clientRequests.set(idKey(parsed.id), { method: steer ? STEER_METHOD : "session/prompt", params: null, turn });
         return;
       }
       case "client_request": {

@@ -195,6 +195,16 @@ function QueuedLine({ turn, onStopAndSend }: { turn: AcpTurn; onStopAndSend?: (p
   );
 }
 
+/** Under a message steered into the running turn: it is delivered, nothing was stopped, it is read at the next step. */
+function SteeredLine({ turn }: { turn: AcpTurn }) {
+  const tt = useUI();
+  return (
+    <div data-acp-steered={turn.rowId} className="-mt-1.5 flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500">
+      <span>{tt("已送达：它会在下一步读到，不会打断正在做的事")}</span>
+    </div>
+  );
+}
+
 /** Old gateways only sent bytes; infer their reason from the shortened content. */
 function shortenedContent(row: AcpFrameRow) {
   let text = row.truncated?.text ?? false;
@@ -358,6 +368,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
       onBlockRender={onBlockRender}
     />
     {block.queued && <QueuedLine turn={block.queued} onStopAndSend={onStopAndSend} />}
+    {block.steered && <SteeredLine turn={block.steered} />}
   </>;
 }, (previous, next) =>
   previous.turnCopyText === next.turnCopyText &&

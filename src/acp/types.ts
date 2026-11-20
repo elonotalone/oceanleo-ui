@@ -149,6 +149,8 @@ export type AcpEvent =
   /** The agent answers a client request (prompt → `stopReason`, set_* → result, or an error). */
   | (RowRef & { kind: "agent_response"; id: JsonRpcId; result?: unknown; error?: JsonRpcError })
   | (RowRef & { kind: "prompt"; id: JsonRpcId; sessionId: string; prompt: ContentBlock[] })
+  /** A user message for the turn that is running (`_session/steering`): the program reads it at its next step. */
+  | (RowRef & { kind: "steer"; id: JsonRpcId; sessionId: string; prompt: ContentBlock[] })
   /** Any other request the gateway wrote (`session/set_model`, `session/close`, `session/new`, …). */
   | (RowRef & { kind: "client_request"; id: JsonRpcId; method: string; params: unknown })
   /** A notification the gateway wrote (`session/cancel`). */
@@ -265,6 +267,12 @@ export type AcpTurn = {
    * program holds it until that turn ends. Stays true when the prompt is answered without ever running.
    */
   queued: boolean;
+  /**
+   * A message steered into the running turn (`_session/steering` row): nothing was stopped, the program reads it at
+   * its next step. Its output follows it; it ends when the turn it joined (`steerOf`, that turn's key) ends.
+   */
+  steered?: boolean;
+  steerOf?: string | null;
 };
 
 export type AcpView = {

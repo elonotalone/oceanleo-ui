@@ -34,7 +34,9 @@ export function acpShareItems(view: AcpView): AcpShareItems {
   };
   words(view.preamble);
   for (const turn of view.turns) {
-    rowIds.set(turn.rowId, [turn.rowId]);
+    // The server's snapshot (`conversation_share_acp_rows`, migration 0408) reads a user's words from
+    // `session/prompt` rows only; a steered message's row is not one, so it is not offered for a share link.
+    if (!turn.steered) rowIds.set(turn.rowId, [turn.rowId]);
     words(turn.items);
   }
   // A turn's error and stop notices reuse the prompt's row id; only `text` bubbles are words.

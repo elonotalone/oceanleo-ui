@@ -28,6 +28,8 @@ export type AcpBlock =
       request?: AcpPermission;
       /** A user prompt the program holds until the running turn ends (`AcpTurn.queued`, still open). */
       queued?: AcpTurn;
+      /** A message steered into the running turn (`AcpTurn.steered`) that the program has not answered yet. */
+      steered?: AcpTurn;
     }
   /** Consecutive thoughts / tool steps / plans of one turn: one foldable `AgentProgress`. */
   | { type: "process"; key: string; messages: AgentMessage[]; running: boolean }
@@ -355,6 +357,7 @@ export function turnBlocks(turn: AcpTurn, live: boolean, labels: AcpLabels): Acp
     key: turn.key,
     message: { id: turn.rowId, role: "user", kind: "text", content: turn.text, ...(turn.author ? { author: turn.author } : {}), ...(files.length ? { meta: { attachments: files } } : {}) },
     ...(turn.open && turn.queued ? { queued: turn } : {}),
+    ...(turn.open && turn.steered && !turn.items.length ? { steered: turn } : {}),
   };
   const blocks = [prompt, ...itemBlocks(turn.items, live, labels)];
   if (turn.model) {
@@ -382,8 +385,12 @@ export function turnBlocks(turn: AcpTurn, live: boolean, labels: AcpLabels): Acp
 export function viewBlocks(view: AcpView, labels: AcpLabels): AcpBlock[] {
   const lastTurn = view.turns[view.turns.length - 1];
   const blocks = itemBlocks(view.preamble, false, labels);
+  // A message steered into an open turn takes the output from there on: the part before it is no longer streaming.
+  const chain = (turn: AcpTurn) => (turn.steered ? turn.steerOf : turn.key);
+  const superseded = (turn: AcpTurn) => view.turns.some((later) => later.open && later.steered && later.rowId > turn.rowId &&
+    later.steerOf === chain(turn));
   for (const turn of view.turns) {
-    const live = turn.open || (turn === lastTurn && !turn.exited && view.activity === "active");
+    const live = (turn.open && !superseded(turn)) || (turn === lastTurn && !turn.exited && view.activity === "active");
     blocks.push(...turnBlocks(turn, live, labels));
   }
   return blocks;

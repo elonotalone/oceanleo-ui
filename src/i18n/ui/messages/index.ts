@@ -71,6 +71,7 @@ import { swTwCopy } from "./sw-tw-copy";
 import { rwMcCopy } from "./rw-mc-copy";
 import { rwNmCopy } from "./rw-nm-copy";
 import { rwTmCopy } from "./rw-tm-copy";
+import { rwStCopy } from "./rw-st-copy";
 import { swSTCopy } from "./sw-st-copy";
 import { swPfCopy } from "./sw-pf-copy";
 import { swHuCopy } from "./sw-hu-copy";
@@ -547,6 +548,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...rwMcCopy(language),
       ...rwNmCopy(language),
       ...rwTmCopy(language),
+      ...rwStCopy(language),
       ...swSTCopy(language),
       ...swPfCopy(language),
       ...swHuCopy(language),

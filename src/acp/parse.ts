@@ -40,6 +40,8 @@ function rpcError(value: unknown): JsonRpcError {
 }
 
 const KNOWN = new Set<string>(KNOWN_SESSION_UPDATES);
+/** ACP steering extension: a user message the gateway sent into the running turn. */
+export const STEER_METHOD = "_session/steering";
 
 function contentBlocks(value: unknown): ContentBlock[] {
   return Array.isArray(value) ? value.filter((block): block is ContentBlock => isRecord(block) && typeof block.type === "string") : [];
@@ -64,10 +66,10 @@ function message(row: AcpFrameRow, msg: Json): AcpEvent {
       }
       return { row, kind: "agent_notification", method, params };
     }
-    if (hasId && method === "session/prompt" && isRecord(params)) {
+    if (hasId && (method === "session/prompt" || method === STEER_METHOD) && isRecord(params)) {
       return {
         row,
-        kind: "prompt",
+        kind: method === STEER_METHOD ? "steer" : "prompt",
         id: msg.id as JsonRpcId,
         sessionId: typeof params.sessionId === "string" ? params.sessionId : "",
         prompt: contentBlocks(params.prompt),

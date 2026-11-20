@@ -1,0 +1,302 @@
+{
+ "_source": "Built from the wire behaviour of claude-agent-acp 0.90.0 dist/acp-agent.js (steer() l.2380-2452, parseSteerRequest l.231-253, settle lanes l.295-316/3142-3149/4530-4545), not a live capture: the gateway sends _session/steering with idleBehavior promptRequired; a running turn answers {outcome:injected} at once and the ORIGINAL prompt's result closes both; an idle session answers {outcome:promptRequired} and the gateway sends the same words as session/prompt. The steered message is not echoed as user_message_chunk.",
+ "steered": [
+  [
+   "client",
+   {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "session/prompt",
+    "params": {
+     "sessionId": "native-1",
+     "prompt": [
+      {
+       "type": "text",
+       "text": "Build the landing page"
+      }
+     ]
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "native-1",
+     "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+       "type": "text",
+       "text": "Starting. I will ask a sub-agent to draft the copy."
+      }
+     }
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "native-1",
+     "update": {
+      "sessionUpdate": "tool_call",
+      "toolCallId": "agent-1",
+      "title": "Draft the copy (sub-agent)",
+      "kind": "think",
+      "status": "in_progress"
+     }
+    }
+   }
+  ],
+  [
+   "client",
+   {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "_session/steering",
+    "params": {
+     "sessionId": "native-1",
+     "prompt": [
+      {
+       "type": "text",
+       "text": "Also add a footer with the address"
+      }
+     ],
+     "_meta": {
+      "steering": {
+       "idleBehavior": "promptRequired"
+      }
+     }
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "result": {
+     "outcome": "injected"
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "native-1",
+     "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+       "type": "text",
+       "text": "Noted, I will add the footer too."
+      }
+     }
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "native-1",
+     "update": {
+      "sessionUpdate": "tool_call",
+      "toolCallId": "edit-1",
+      "title": "Edit footer.tsx",
+      "kind": "think",
+      "status": "in_progress"
+     }
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "native-1",
+     "update": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "edit-1",
+      "status": "completed"
+     }
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "native-1",
+     "update": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "agent-1",
+      "status": "completed"
+     }
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "native-1",
+     "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+       "type": "text",
+       "text": "Done: landing page with footer."
+      }
+     }
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "result": {
+     "stopReason": "end_turn"
+    }
+   }
+  ]
+ ],
+ "refused": [
+  [
+   "client",
+   {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "session/prompt",
+    "params": {
+     "sessionId": "native-1",
+     "prompt": [
+      {
+       "type": "text",
+       "text": "Check the links"
+      }
+     ]
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "native-1",
+     "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+       "type": "text",
+       "text": "All links work."
+      }
+     }
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "result": {
+     "stopReason": "end_turn"
+    }
+   }
+  ],
+  [
+   "client",
+   {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "_session/steering",
+    "params": {
+     "sessionId": "native-1",
+     "prompt": [
+      {
+       "type": "text",
+       "text": "And the images?"
+      }
+     ],
+     "_meta": {
+      "steering": {
+       "idleBehavior": "promptRequired"
+      }
+     }
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "result": {
+     "outcome": "promptRequired",
+     "reason": "noRunningTurn"
+    }
+   }
+  ],
+  [
+   "client",
+   {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "session/prompt",
+    "params": {
+     "sessionId": "native-1",
+     "prompt": [
+      {
+       "type": "text",
+       "text": "And the images?"
+      }
+     ]
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "native-1",
+     "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+       "type": "text",
+       "text": "The images load."
+      }
+     }
+    }
+   }
+  ],
+  [
+   "agent",
+   {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "result": {
+     "stopReason": "end_turn"
+    }
+   }
+  ]
+ ]
+}
