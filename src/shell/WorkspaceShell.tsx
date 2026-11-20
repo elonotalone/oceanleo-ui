@@ -10,10 +10,10 @@
 //   - 删除原「中间一列『选择 AGENT』」。
 //   - 「我的 Agents」直接作为**顶部功能区按键条**（与子站工作台的功能区按键条
 //     完全同构）；「＋ 添加 agent」放在这条按键条的**最右边**，点了跳 /agents。
-//   - 选中某 agent → 用 iframe 内嵌该子站的
-//       /workspace?embed=1&fn=<fn_id>&agent=<agent_id>&solo=1
-//     solo=1 让子站**只渲染这一个功能区**、隐藏它自己的功能区按键条（避免「选一个
-//     agent 把整站的功能区都带出来」的问题）。embed=1 隐藏子站自身外壳。
+//   - 选中某 agent → 用 iframe 内嵌该站（同源，2026-11-21 起没有子站主机）的
+//       /workspace/<siteKey>?embed=1&solo=1&fn=<fn_id>&agent=<agent_id>
+//     solo=1 让站点工作台**只渲染这一个功能区**、隐藏它自己的功能区按键条（避免「选一个
+//     agent 把整站的功能区都带出来」的问题）。embed=1 隐藏站点自身外壳。
 //   - 没有任何「我的 Agents」时 → 顶部只剩「＋ 添加 agent」，主体用兜底 AgentChat。
 //
 // 这套 iframe + postMessage 机制同时是「一壳全家桶 app」的底层（§6）。
@@ -26,8 +26,6 @@ import { useUI } from "../i18n/ui/useUI";
 import { WORKSPACE_EMBED_SANDBOX, workspaceEmbedSrc } from "./Playground";
 
 export interface WorkspaceShellProps {
-  /** 各 site_id → 该站域名（用于拼 iframe src）。默认 https://<map>。 */
-  siteOrigin: Record<string, string>;
   /** 「＋ 添加 agent」跳转地址，默认 "/agents"。 */
   addAgentHref?: string;
   /** 受控：当前选中的 agent_id。不传则内部自管。 */
@@ -35,18 +33,14 @@ export interface WorkspaceShellProps {
   onChange?: (agentId: string) => void;
   accent?: string;
   headerHeight?: number;
-  /** 主站自己的 site_id（无 agent 兜底对话时用），默认 "home"。 */
-  homeSiteId?: string;
 }
 
 export function WorkspaceShell({
-  siteOrigin,
   addAgentHref = "/agents",
   value,
   onChange,
   accent = "#4f46e5",
   headerHeight = 56,
-  homeSiteId = "home",
 }: WorkspaceShellProps) {
   const tt = useUI();
   const [mine, setMine] = useState<AgentDef[]>([]);
@@ -85,13 +79,13 @@ export function WorkspaceShell({
     [mine, activeId],
   );
 
-  // solo=1：子站只渲染这一个功能区、隐藏自身功能区按键条（主站这条 agent 行
+  // solo=1：站点工作台只渲染这一个功能区、隐藏自身功能区按键条（主站这条 agent 行
   // 已是功能区选择器，不该再带出整站的功能区）。
   // UC-3：src 只能来自 workspaceEmbedSrc 的第一方判定，见 Playground.tsx 的
   // workspace-embed-trust 区块与 docs/architecture/oceanleo-untrusted-content-isolation.md §8.3。
   const embedSrc = useMemo(
-    () => workspaceEmbedSrc(siteOrigin, active),
-    [active, siteOrigin],
+    () => workspaceEmbedSrc(active),
+    [active],
   );
 
   return (
@@ -167,7 +161,7 @@ export function WorkspaceShell({
           </div>
         ) : (
           <div className="h-full overflow-hidden rounded-2xl border border-stone-200 bg-white/60">
-            <AgentChat siteId={homeSiteId} accent={accent} headerHeight={headerHeight} />
+            <AgentChat siteId="home" accent={accent} headerHeight={headerHeight} />
           </div>
         )}
       </div>

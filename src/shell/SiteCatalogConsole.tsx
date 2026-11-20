@@ -52,6 +52,7 @@ import {
   catalogCanonicalRedirect,
   catalogNavigationForChange,
   resolveSiteCatalogRoute,
+  resolveSiteCatalogRouteContract,
 } from "./site-catalog-controller";
 import {
   CatalogDeepLinkBoundary,
@@ -67,7 +68,10 @@ import {
   advancedRootItemId,
   advancedSnapshotFromSession,
 } from "./advanced-session";
-import type { OceanLeoSiteManifest } from "../contracts/site-manifest";
+import type {
+  OceanLeoSiteManifest,
+  OceanLeoWorkspaceRouteContract,
+} from "../contracts/site-manifest";
 import {
   CatalogOps,
   IncompleteHistorySession,
@@ -81,6 +85,12 @@ export interface SiteCatalogConsoleProps {
   siteId: string;
   /** Stable thin-host contract. Existing props remain the compatibility facade. */
   manifest?: OceanLeoSiteManifest<GoalApp>;
+  /**
+   * Where this console's URLs live (contract §2.5). Site packs are mounted at `/workspace/<siteKey>` on the main
+   * site and pass `{ canonicalBasePath: siteWorkspaceBase("<key>") }`; every URL the console writes or parses then
+   * uses that base. Wins over `manifest.workspace`; missing fields keep the defaults (`/workspace`, `/history`).
+   */
+  route?: Partial<OceanLeoWorkspaceRouteContract>;
   /** 本站成品 app 清单（≥20 个，面向目的、名词化）。 */
   apps: GoalApp[];
   /**
@@ -204,6 +214,7 @@ export async function beforeLeaveWithDeadline(
 export function SiteCatalogConsole({
   siteId,
   manifest,
+  route,
   apps,
   renderOps,
   renderCanvas,
@@ -232,11 +243,25 @@ export function SiteCatalogConsole({
     }),
     [legacyAppAliases, manifest?.catalog.aliases],
   );
+  const routeBasePath = route?.canonicalBasePath;
+  const routeHistoryPath = route?.historyBasePath;
+  const routeLegacyKeys = route?.legacyQueryKeys?.join("\u0000");
+  // Keyed on the values, not the object: packs pass a fresh literal every render.
+  const workspaceRoute = useMemo(
+    () =>
+      resolveSiteCatalogRouteContract(manifest?.workspace, {
+        canonicalBasePath: routeBasePath,
+        historyBasePath: routeHistoryPath,
+        legacyQueryKeys:
+          routeLegacyKeys === undefined ? undefined : routeLegacyKeys.split("\u0000").filter(Boolean),
+      }),
+    [manifest?.workspace, routeBasePath, routeHistoryPath, routeLegacyKeys],
+  );
   const pathname = usePathname() || "";
   const router = useRouter();
   const historySessionId = historySessionIdFromPath(
     pathname,
-    manifest?.workspace,
+    workspaceRoute,
   );
   const [locationSearch, setLocationSearch] = useState("");
   const [historySession, setHistorySession] = useState<AppSession | null>(null);
@@ -267,12 +292,12 @@ export function SiteCatalogConsole({
       const flushed = await beforeLeaveRef.current();
       if (flushed) {
         router.replace(
-          historySessionHref(sessionId, manifest?.workspace, pathname),
+          historySessionHref(sessionId, workspaceRoute, pathname),
         );
       }
       else taskRouteInFlightRef.current = "";
     },
-    [historySessionId, manifest?.workspace, pathname, router],
+    [historySessionId, workspaceRoute, pathname, router],
   );
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const inheritedHistorySession =
@@ -424,7 +449,7 @@ export function SiteCatalogConsole({
         historyAppId: effectiveHistorySession?.app_id,
         aliases: catalogAliases,
         knownAppIds,
-        route: manifest?.workspace,
+        route: workspaceRoute,
       }),
     [
       effectiveHistorySession?.app_id,
@@ -435,7 +460,7 @@ export function SiteCatalogConsole({
       pathname,
       solo,
       value,
-      manifest?.workspace,
+      workspaceRoute,
     ],
   );
   const requestedAppId = routeState.requestedAppId;
@@ -452,7 +477,7 @@ export function SiteCatalogConsole({
       pathname,
       locationSearch,
       embed,
-      manifest?.workspace,
+      workspaceRoute,
     );
     if (href) router.replace(href);
   }, [
@@ -461,6 +486,7 @@ export function SiteCatalogConsole({
     pathname,
     router,
     routeState,
+    workspaceRoute,
   ]);
 
   // 深链一次性意图（`?fill=preset` / `?open=advanced`）的锁存、消费与派发全部在
@@ -489,7 +515,7 @@ export function SiteCatalogConsole({
       const navigation = catalogNavigationForChange(id, {
         embed,
         historySessionId,
-        route: manifest?.workspace,
+        route: workspaceRoute,
         pathname,
       });
       if (navigation.kind === "route") router.push(navigation.href);
@@ -499,7 +525,7 @@ export function SiteCatalogConsole({
       embed,
       onChange,
       historySessionId,
-      manifest?.workspace,
+      workspaceRoute,
       pathname,
       router,
     ],
@@ -601,7 +627,7 @@ export function SiteCatalogConsole({
             type="button"
             onClick={() =>
               router.push(
-                historySessionHref("", manifest?.workspace, pathname),
+                historySessionHref("", workspaceRoute, pathname),
               )
             }
             className="mt-4 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white"
@@ -622,7 +648,7 @@ export function SiteCatalogConsole({
         accent={accent}
         onBack={() =>
           router.push(
-            historySessionHref("", manifest?.workspace, pathname),
+            historySessionHref("", workspaceRoute, pathname),
           )
         }
       />
@@ -667,7 +693,7 @@ export function SiteCatalogConsole({
           embedded
           onClose={() =>
             router.push(
-              historySessionHref("", manifest?.workspace, pathname),
+              historySessionHref("", workspaceRoute, pathname),
             )
           }
         />
@@ -689,7 +715,7 @@ export function SiteCatalogConsole({
             onClick={() => {
               const navigation = catalogNavigationForChange("", {
                 historySessionId,
-                route: manifest?.workspace,
+                route: workspaceRoute,
                 pathname,
               });
               if (navigation.kind === "route") router.push(navigation.href);
@@ -718,7 +744,7 @@ export function SiteCatalogConsole({
         accent={accent}
         onBack={() =>
           router.push(
-            historySessionHref("", manifest?.workspace, pathname),
+            historySessionHref("", workspaceRoute, pathname),
           )
         }
       />

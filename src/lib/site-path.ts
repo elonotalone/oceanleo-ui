@@ -31,3 +31,22 @@ export function parseSiteWorkspacePath(pathname: string): { siteKey: string | nu
   if (parts[0] !== "workspace" || parts.length < 2) return { siteKey: null, segments: [] };
   return { siteKey: parts[1], segments: parts.slice(2) };
 }
+
+/** Historical site keys that still arrive from stored rows → today's key. */
+const SITE_WORKSPACE_KEY_ALIASES: Readonly<Record<string, string>> = { money: "finance" };
+/** Ids that name the main site itself, never a site workspace. */
+const NOT_A_SITE_WORKSPACE = new Set(["oceanleo", "home", "portal"]);
+const SITE_WORKSPACE_KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
+/**
+ * A stored `site_id` → the key of its workspace under `/workspace/<key>`, or "" when it does not name a site
+ * (empty, the main site, or not a plain key). Aliases: `money` → `finance`.
+ */
+export function siteWorkspaceKey(siteId: string | null | undefined): string {
+  const raw = String(siteId ?? "").trim().toLowerCase();
+  const key = Object.prototype.hasOwnProperty.call(SITE_WORKSPACE_KEY_ALIASES, raw)
+    ? SITE_WORKSPACE_KEY_ALIASES[raw]
+    : raw;
+  if (!key || NOT_A_SITE_WORKSPACE.has(key) || !SITE_WORKSPACE_KEY.test(key)) return "";
+  return key;
+}

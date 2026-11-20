@@ -55,7 +55,6 @@ export type {
 } from "./workspace-library-cover";
 // 探索区可玩分流与「开玩」落点（W8 产出，符号清单见 `W8-marker.md` §A）。
 export {
-  ARTIFACT_PLAY_ORIGIN,
   ARTIFACT_PLAY_ROUTE_PREFIX,
   EXPLORE_PLAYABLE_MAX_PAGES,
   EXPLORE_PLAYABLE_PAGE_LIMIT,

@@ -28,7 +28,7 @@ import {
 } from "./artifact-contract";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import type { WorkspaceLibraryEntry } from "./workspace-library-model";
-import { currentFamilySubsiteOrigin } from "../contracts/domain-family";
+import { isCurrentFamilyFirstPartyHost } from "../contracts/domain-family";
 
 export type ExploreArtifactClass = "playable" | "material";
 
@@ -398,22 +398,6 @@ export function isPlayableGameShelfEntry(
 /** W7 的 artifact 播放路由前缀。落点形状变了只改这一处。 */
 export const ARTIFACT_PLAY_ROUTE_PREFIX = "/play/artifact/";
 
-/**
- * 允许的**绝对**播放落点 origin。
- *
- * 探索页跑在 36 个站上，而 artifact 播放路由只在 game 仓落地，所以 W9 的
- * `play_href` 需要能给绝对 URL。放行名单只有这一个 first-party host：
- * 用户产物本身住在 `*.oceanleo.app` 的沙箱里、由播放页 iframe 装载
- * （UC-1…UC-7），**顶层导航不许直奔沙箱 host**，否则就绕过了播放页那一层。
- *
- * 域名按**当前家族**拼（contracts/domain-family.ts）：`.com` 站解析出来的仍是
- * `https://game.oceanleo.com`（逐字不变）。境内 v1 没有 game 子站，于是这里是
- * **空串** —— 绝对播放地址一律不放行，回落到推导出来的站内路由，
- * 而不是把用户顶层导航到 `.com`。
- */
-export const ARTIFACT_PLAY_ORIGIN: string =
-  currentFamilySubsiteOrigin("game") ?? "";
-
 /** 落库的播放地址读这两个键（后端下划线 / 前端驼峰各一份）。 */
 const PLAY_HREF_META_KEYS = ["play_href", "playHref"] as const;
 
@@ -421,9 +405,12 @@ const PLAY_HREF_META_KEYS = ["play_href", "playHref"] as const;
  * 校验一个**外来**的播放地址。
  *
  * 这是注入面：`play_href` 是服务端数据，直接塞进 `href` 等于把跳转目标交给数据。
- * 只认两种形状，其余一律丢弃并回落到推导路由（fail-closed，不是 fail-open）：
+ * 2026-11-21 起 `/play/…` 由门户自己提供（契约 §2.5，不再跳 game 子站），所以结果
+ * **恒为同源根相对路径**，其余一律丢弃并回落到推导路由（fail-closed，不是 fail-open）：
  *   · 根相对路径 `/…`（但不含 `//` 开头的协议相对 URL——那是换 host 的写法）；
- *   · `ARTIFACT_PLAY_ORIGIN` 上的 https 绝对 URL。
+ *   · 旧数据里**当前家族第一方主机**上的 https `/play/…` 绝对地址（例如曾经的
+ *     `https://game.oceanleo.com/play/artifact/x`）折成同源的 `/play/…` 路径。
+ *     折叠只会把落点收回本站，不会把用户送去任何别的主机。
  */
 export function safeArtifactPlayHref(value: unknown): string {
   const raw = String(value ?? "").trim();
@@ -432,9 +419,10 @@ export function safeArtifactPlayHref(value: unknown): string {
   if (raw.startsWith("/")) return raw;
   try {
     const url = new URL(raw);
-    return url.protocol === "https:" && url.origin === ARTIFACT_PLAY_ORIGIN
-      ? url.toString()
-      : "";
+    if (url.protocol !== "https:" || url.port || url.username || url.password) return "";
+    if (!isCurrentFamilyFirstPartyHost(url.hostname)) return "";
+    if (!url.pathname.startsWith("/play/")) return "";
+    return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return "";
   }
@@ -443,9 +431,8 @@ export function safeArtifactPlayHref(value: unknown): string {
 /**
  * 「开玩」落到哪个地址。
  *
- * 优先用 W9 落库的 `play_href`（它知道跨站该给绝对 URL）；没有就按 artifact 坐标
- * 推导出 W7 的路由。**推导值恒为根相对路径**：跨站的绝对地址只能由目录给，
- * 前端猜 host 是安全事故的形状。
+ * 优先用 W9 落库的 `play_href`（经 `safeArtifactPlayHref` 收成同源路径）；没有就按
+ * artifact 坐标推导出 W7 的路由。**结果恒为根相对路径**：前端猜 host 是安全事故的形状。
  *
  * 返回空串 = 这一条算不出可玩落点，调用方必须如实呈现，不许假装能玩。
  */

@@ -26,7 +26,6 @@ import { useGamePreviewHost } from "./game-preview-host";
 import { useUI } from "../i18n/ui/useUI";
 import { getCurrentArtifactItem } from "./artifact-client";
 import {
-  ARTIFACT_PLAY_ORIGIN,
   artifactPlayHref,
   isPlayableGameLibraryItem,
   safeArtifactPlayHref,
@@ -279,19 +278,15 @@ export function MaterialDetailUnavailable({
 /**
  * 「就地内嵌开玩」的地址。
  *
- * 只认 `ARTIFACT_PLAY_ORIGIN` 上的**绝对** https 地址：根相对路径在其余 35 个站上
- * 指向的是本站自己，内嵌进去只会 404。没有声明就不内嵌，走下面的落点面板。
- * 内嵌用的沙箱是既有最严的那一档（`webViewerFrameSandbox(false)`，不含同源授权），
- * 本模块不新增也不放松任何 sandbox 授权。
+ * 只认目录**声明**的 `play_embed_href`，经 `safeArtifactPlayHref` 收成同源路径后还必须
+ * 落在门户自己的 `/play/…` 下（2026-11-21 起播放页由门户提供，没有 game 子站）。
+ * 没有声明就不内嵌，走下面的落点面板。内嵌用的沙箱是既有最严的那一档
+ *（`webViewerFrameSandbox(false)`，不含同源授权），本模块不新增也不放松任何 sandbox 授权。
  */
 export function gamePlayEmbedHref(item: LibraryItem): string {
-  // 境内 v1 没有 game 子站，`ARTIFACT_PLAY_ORIGIN` 是空串。这一句不是多余的：
-  // 少了它，下面的 `startsWith(`${""}/`)` 会退化成「任何根相对路径都算数」，
-  // 把本站的 /play/... 当成可内嵌的绝对落点。
-  if (!ARTIFACT_PLAY_ORIGIN) return "";
   for (const key of ["play_embed_href", "playEmbedHref"]) {
     const declared = safeArtifactPlayHref(item.meta?.[key]);
-    if (declared && declared.startsWith(`${ARTIFACT_PLAY_ORIGIN}/`)) {
+    if (declared && declared.startsWith("/play/")) {
       return declared;
     }
   }

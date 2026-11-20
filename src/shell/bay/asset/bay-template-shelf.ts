@@ -6,10 +6,7 @@ import {
   templateMaterialEntry,
   type TemplateMaterialListing,
 } from "../../material-library-template-source";
-import {
-  isFamilyEmbedOverrideHost,
-  parseFamilyEmbedOriginEnv,
-} from "../../family-embed-origin";
+import { siteWorkspaceBase, siteWorkspaceKey } from "../../../lib/site-path";
 import { workspaceTemplatePreviewHref } from "../../site-catalog-controller";
 import type { BayAssetLicense, BayAssetType } from "./library-client";
 
@@ -29,34 +26,22 @@ const OFFICIAL_LICENSE: BayAssetLicense = {
 };
 
 /**
- * Official cards stay on `workspaceTemplatePreviewHref`.
- * On a LeoDev portal host the same path 404s (portal /workspace is the desk),
- * so website / design / video rows use that site's slot origin from
- * `NEXT_PUBLIC_FAMILY_EMBED_ORIGIN`. Never fall back to the production
- * subsite from a LeoDev page.
+ * Official cards open the library preview of their app on the main site:
+ * `/workspace/<siteKey>/<appId>?tab=materials&item=…&mode=preview` (contract §2.5 — every site's workspace is
+ * same-origin now, so the old LeoDev slot-origin swap for website / design / video is gone). Without a usable
+ * site key the path falls back to the plain `/workspace/<appId>` shape callers had before.
  */
 export function officialTemplatePreviewHref(
   appId: string,
   artifactId: string,
   siteKey = "",
-  options?: { host?: string; embedOriginEnv?: string },
 ): string {
-  const path = workspaceTemplatePreviewHref(appId, artifactId);
-  const host =
-    options?.host ??
-    (typeof window !== "undefined" ? window.location.host : "");
-  if (!isFamilyEmbedOverrideHost(host)) return path;
-  const key = siteKey.trim();
-  if (key !== "website" && key !== "design" && key !== "video") return path;
-  const parsed = parseFamilyEmbedOriginEnv(
-    options?.embedOriginEnv ?? process.env.NEXT_PUBLIC_FAMILY_EMBED_ORIGIN,
+  const key = siteWorkspaceKey(siteKey);
+  return workspaceTemplatePreviewHref(
+    appId,
+    artifactId,
+    key ? { canonicalBasePath: siteWorkspaceBase(key) } : undefined,
   );
-  const origin = parsed.bySubsite[key] || parsed.single;
-  if (!origin) return path;
-  if (typeof window !== "undefined" && window.location.origin === origin) {
-    return path;
-  }
-  return `${origin}${path}`;
 }
 
 export function templateMaterialToBayAsset(

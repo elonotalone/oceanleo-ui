@@ -34,11 +34,11 @@
 // 所以是独立家族：`.oceanbizs.com` 的登录态与 `.oceanleo.com` 永不串门。
 // 用户内容域用生产 `oceanleo.app` 的一个子区 `ws.oceanleo.app`：它仍在
 // `oceanleo.app` 之下，所以对 com 家族天然就是不可信；这里再显式列一次，
-// 让「明确属于用户内容域」那一道也能挡住它。2026-11-11 起分身由合并后的门户
-// （Vercel 项目 `oceanleo` 的 `main`）同时服务主站和 33 个功能子站（操作员：同步
-// oceanbizs = 同步所有系列站），`availableSubsites` 就是这 33 个标签，与门户
-// `lib/sites.tsx` 的 `WS_SUBSITES` 同一份；aitools 不在分身上，fail closed；
-// 不会去嵌 `.com` 编辑器。
+// 让「明确属于用户内容域」那一道也能挡住它。
+//
+// 子站（2026-11-21 session / sites wave）：没有子站主机了。每个站的工作台都在门户
+// 自己的 `/workspace/<siteKey>/…` 下（`lib/site-path.ts`），所以本表不再列子站标签，
+// 也不再有「某家族有没有某子站」的判定；任何代码都不得再拼 `https://<label>.<域>`。
 // 事实源：oceandino `docs/architecture/oceanleo-workstation.md` §3。
 //
 // 本模块零运行时依赖：iframe 渲染面与安全判定面都要能引它。
@@ -97,17 +97,6 @@ export interface DomainFamilyProfile {
    * 拿同样六条 `.app` 全串），ws 是分身自己的 `ws.oceanleo.app`。
    */
   hostedEditorDomain: string;
-  /**
-   * 本家族**确实存在**的子站（子域标签 / 站 key）。
-   *
-   * `"all"` = 该家族是产品全集（海外版就是全集，所以它的解析结果与本轮改动前
-   * 逐字相同）。数组 = 显式清单，**不在清单里就是不存在**。
-   *
-   * 这是 fail closed 的那一侧：不在清单里的子站既拿不到链接，也拿不到内嵌编辑器
-   * 白名单。某个子站境内上线，必须**显式**把它的标签加进这里才会出现 —— 不会
-   * 因为「忘了配」而自动指回海外站，把境内用户送出境。
-   */
-  availableSubsites: "all" | readonly string[];
 }
 
 /**
@@ -124,8 +113,6 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
     assetOrigin: "https://asset.oceanleo.com",
     untrustedContentDomain: "oceanleo.app",
     hostedEditorDomain: "oceanleo.app",
-    // 海外版是产品全集：35 个子站都在，链接与内嵌白名单与改动前逐字相同。
-    availableSubsites: "all",
   },
   cn: {
     family: "cn",
@@ -138,53 +125,6 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
     // A-24（editor-core-swap）：境内没有 Hosted 编辑器部署，拿与海外相同的六条
     // `.app` 全串；在境内是否可达由网关决定，不由本表放宽。
     hostedEditorDomain: "oceanleo.app",
-    // 境内子站清单。**这张表的每一行都必须对应广州机上一个真在跑的容器**：
-    // 它同时驱动子站链接和内嵌编辑器白名单，填一个没部署的站等于给用户一个
-    // 打不开的链接，并给一个不存在的主机发第一方信任。
-    //
-    // 唯一事实源是 oceandino 的 `scripts/oceanleo-cn-sites.tsv`（cn_status=live
-    // 的行），由 `scripts/tests/test_oceanleo_cn_registry.py` 逐字比对本数组 ——
-    // 手改这里而不改清册，或反过来，门禁都会红。新站上线的顺序永远是
-    // 「先部署 → 实测 200 → 再改清册 → 再改这里」，不能反过来。
-    availableSubsites: [
-      "3d",
-      "agent",
-      "aihuman",
-      // aitools 不在境内：整站内容在 Supabase 里，境内库没有那批数据，
-      // 上线也只是个空目录；且它是一份指向境外 AI 服务的导航，内容合规待定。
-      // asset 站 2026-10 下线：不在清单里 = 不给链接、不进内嵌白名单。
-      // 旧地址只靠 assetOrigin 认出并改写成 /bay?kind=asset。
-      "bizdev",
-      "chat",
-      "converter",
-      "design",
-      "e-commerce",
-      "edu",
-      "excel",
-      "finance",
-      "game",
-      "image",
-      "interior",
-      "law",
-      "logo",
-      "make",
-      "med",
-      "meeting",
-      "music",
-      "notebook",
-      "novel",
-      "paper",
-      "prompt",
-      "resume",
-      "script",
-      "search",
-      "slide",
-      "study",
-      "travel",
-      "video",
-      "website",
-      "word",
-    ],
   },
   ws: {
     family: "ws",
@@ -200,44 +140,6 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
     untrustedContentDomain: "ws.oceanleo.app",
     // 分身自己的 Hosted 编辑器 / MCP App 承载面：slides. docs. audio. mcp-apps.ws.oceanleo.app。
     hostedEditorDomain: "ws.oceanleo.app",
-    // 分身子站：2026-11-11 起全部 33 个功能子站由合并后的门户服务（此前只有
-    // design / website / video）。不在清单里就没有链接、没有内嵌白名单；aitools
-    // 不在分身上；不许回落嵌 `.com` 编辑器。必须与门户 `WS_SUBSITES` 逐字相同。
-    availableSubsites: [
-      "3d",
-      "agent",
-      "aihuman",
-      "bizdev",
-      "chat",
-      "converter",
-      "design",
-      "e-commerce",
-      "edu",
-      "excel",
-      "finance",
-      "game",
-      "image",
-      "interior",
-      "law",
-      "logo",
-      "make",
-      "med",
-      "meeting",
-      "music",
-      "notebook",
-      "novel",
-      "paper",
-      "prompt",
-      "resume",
-      "script",
-      "search",
-      "slide",
-      "study",
-      "travel",
-      "video",
-      "website",
-      "word",
-    ],
   },
 };
 
@@ -575,37 +477,6 @@ export function portalHref(path: string): string {
     return path;
   }
   return `${portalOrigin}${path}`;
-}
-
-/**
- * `family` 里是否**确实存在** `subsite` 这个子站。
- *
- * 缺省是「不存在」：清单里没有就是没有。调用方不得在拿到 false 之后回落到别的
- * 家族的同名子站 —— 那正是「境内点一下就被送出境」的那条路。
- */
-export function familyHasSubsite(
-  family: DomainFamily | undefined,
-  subsite: string,
-): boolean {
-  const { availableSubsites } = domainFamilyProfile(family);
-  if (availableSubsites === "all") return true;
-  return availableSubsites.includes(subsite);
-}
-
-/** 当前家族里是否存在该子站。 */
-export function currentFamilyHasSubsite(subsite: string): boolean {
-  return familyHasSubsite(currentDomainFamily(), subsite);
-}
-
-/**
- * 当前家族里该子站的 origin；该家族没有这个子站时 `undefined`。
- * 拿到 `undefined` 的正确处理是「不给链接」，不是「换个家族再拼一个」。
- */
-export function currentFamilySubsiteOrigin(
-  subsite: string,
-): string | undefined {
-  if (!currentFamilyHasSubsite(subsite)) return undefined;
-  return `https://${subsite}.${currentDomainProfile().registrableDomain}`;
 }
 
 /** 当前家族下的第一方判定。授信面用这一个，不要各自再写 host 判断。 */

@@ -8,7 +8,7 @@
 // 做法（非破坏）：143 个 agent 物理上仍属 LeoAgent（site_id="agent"）。本组件按
 // `relatedSkillCategories(siteId)` 过滤出**与当前产品站相关**的 agent，用统一
 // AppDirectory 卡片展示；点开 → 新开 LeoAgent 对应 agent 直接开聊
-// （agent.oceanleo.com/workspace?agent=<id>，本站内嵌时也可由父站接管）。
+// （同源 /workspace/agent?agent=<id>，本站内嵌时也可由父站接管）。
 //
 // 用在每个产品站工作台的「agent」视图（OperatorConsole 顶部 app/agent 切换）。
 // 组件 / prop / 函数名（SiteSkillDirectory / onOpenSkill）= 技术标识层，不随正名改。
@@ -19,12 +19,9 @@ import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { listAgents, type AgentDef } from "../lib/agent";
 import { relatedSkillCategories } from "../lib/taxonomy";
 import { useUI } from "../i18n/ui/useUI";
-import { currentFamilySubsiteOrigin } from "../contracts/domain-family";
+import { siteWorkspaceHref } from "../lib/site-path";
 
 const SKILL_SITE_ID = "agent";
-// canonical 主域已切到 agent.<家族域>（旧域 skill.* 301 跳转过来）。直接用新域，
-// 省一次 301 hop。域名按**当前家族**拼（contracts/domain-family.ts）：`.com` 站解析
-// 出来的仍是 https://agent.oceanleo.com（逐字不变）。
 
 export interface SiteSkillDirectoryProps {
   /** 当前产品站 site_id（决定展示哪些 agent 分类）。 */
@@ -80,20 +77,15 @@ export function SiteSkillDirectory({
     [filtered, accent],
   );
 
-  // 境内 v1 没有 agent 子站，这里会拿到 undefined。**不许回落到 .com** ——
-  // 那等于把境内用户的请求和数据送出境。拿不到落点时不展示可点卡片，改为给一句
-  // 明确的「暂未开放」，而不是让用户点了没反应。父站自带 onOpenSkill 时不受影响。
-  const skillOrigin = currentFamilySubsiteOrigin(SKILL_SITE_ID);
-  const skillUnavailable = !skillOrigin && !onOpenSkill;
-
+  // LeoAgent 的工作台在门户同源 `/workspace/agent`（2026-11-21 起没有子站主机）。
+  // 仍新开一个标签页：用户正在本站工作台里干活，不把它导航走。父站自带 onOpenSkill 时由它接管。
   const openSkill = (agentId: string) => {
     if (onOpenSkill) {
       onOpenSkill(agentId);
       return;
     }
-    if (!skillOrigin) return;
     window.open(
-      `${skillOrigin}/workspace?agent=${encodeURIComponent(agentId)}`,
+      siteWorkspaceHref(SKILL_SITE_ID, [], { agent: agentId }),
       "_blank",
       "noopener,noreferrer",
     );
@@ -101,15 +93,11 @@ export function SiteSkillDirectory({
 
   return (
     <AppDirectory
-      items={skillUnavailable ? [] : items}
+      items={items}
       accent={accent}
-      loading={skillUnavailable ? false : loading}
+      loading={loading}
       openLabel={tt("开聊")}
-      emptyText={
-        skillUnavailable
-          ? tt("agent 在境内版暂未开放。")
-          : tt("暂无与本站相关的 agent。")
-      }
+      emptyText={tt("暂无与本站相关的 agent。")}
       onOpen={(it) => openSkill(it.id)}
       nativeFirst
       nativeLabel={tt("按分类")}

@@ -50,8 +50,8 @@ import {
 } from "./workspace-library-model";
 import {
   currentDomainProfile,
-  currentFamilySubsiteOrigin,
 } from "../contracts/domain-family";
+import { siteWorkspaceBase } from "../lib/site-path";
 
 // 网关一律按**当前家族档案**取（contracts/domain-family.ts，含同家族 env overlay）；
 // 不许 env 优先（ws 与 com 同一份构建，env 是 com 网关）。每次调用现取。
@@ -207,17 +207,23 @@ export const MATERIAL_TAXONOMY_LABEL: Record<ArtifactType, string> = {
   interactive_doc: "交互文档",
 };
 
+const SAME_ORIGIN_PROBE = "https://same-origin.invalid";
+
 function designTemplateDocumentUrl(value = ""): string {
-  // design 子站与素材域都按**当前家族**取。ws 已开放 design（com / cn 也有），
-  // 缺 origin 才返回空串（fail closed），而不是回落去信一个 `.com` 主机。
-  const designOrigin = currentFamilySubsiteOrigin("design");
-  if (!designOrigin) return "";
-  const designHost = new URL(designOrigin).hostname;
+  // design 的编辑器在门户同源 `/workspace/design…`（2026-11-21 起没有子站主机）。
+  // 动作地址只认这条同源路径（绝对地址一律不认，fail closed）；真正被加载的
+  // tplDoc 仍只认当前家族素材域上的 design-templates JSON。
+  const raw = String(value || "").trim();
+  if (!raw.startsWith("/") || raw.startsWith("//") || /[\\\s]/.test(raw)) return "";
+  const designBase = siteWorkspaceBase("design");
   // 识别旧地址：历史 tplDoc 仍指向 asset 主机上的 design-templates JSON。
   const assetHost = new URL(currentDomainProfile().assetOrigin).hostname;
   try {
-    const actionUrl = new URL(value);
-    if (actionUrl.hostname !== designHost) return "";
+    const actionUrl = new URL(raw, SAME_ORIGIN_PROBE);
+    if (actionUrl.origin !== SAME_ORIGIN_PROBE) return "";
+    if (actionUrl.pathname !== designBase && !actionUrl.pathname.startsWith(`${designBase}/`)) {
+      return "";
+    }
     const documentUrl = new URL(actionUrl.searchParams.get("tplDoc") || "");
     return documentUrl.hostname === assetHost &&
       /^\/design-templates\/doc\/[a-z0-9-]+\.json$/i.test(documentUrl.pathname)

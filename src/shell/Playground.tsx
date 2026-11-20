@@ -55,10 +55,12 @@ import {
   APP_PAGE_FRAME_CLASS,
   APP_PAGE_TITLE_CLASS,
 } from "./AppPageHeader";
+import { TRUSTED_EMBED_EDITOR_SANDBOX } from "./editor-sandbox-origin";
 import {
-  TRUSTED_EMBED_EDITOR_SANDBOX,
-  isTrustedInteractiveViewerUrl,
-} from "./editor-sandbox-origin";
+  SITE_WORKSPACE_ROOT,
+  siteWorkspaceHref,
+  siteWorkspaceKey,
+} from "../lib/site-path";
 
 // site_id="agent" 的条目是纯聊天 skill；其余站的条目是有能力的功能区 agent。
 const SKILL_APP_ID = "agent";
@@ -69,28 +71,27 @@ const NEW_CARD_ID = "__new__";
 // UC-3：docs/architecture/oceanleo-untrusted-content-isolation.md §8.3
 // （契约 oceanleo.sandbox-origin.v1 §3 第三档「第一方内嵌」）
 //
-// 子站工作台内嵌 frame（Playground / WorkspaceDetail / WorkspaceShell 三处）的 src
-// **不是**写死字面量：origin 取自消费端注入的 siteOrigin 映射，key 取自后端
-// /v1/agents(/mine) 返回的 site_id。两个输入都不由本包控制，因此「第一方」这件事
-// 必须在渲染前逐个 URL 证明，而不能靠域名后缀或「这里历来只嵌自家站」的惯例。
-//
-// 证明方式：先按固定形状拼出 URL，再用 isTrustedInteractiveViewerUrl 判定
-//（https、无端口、无凭据、host 为 oceanleo.com 及其第一方子域，且显式排除
-// oceanleo.app 与预览/UGC 主机），并额外要求 path 恰为 /workspace。
-// 不通过 → 返回 ""，三处渲染面据此**完全不渲染 frame**（fail closed），
-// 所以 allow-same-origin 永远不可能落到用户内容或 oceanleo.app 沙箱域上。
+// 站点工作台内嵌 frame（Playground / WorkspaceDetail / WorkspaceShell 三处）。
+// 2026-11-21（session / sites wave，契约 §2.5）起没有子站主机：每个站的工作台都在
+// 门户自己的 `/workspace/<siteKey>` 下，所以 src **只能是同源根相对路径**
+// `/workspace/<siteKey>?embed=1&solo=1&fn=…&agent=…`。key 取自后端
+// /v1/agents(/mine) 返回的 site_id，不由本包控制，因此仍在渲染前逐个 URL 证明：
+// 必须以单个 `/` 开头（不许协议、不许 `//host`、不许反斜杠/空白/控制字符），解析后
+// 仍在同一 origin，path 恰为 `/workspace/<合法站 key>`，不带 hash。
+// 任何绝对 URL（包括曾经的第一方子站主机）一律不通过 → 返回 ""，三处渲染面据此
+// **完全不渲染 frame**（fail closed），allow-same-origin 只可能落在门户自己的页面上。
 // 通过 → 与协议编辑器同档的第一方沙箱（见 WORKSPACE_EMBED_SANDBOX）。
 //
 // 这两件事必须绑定成对：只锁 sandbox 字符串会被「保留 sandbox、改掉来源」绕过，
 // 只锁来源会被「保留来源、松开 sandbox」绕过。回归断言见
 // tests/untrusted-content-sandbox-origin.test.mjs 的 W24 用例。
-export const WORKSPACE_EMBED_PATH = "/workspace";
+export const WORKSPACE_EMBED_PATH = SITE_WORKSPACE_ROOT;
 
 /**
- * 第一方子站工作台内嵌 frame 的 sandbox。刻意复用协议编辑器那一档
+ * 站点工作台内嵌 frame 的 sandbox。刻意复用协议编辑器那一档
  * （W8 的 TRUSTED_EMBED_EDITOR_SANDBOX，单一事实源）：同样是第一方页面、
  * 同样需要同源才能读会话与 localStorage。它不含 allow-top-navigation*，
- * 也不含 allow-popups-to-escape-sandbox——子站不得把宿主标签页导航走，
+ * 也不含 allow-popups-to-escape-sandbox——内嵌页不得把宿主标签页导航走，
  * 弹窗也不得脱离沙箱。
  */
 export const WORKSPACE_EMBED_SANDBOX = TRUSTED_EMBED_EDITOR_SANDBOX;
@@ -101,36 +102,41 @@ export interface WorkspaceEmbedAgent {
   fn_id?: string;
 }
 
-/** URL 是否为可信的第一方子站工作台地址（host 判定 + path 必须是 /workspace）。 */
+const SAME_ORIGIN_PROBE = "https://same-origin.invalid";
+
+/** URL 是否为可信的同源站点工作台地址：`/workspace/<siteKey>` + query，别无其它形状。 */
 export function isTrustedWorkspaceEmbedUrl(value: string): boolean {
-  if (!isTrustedInteractiveViewerUrl(value)) return false;
+  const raw = typeof value === "string" ? value : "";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return false;
+  if (/[\\\s\u0000-\u001f\u007f]/.test(raw)) return false;
   try {
-    return new URL(value).pathname === WORKSPACE_EMBED_PATH;
+    const url = new URL(raw, SAME_ORIGIN_PROBE);
+    if (url.origin !== SAME_ORIGIN_PROBE || url.hash) return false;
+    const parts = url.pathname.split("/");
+    return (
+      parts.length === 3 &&
+      `/${parts[1]}` === WORKSPACE_EMBED_PATH &&
+      siteWorkspaceKey(parts[2]) === parts[2]
+    );
   } catch {
     return false;
   }
 }
 
 /**
- * 拼子站工作台内嵌地址。任何无法证明为第一方的结果一律返回 ""（不渲染 frame）。
- * hasOwnProperty 这道闸门挡的是 site_id 命中 Object.prototype 上的继承属性
- *（"constructor"、"toString" 之类）后拼出一个相对地址落回宿主 origin。
+ * 拼站点工作台内嵌地址（同源）。site_id 认不出站 key（空、主站、非法字符）或结果
+ * 无法证明为同源工作台时一律返回 ""（不渲染 frame）。别名 `money` → `finance`。
  */
-export function workspaceEmbedSrc(
-  siteOrigin: Record<string, string>,
-  agent: WorkspaceEmbedAgent | null,
-): string {
+export function workspaceEmbedSrc(agent: WorkspaceEmbedAgent | null): string {
   if (!agent) return "";
-  const siteId = agent.site_id || "";
-  if (!siteId || !Object.prototype.hasOwnProperty.call(siteOrigin, siteId)) {
-    return "";
-  }
-  const origin = siteOrigin[siteId];
-  if (typeof origin !== "string" || !origin) return "";
-  const fn = agent.fn_id ? `&fn=${encodeURIComponent(agent.fn_id)}` : "";
-  const src = `${origin.replace(/\/+$/, "")}${WORKSPACE_EMBED_PATH}?embed=1&solo=1${fn}&agent=${encodeURIComponent(
-    agent.agent_id,
-  )}`;
+  const siteKey = siteWorkspaceKey(agent.site_id);
+  if (!siteKey) return "";
+  const src = siteWorkspaceHref(siteKey, [], {
+    embed: 1,
+    solo: 1,
+    fn: agent.fn_id,
+    agent: agent.agent_id,
+  });
   return isTrustedWorkspaceEmbedUrl(src) ? src : "";
 }
 // #endregion workspace-embed-trust
@@ -300,7 +306,6 @@ export interface PlaygroundBoardCtx {
 }
 
 export function PlaygroundDetail({
-  siteOrigin,
   accent = "#0ea5e9",
   renderBoard: _renderBoard,
   renderSites,
@@ -308,8 +313,6 @@ export function PlaygroundDetail({
   favoritesOnly = false,
   onFavoritesOnlyChange,
 }: {
-  /** site_id → 子站 origin（拼 iframe src 用）。 */
-  siteOrigin: Record<string, string>;
   accent?: string;
   /**
    * 渲染 organization / workflow 编排画布。保留 prop 以免炸消费端，本页不再渲染。
@@ -434,8 +437,8 @@ export function PlaygroundDetail({
 
   // UC-3：src 只能来自 workspaceEmbedSrc 的第一方判定，见本文件 workspace-embed-trust。
   const embedSrc = useMemo(
-    () => workspaceEmbedSrc(siteOrigin, active),
-    [active, siteOrigin],
+    () => workspaceEmbedSrc(active),
+    [active],
   );
 
   const pageTitle = (

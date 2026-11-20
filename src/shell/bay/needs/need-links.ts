@@ -1,6 +1,6 @@
-import { currentFamilySubsiteOrigin, portalHref } from "../../../contracts/domain-family";
+import { portalHref } from "../../../contracts/domain-family";
 import type { BayWorkRef } from "../../../lib/bay/types";
-import { baySubsiteLabel } from "../shell/bay-links";
+import { bayWorkPath } from "../shell/bay-links";
 import { bayHrefOnSite, type BayTarget } from "../shell/bay-state";
 
 function keyOf(siteKey: string | null | undefined): string {
@@ -27,16 +27,14 @@ export function safeSitePath(path: unknown): string | null {
   return value;
 }
 
-/** 附带作品的只读预览：在作品所在站打开（不在 Bay 里内嵌）。当前家族没有那个站、或拿不到地址 → null。 */
+/** 附带作品的只读预览：在门户上该站的同源路径打开（不在 Bay 里内嵌）。站 key 不认识、或拿不到地址 → null。 */
 export function workPreviewHref(work: Pick<BayWorkRef, "site_key" | "preview_url"> | null | undefined): string | null {
   const path = safeSitePath(work?.preview_url);
   if (!path) return null;
   const site = keyOf(work?.site_key) || "oceanleo";
   try {
-    if (site === "oceanleo") return portalHref(path);
-    const label = baySubsiteLabel(site);
-    const origin = label ? currentFamilySubsiteOrigin(label) : undefined;
-    return origin ? `${origin}${path}` : null;
+    const onPortal = bayWorkPath(site, path);
+    return onPortal ? portalHref(onPortal) : null;
   } catch {
     return null;
   }

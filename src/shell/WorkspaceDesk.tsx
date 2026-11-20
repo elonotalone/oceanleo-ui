@@ -20,7 +20,6 @@ export function parseWorkspacePile(value: unknown): WorkspacePile {
 export function WorkspaceDesk({
   pile,
   onPileChange,
-  siteOrigin,
   accent,
   renderBoard,
   renderSites,
@@ -29,7 +28,11 @@ export function WorkspaceDesk({
 }: {
   pile: WorkspacePile;
   onPileChange: (pile: WorkspacePile) => void;
-  siteOrigin: Record<string, string>;
+  /**
+   * @deprecated Ignored. Sub-site hosts are gone (2026-11-21); site workspaces are same-origin
+   * `/workspace/<siteKey>`. Kept optional only so the portal desk still typechecks until it stops passing it.
+   */
+  siteOrigin?: Record<string, string>;
   accent?: string;
   renderBoard?: (ctx: PlaygroundBoardCtx) => ReactNode;
   renderSites?: (chrome: {
@@ -38,7 +41,9 @@ export function WorkspaceDesk({
     viewOptions?: CollectionViewOption[];
   }) => ReactNode;
   onRequestLogin?: () => void;
+  /** @deprecated Ignored (never forwarded). */
   homeSiteId?: string;
+  /** @deprecated Ignored (never forwarded). */
   sites?: WorkspaceSiteItem[];
   favoritesOnly?: boolean;
 }) {
@@ -46,7 +51,6 @@ export function WorkspaceDesk({
   const onlyFav = resolved === "mine" || Boolean(favoritesOnly);
   return (
     <PlaygroundDetail
-      siteOrigin={siteOrigin}
       accent={accent}
       renderBoard={renderBoard}
       renderSites={renderSites}

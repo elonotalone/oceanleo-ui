@@ -6,8 +6,8 @@ export {
   resolveCatalogAlias,
   siteManifestMatches,
 } from "./site-manifest";
-// 域名家族（C5）。消费站要按当前家族拼自家链接、并判断某个子站在这个家族里
-// **是否确实存在** —— 门户的 lib/sites.tsx 就靠这两个。判定本身留在包里，
+// 域名家族（C5）。消费站按当前家族拿门户 / 网关 / cookie 事实；没有子站主机了
+// （站点工作台是门户的 `/workspace/<siteKey>`）。判定本身留在包里，
 // 消费站不得自己写第二份 host 判定或域名拼接。
 export {
   CONFIGURED_DOMAIN_FAMILY,
@@ -15,12 +15,9 @@ export {
   DOMAIN_FAMILIES,
   currentDomainFamily,
   currentDomainProfile,
-  currentFamilyHasSubsite,
-  currentFamilySubsiteOrigin,
   domainFamilyProfile,
   domainProfileForHost,
   familyForHost,
-  familyHasSubsite,
   isCurrentFamilyFirstPartyHost,
   isFirstPartyHostOf,
   isUntrustedContentDomainHost,

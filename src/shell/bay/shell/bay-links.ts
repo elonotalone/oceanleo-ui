@@ -1,4 +1,5 @@
 // Bay 深链与跨站地址（oceanleo-bay 契约 §5）。纯函数：不碰 window，不 import 鉴权，测试直接加载。
+import { siteWorkspaceBase, siteWorkspaceKey } from "../../../lib/site-path";
 //
 // `?bay=<kind>[:<参数>]`：feed、demand:<id>、service:<id>、help:<id>、consult:<id>、profile:<handle>、
 // order:<id>、conversation:<threadId>、post-need[:<category>]、call-human[:<category>]、propose:<demandId>、
@@ -110,13 +111,6 @@ const SLUG = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 const TIER = /^[a-z0-9][a-z0-9_-]{0,23}$/;
 const SITE_KEY = /^[a-z0-9][a-z0-9-]{1,23}$/;
 const MAX_PARAM = 200;
-
-/** 站 key 与子域标签不同的三处（门户 `lib/sites.tsx` 的 `subsite` 字段）。 */
-const SUBSITE_LABEL: Readonly<Record<string, string>> = {
-  ecommerce: "e-commerce",
-  ppt: "slide",
-  threed: "3d",
-};
 
 /**
  * 站 key → 产品名（门户 `lib/sites.tsx` 的 `name`），产品名不翻译。覆盖 Bay 的全部站：35 个子站 + 门户。
@@ -354,48 +348,51 @@ export function isBayPath(pathname: string | null | undefined): boolean {
   return /(^|\/)bay\/?$/.test(pathname || "");
 }
 
-/** 站 key → 子域标签；不合法的 key 返回 null。门户（oceanleo）也返回 null。 */
-export function baySubsiteLabel(siteKey: string | null | undefined): string | null {
-  const key = (siteKey || "").trim().toLowerCase();
-  if (!key || key === "oceanleo" || !SITE_KEY.test(key)) return null;
-  return SUBSITE_LABEL[key] ?? key;
-}
-
 function stripOriginSlash(origin: string): string {
   return origin.replace(/\/+$/, "");
 }
 
 /**
- * 某站 `/bay?bay=…` 的绝对地址。`subsiteOrigin` 给当前家族里那个子站的 origin（家族里没有就是 undefined），
- * 拿不到子站时落到同家族门户的 `/bay`，不跨家族拼地址。
+ * `/bay?bay=…` 的绝对地址。Bay 只有一个：门户的 `/bay`（2026-11-21 起没有子站主机，
+ * `siteKey` 不再改变地址，参数位只为兼容调用方保留）。
  *
- * `stayOnOrigin`：LeoDev 槽把跨站「去某站处理」钉在当前页 origin，不再拼正式子站。
- * 只由 `bayHrefOnSite` 在确认宿主是 `p-<32hex>.dev.oceanleo.com` 之后传入。
+ * `stayOnOrigin`：LeoDev 槽把落点钉在当前页 origin。只由 `bayHrefOnSite` 在确认宿主是
+ * `p-<32hex>.dev.oceanleo.com` 之后传入。
  */
 export function bayHrefWith(
-  siteKey: string,
+  _siteKey: string,
   target: BayTarget,
   origins: {
     portalOrigin: string;
-    subsiteOrigin: (label: string) => string | undefined;
     stayOnOrigin?: string | null;
   },
 ): string {
   const stay = typeof origins.stayOnOrigin === "string" ? stripOriginSlash(origins.stayOnOrigin.trim()) : "";
-  let origin = origins.portalOrigin;
-  if (stay) {
-    origin = stay;
-  } else {
-    const label = baySubsiteLabel(siteKey);
-    if (label) {
-      try {
-        origin = origins.subsiteOrigin(label) || origins.portalOrigin;
-      } catch {
-        origin = origins.portalOrigin;
-      }
-    }
-  }
+  const origin = stay || origins.portalOrigin;
   return `${stripOriginSlash(origin)}/bay${buildBaySearch("", target.kind === "feed" ? null : target) || `?${BAY_PARAM}=feed`}`;
+}
+
+/**
+ * 某站产出的作品路径 → 门户上的同源路径；站 key 不合法或路径不安全 → null。
+ *
+ * 作品记录里的路径是写给该站自己的：以前站点独占 `/workspace`，所以 `/workspace…`
+ * 一律挪到 `/workspace/<siteKey>…`（契约 §2.5）；`/library`、`/history/…`、`/bay` 这类
+ * 门户共用页原样保留。门户自己（`oceanleo`）的路径不挪。
+ */
+export function bayWorkPath(siteKey: string | null | undefined, path: string): string | null {
+  const key = (siteKey || "").trim().toLowerCase();
+  if (!path.startsWith("/") || path.startsWith("//") || /[\\\s\u0000-\u001f\u007f]/.test(path)) return null;
+  if (!key || key === "oceanleo") return path;
+  const site = siteWorkspaceKey(key);
+  if (!site || !SITE_KEY.test(key)) return null;
+  const match = /^\/workspace(?=$|[/?#])/.exec(path);
+  if (!match) return path;
+  const base = siteWorkspaceBase(site);
+  const rest = path.slice(match[0].length);
+  if (rest.startsWith(`/${site}/`) || rest === `/${site}` || rest.startsWith(`/${site}?`) || rest.startsWith(`/${site}#`)) {
+    return path;
+  }
+  return `${base}${rest}`;
 }
 
 export function sameBayTarget(a: BayTarget, b: BayTarget): boolean {

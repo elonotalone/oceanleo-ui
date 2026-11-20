@@ -10,7 +10,6 @@ import {
   currentDomainFamily,
   domainFamilyFeatures,
   currentDomainProfile,
-  currentFamilySubsiteOrigin,
 } from "../../../contracts/domain-family";
 import { isLeoDevPreviewHost } from "../../../lib/auth/config";
 import { AUTH_STATE_EVENT, accessToken, cachedAccessToken } from "../../../lib/auth/client";
@@ -644,7 +643,7 @@ function pageHrefHost(): { hostname: string; origin: string } | null {
   }
 }
 
-/** LeoDev 槽：跨站也停在当前页 origin。正式宿主返回 null，仍按家族子站拼。 */
+/** LeoDev 槽：停在当前页 origin。正式宿主返回 null，落到家族门户。 */
 function leoDevStayOrigin(): string | null {
   const page = pageHrefHost();
   if (!page) return null;
@@ -658,7 +657,7 @@ function leoDevStayOrigin(): string | null {
   return page.origin.replace(/\/+$/, "");
 }
 
-/** 那个站的 `/bay?bay=…` 绝对地址；当前家族没有那个子站时落到同家族门户。 */
+/** `/bay?bay=…` 的绝对地址：Bay 只在家族门户上（2026-11-21 起没有子站主机）。 */
 export function bayHrefOnSite(siteKey: string, target: BayTarget): string {
   let portalOrigin = "https://oceanleo.com";
   try {
@@ -668,7 +667,6 @@ export function bayHrefOnSite(siteKey: string, target: BayTarget): string {
   }
   return bayHrefWith(siteKey, target, {
     portalOrigin,
-    subsiteOrigin: (label) => currentFamilySubsiteOrigin(label),
     stayOnOrigin: leoDevStayOrigin(),
   });
 }

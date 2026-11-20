@@ -45,7 +45,7 @@ export interface SiteCatalogRouteInput {
   historyAppId?: string;
   aliases?: Readonly<Record<string, string>>;
   knownAppIds: ReadonlySet<string>;
-  route?: OceanLeoWorkspaceRouteContract;
+  route?: Partial<OceanLeoWorkspaceRouteContract>;
 }
 
 export interface SiteCatalogRouteState {
@@ -59,10 +59,46 @@ export interface SiteCatalogRouteState {
   invalidAppId: string;
 }
 
-function activeRoute(
-  route?: OceanLeoWorkspaceRouteContract,
+/**
+ * The route every URL is written and parsed against. Site packs live at `/workspace/<siteKey>` on the main site
+ * (contract §2.5) and pass `canonicalBasePath: siteWorkspaceBase("<key>")`; missing fields fall back to the
+ * defaults, so `/workspace` stays the base only for callers that pass nothing.
+ */
+export function resolveSiteCatalogRouteContract(
+  ...routes: ReadonlyArray<Partial<OceanLeoWorkspaceRouteContract> | null | undefined>
 ): OceanLeoWorkspaceRouteContract {
-  return route || DEFAULT_ROUTE;
+  let canonicalBasePath = DEFAULT_ROUTE.canonicalBasePath;
+  let historyBasePath = DEFAULT_ROUTE.historyBasePath;
+  let legacyQueryKeys = DEFAULT_ROUTE.legacyQueryKeys;
+  for (const route of routes) {
+    if (!route) continue;
+    const base = routeBase(route.canonicalBasePath);
+    if (base) canonicalBasePath = base;
+    const history = routeBase(route.historyBasePath);
+    if (history) historyBasePath = history;
+    if (Array.isArray(route.legacyQueryKeys)) legacyQueryKeys = route.legacyQueryKeys;
+  }
+  if (
+    canonicalBasePath === DEFAULT_ROUTE.canonicalBasePath &&
+    historyBasePath === DEFAULT_ROUTE.historyBasePath &&
+    legacyQueryKeys === DEFAULT_ROUTE.legacyQueryKeys
+  ) {
+    return DEFAULT_ROUTE;
+  }
+  return { canonicalBasePath, historyBasePath, legacyQueryKeys };
+}
+
+/** `"/workspace/image/"` → `"/workspace/image"`; anything that is not a root-relative path → "". */
+function routeBase(value: unknown): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text.startsWith("/") || text.startsWith("//")) return "";
+  return text.replace(/\/+$/, "") || "";
+}
+
+function activeRoute(
+  route?: Partial<OceanLeoWorkspaceRouteContract> | null,
+): OceanLeoWorkspaceRouteContract {
+  return resolveSiteCatalogRouteContract(route);
 }
 
 export function resolveSiteCatalogRoute(
@@ -109,7 +145,7 @@ export function canonicalCatalogAppHref(
   appId: string,
   search = "",
   preserveQuery = false,
-  route?: OceanLeoWorkspaceRouteContract,
+  route?: Partial<OceanLeoWorkspaceRouteContract>,
 ): string {
   const contract = activeRoute(route);
   const base = workspaceAppHref(appId, contract);
@@ -137,7 +173,7 @@ export function catalogCanonicalRedirect(
   pathname: string,
   search = "",
   embed = false,
-  route?: OceanLeoWorkspaceRouteContract,
+  route?: Partial<OceanLeoWorkspaceRouteContract>,
 ): string | null {
   const contract = activeRoute(route);
   const workspaceIndex =
@@ -172,7 +208,7 @@ export function catalogNavigationForChange(
   options: {
     embed?: boolean;
     historySessionId?: string;
-    route?: OceanLeoWorkspaceRouteContract;
+    route?: Partial<OceanLeoWorkspaceRouteContract>;
     pathname?: string;
   } = {},
 ): SiteCatalogNavigation {
@@ -392,7 +428,7 @@ function deepLinkAppSegment(appId: unknown): string {
 /** 合同 §3：「生成类似」——跳到 app 并预填代表 prompt + 整套预置参数。 */
 export function workspaceAppFillHref(
   appId: string,
-  route?: OceanLeoWorkspaceRouteContract,
+  route?: Partial<OceanLeoWorkspaceRouteContract>,
 ): string {
   const contract = activeRoute(route);
   const id = deepLinkAppSegment(appId);
@@ -403,7 +439,7 @@ export function workspaceAppFillHref(
 /** 合同 §3：预填之外，右栏直接进入该 app 的进阶编辑器（旧按钮名已废除，见下方 §0.4）。 */
 export function workspaceAppAdvancedHref(
   appId: string,
-  route?: OceanLeoWorkspaceRouteContract,
+  route?: Partial<OceanLeoWorkspaceRouteContract>,
 ): string {
   const contract = activeRoute(route);
   const id = deepLinkAppSegment(appId);
@@ -429,7 +465,7 @@ export function workspaceAppAdvancedHref(
 export function workspaceTemplateEditHref(
   appId: string,
   templateId: string,
-  route?: OceanLeoWorkspaceRouteContract,
+  route?: Partial<OceanLeoWorkspaceRouteContract>,
 ): string {
   const contract = activeRoute(route);
   const id = deepLinkAppSegment(appId);
@@ -534,7 +570,7 @@ export const LIBRARY_TAB_MATERIALS_VALUE = "materials";
 export function workspaceTemplatePreviewHref(
   appId: string,
   artifactId: string,
-  route?: OceanLeoWorkspaceRouteContract,
+  route?: Partial<OceanLeoWorkspaceRouteContract>,
 ): string {
   const contract = activeRoute(route);
   const id = deepLinkAppSegment(appId);

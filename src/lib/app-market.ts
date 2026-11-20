@@ -24,6 +24,8 @@
 
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
+import { runtimePageOrigin } from "../contracts/domain-family";
+import { siteWorkspaceBase, siteWorkspaceHref, siteWorkspaceKey } from "./site-path";
 
 export type MarketApp = {
   app_id: string; site_id: string; app_key: string; name: string;
@@ -168,51 +170,59 @@ export function sortMyApps(apps: MarketApp[]): MarketApp[] {
     .map(({ app }) => app);
 }
 
+type MarketAppTarget = Pick<MarketApp, "site_id" | "app_key"> &
+  Partial<Pick<MarketApp, "open_path" | "site_url">>;
+
+/** 只认同源根相对路径（`/x/y?z`）：不认协议、`//host`、反斜杠、空白与控制字符。 */
+function sameOriginPath(value: unknown): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text.startsWith("/") || text.startsWith("//") || text.length > 2000) return "";
+  if (/[\\\s\u0000-\u001f\u007f]/.test(text)) return "";
+  return text;
+}
+
 /**
- * 成品 app 的子站落点。`open_path` 为空时落到 `/workspace/<app_key>`，
- * 不能只回站点首页——工作台「打开」必须进对应 app 页。
+ * 成品 app 的落点：门户同源 `/workspace/<site_id>/<app_key>`（契约 §2.5，2026-11-21 起没有子站
+ * 主机，`site_url` 不再参与）。`open_path` 只在它已经是**该站**工作台下的同源路径
+ *（`/workspace/<site_id>…`）时采用（保留它的 query）；旧数据里写给子站根的 `/workspace/<app>`
+ * 不能直接用，改由 site_id + app_key 拼。历史站 key `money` 落到 `finance`。
+ * 认不出站 key（空、主站、非法）→ `""`：不给链接，也不落到主站目录。
  */
-export function marketAppOpenUrl(
-  app: Pick<MarketApp, "site_url" | "open_path" | "app_key">,
-): string {
-  const siteUrl = (app.site_url || "").trim();
+export function marketAppOpenUrl(app: MarketAppTarget): string {
+  const siteKey = siteWorkspaceKey(app.site_id);
+  if (!siteKey) return "";
+  const base = siteWorkspaceBase(siteKey);
+  const openPath = sameOriginPath(app.open_path);
+  if (
+    openPath &&
+    (openPath === base || openPath.startsWith(`${base}/`) || openPath.startsWith(`${base}?`))
+  ) {
+    return openPath;
+  }
   const appKey = (app.app_key || "").trim();
-  const openPath = (app.open_path || "").trim() || (appKey ? `/workspace/${appKey}` : "");
-  if (!siteUrl) {
-    return openPath.startsWith("/") ? openPath : openPath ? `/${openPath}` : "";
-  }
-  if (!openPath) return siteUrl;
-  try {
-    const base = siteUrl.endsWith("/") ? siteUrl : `${siteUrl}/`;
-    return new URL(openPath, base).toString();
-  } catch {
-    return `${siteUrl.replace(/\/+$/, "")}/${openPath.replace(/^\/+/, "")}`;
-  }
+  return siteWorkspaceHref(siteKey, appKey ? [appKey] : []);
 }
 
-/** 工作台点开必须是绝对子站地址。没有 site_url 时不要落到主站 `/workspace/<key>`。 */
-export function workspaceAppJumpUrl(
-  app: Pick<MarketApp, "site_url" | "open_path" | "app_key">,
-): string {
-  const href = marketAppOpenUrl(app);
-  try {
-    const url = new URL(href);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
-  } catch {
-    return "";
-  }
+/** 工作台「打开」的落点：与 `marketAppOpenUrl` 相同的同源路径；拿不到站 key 时 `""`。 */
+export function workspaceAppJumpUrl(app: MarketAppTarget): string {
+  return marketAppOpenUrl(app);
 }
 
+/**
+ * 打开成品 app：同一标签页内导航到同源落点。宿主（原生客户端）提供 `openExternal` 时
+ * 交给宿主，并给它门户的绝对地址。
+ */
 export function openMarketApp(
-  app: Pick<MarketApp, "site_url" | "open_path" | "app_key">,
+  app: MarketAppTarget,
   openExternal?: (url: string) => void | Promise<void>,
 ): string {
   const href = workspaceAppJumpUrl(app);
   if (!href) return href;
   if (openExternal) {
-    void openExternal(href);
+    const origin = runtimePageOrigin();
+    void openExternal(origin ? `${origin}${href}` : href);
   } else if (typeof window !== "undefined") {
-    window.open(href, "_blank", "noopener,noreferrer");
+    window.location.assign(href);
   }
   return href;
 }

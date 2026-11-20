@@ -18,8 +18,6 @@
 
 import {
   UNTRUSTED_CONTENT_DOMAINS,
-  currentDomainProfile,
-  currentFamilyHasSubsite,
   isCurrentFamilyFirstPartyHost,
   registrableDomainsOfAllFamilies,
 } from "../contracts/domain-family";
@@ -88,35 +86,14 @@ export function isUntrustedContentUrl(value: string): boolean {
 /**
  * 协议嵌入编辑器的写死白名单。只有命中本表的 base 才允许 allow-same-origin 沙箱；
  * 任何用户可控 URL 接进这条路径时会自动降级为不可信沙箱并拒绝加载。
- * 2026-10-22 起本表为空（见下方常量上的说明）：没有任何编辑器再是嵌入子站。
  *
- * 路由（子站标签 + 路径）是写死的；域名按**当前家族**拼，而且只有该家族**确实
- * 存在这个子站**时才进表：
- *   * 海外家族三个子站都在 → 解析结果与本轮改动前逐字相同；
- *   * 境内家族在 2026-08-13 的全量上线里也有了这三个子站 → 本表是三条 `.cn`
- *     base，**永远不会出现 `.com`**：域名由当前家族的可注册域拼出来，家族表是
- *     单次查表，没有任何跨族回落分支。
- *   * ws 家族 2026-10-16 开放 design / website / video → 本表是三条
- *     `*.oceanbizs.com` base，**永远不会出现 `.com`**。
- *   * 某个家族缺这个子站时本表相应少一条；三个都缺就是空表，
- *     `isTrustedEmbedEditorBase()` 对任何 base 都是 false，嵌入路径整条
- *     fail closed（拿不到 same-origin，也构造不出 URL）。宁可暂时没有内嵌
- *     编辑器，也不能让境内或分身页面去嵌一个 `.com` 主机。
+ * 2026-10-22 起本表为空：website / design / video 子站不再作为编辑器被嵌入
+ * （网站 = 本地 Puck，设计画布 = 图片编辑器）。2026-11-21 起子站主机本身也没有了
+ * （站点工作台在门户 `/workspace/<siteKey>`），所以这里不再按「家族有没有某子站」
+ * 拼 base。表为空 ⇒ `isTrustedEmbedEditorBase()` 对任何 base 都是 false，嵌入路径
+ * 整条 fail closed。要重新放进一条，必须写成全串并过安全门禁。
  */
-const EMBED_EDITOR_ROUTES: readonly { subsite: string; path: string }[] = [
-  // 2026-10-22：website / design / video 子站不再作为编辑器被嵌入
-  // （网站 = 本地 Puck，设计画布 = 图片编辑器）。
-  // 表清空 ⇒ 任何 base 都拿不到 same-origin 沙箱，嵌入路径整条 fail closed。
-];
-
-export const TRUSTED_EMBED_EDITOR_BASES: readonly string[] = Object.freeze(
-  EMBED_EDITOR_ROUTES.filter(({ subsite }) =>
-    currentFamilyHasSubsite(subsite),
-  ).map(
-    ({ subsite, path }) =>
-      `https://${subsite}.${currentDomainProfile().registrableDomain}${path}`,
-  ),
-);
+export const TRUSTED_EMBED_EDITOR_BASES: readonly string[] = Object.freeze([]);
 
 const TRUSTED_EMBED_EDITOR_BASE_SET = new Set<string>(
   TRUSTED_EMBED_EDITOR_BASES,

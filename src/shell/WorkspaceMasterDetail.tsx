@@ -4,8 +4,9 @@
 // @oceanleo/ui — 工作台 master-detail（doctrine v4，单一事实源）
 // ----------------------------------------------------------------------------
 // 主站 oceanleo.com/workspace：
-//   app 分区读 my_apps（与 playground「加入工作台」同一套），点开进入对应子站的
-//   站点作用域工作台；只有没有第一方内嵌 surface 的站点才交给宿主系统浏览器。
+//   app 分区读 my_apps（与 playground「加入工作台」同一套），点开在本页内嵌该站
+//   同源的站点作用域工作台 `/workspace/<siteKey>?embed=1&solo=1…`（2026-11-21 起没有
+//   子站主机）；认不出站 key 的条目不内嵌，按同源落点导航。
 //   旧「放入工作台」写进 my_agents 的功能区条目，若还没出现在 my_apps 里，仍并进
 //   同一张 app 目录。
 //   agent 分区只列 site_id=agent 的聊天体，点开才 iframe。
@@ -41,6 +42,8 @@ import {
 } from "../lib/app-market";
 import { capabilityImageKey } from "../lib/app-capability-image";
 import { getClientHostConfig } from "../client-ui/core";
+import { runtimePageOrigin } from "../contracts/domain-family";
+import { siteWorkspaceHref, siteWorkspaceKey } from "../lib/site-path";
 import { useUI } from "../i18n/ui/useUI";
 import {
   APP_PAGE_FRAME_CLASS,
@@ -52,16 +55,19 @@ function isMarketAuthError(error: unknown): boolean {
   return error instanceof Error && error.name === "MarketAuthError";
 }
 
-function openWorkspaceExternal(url: string): void {
-  const href = url.trim();
-  if (!href) return;
+/** 站点工作台在门户同源：网页内直接导航；原生宿主拿门户的绝对地址自己决定怎么开。 */
+function openSiteWorkspace(siteKey: string): void {
+  const key = siteWorkspaceKey(siteKey);
+  if (!key) return;
+  const href = siteWorkspaceHref(key);
   const hostOpen = getClientHostConfig()?.openExternal;
   if (hostOpen) {
-    void hostOpen(href);
+    const origin = runtimePageOrigin();
+    void hostOpen(origin ? `${origin}${href}` : href);
     return;
   }
   if (typeof window !== "undefined") {
-    window.open(href, "_blank", "noopener,noreferrer");
+    window.location.assign(href);
   }
 }
 
@@ -206,11 +212,6 @@ function useMyAgents() {
 
 const SKILL_SITE_ID = "agent";
 
-/** 历史站 key → 今天 SITES 里的 key。没有 origin 就不要猜域名。 */
-const SITE_ORIGIN_ALIASES: Record<string, string> = {
-  money: "finance",
-};
-
 type WorkspaceAppKind = "market" | "agent";
 
 type WorkspaceApp = {
@@ -220,7 +221,6 @@ type WorkspaceApp = {
   tagline: string;
   site_id: string;
   app_key: string;
-  site_url: string;
   open_path: string;
   category: string;
   icon: string;
@@ -228,23 +228,15 @@ type WorkspaceApp = {
   capabilityImage: string;
 };
 
-function resolveSiteOrigin(
-  siteId: string,
-  siteOrigin: Record<string, string>,
-): string {
-  const aliased = SITE_ORIGIN_ALIASES[siteId] || siteId;
-  return siteOrigin[aliased] || siteOrigin[siteId] || "";
-}
-
-function leftoverAgentHref(agent: AgentDef, siteOrigin: Record<string, string>): string {
+function leftoverAgentHref(agent: AgentDef): string {
   return workspaceAppJumpUrl({
-    site_url: resolveSiteOrigin(agent.site_id || "", siteOrigin),
+    site_id: agent.site_id || "",
     open_path: "",
     app_key: agent.fn_id || "",
   });
 }
 
-function useWorkspaceApps(siteOrigin: Record<string, string>) {
+function useWorkspaceApps() {
   const { mine, loading: agentsLoading, remove: removeAgent } = useMyAgents();
   const [marketApps, setMarketApps] = useState<MarketApp[]>([]);
   const [marketLoading, setMarketLoading] = useState(true);
@@ -292,7 +284,6 @@ function useWorkspaceApps(siteOrigin: Record<string, string>) {
         tagline: app.tagline,
         site_id: app.site_id,
         app_key: app.app_key,
-        site_url: app.site_url,
         open_path: app.open_path,
         category: app.category,
         icon: app.icon,
@@ -306,15 +297,14 @@ function useWorkspaceApps(siteOrigin: Record<string, string>) {
         tagline: agent.tagline,
         site_id: agent.site_id,
         app_key: agent.fn_id || "",
-        site_url: resolveSiteOrigin(agent.site_id || "", siteOrigin),
         open_path: "",
         category: agent.category,
         icon: agent.icon,
-        href: leftoverAgentHref(agent, siteOrigin),
+        href: leftoverAgentHref(agent),
         capabilityImage: capabilityImageKey(agent.site_id, agent.fn_id || ""),
       })),
     ],
-    [leftoverAgents, marketApps, siteOrigin],
+    [leftoverAgents, marketApps],
   );
 
   const removeApp = useCallback(
@@ -432,7 +422,7 @@ export function WorkspaceSubNav({
 // 没有第一方内嵌 surface 的网站或 app 由宿主交给系统浏览器。
 // ----------------------------------------------------------------------------
 export interface WorkspaceSiteItem {
-  /** site_id（= AgentDef.site_id），用于跳子站。 */
+  /** site_id（= AgentDef.site_id），点开落到同源 `/workspace/<key>`。 */
   key: string;
   name: string;
   tagline?: string;
@@ -446,18 +436,14 @@ export interface WorkspaceSiteItem {
 type WorkspaceTab = "site" | "app" | "skill";
 
 export function WorkspaceDetail({
-  siteOrigin,
   accent = "#0ea5e9",
-  homeSiteId = "",
   addAgentHref = "/workspace?pile=all",
   sites = [],
   renderBoard: _renderBoard,
   renderSites,
   onShowAll,
 }: {
-  siteOrigin: Record<string, string>;
   accent?: string;
-  homeSiteId?: string;
   addAgentHref?: string;
   /** @deprecated 模型统一在「AI 模型」页管理。 */
   modelCategories?: ModelCategory[];
@@ -490,7 +476,7 @@ export function WorkspaceDetail({
 }) {
   void _renderBoard;
   const tt = useUI();
-  const { apps: workspaceApps, mine, loading, needsLogin, removeApp } = useWorkspaceApps(siteOrigin);
+  const { apps: workspaceApps, mine, loading, needsLogin, removeApp } = useWorkspaceApps();
   const [sel, setSel] = useWorkspaceSelection("workspace");
   const [activeApp, setActiveApp] = useState<WorkspaceApp | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>("app");
@@ -505,18 +491,18 @@ export function WorkspaceDetail({
   // UC-3：src 只能来自 workspaceEmbedSrc 的第一方判定，见 Playground.tsx 的
   // workspace-embed-trust 区块与 docs/architecture/oceanleo-untrusted-content-isolation.md §8.3。
   const embedSrc = useMemo(
-    () => workspaceEmbedSrc(siteOrigin, active),
-    [active, siteOrigin],
+    () => workspaceEmbedSrc(active),
+    [active],
   );
   const appEmbedSrc = useMemo(
     () => activeApp
-      ? workspaceEmbedSrc(siteOrigin, {
+      ? workspaceEmbedSrc({
           agent_id: activeApp.id,
           site_id: activeApp.site_id,
           fn_id: activeApp.app_key,
         })
       : "",
-    [activeApp, siteOrigin],
+    [activeApp],
   );
 
   const pageTitle = (
@@ -555,8 +541,8 @@ export function WorkspaceDetail({
   );
 
   // ── 选中一个 app/agent：整页换成该站自己的、站点作用域的工作台。 ──
-  // 成品 app 只有在第一方站点明确通过 workspaceEmbedSrc 闸门时才内嵌；
-  // 没有该 surface 的站点由 onOpen 走宿主系统浏览器，绝不伪造主站副本。
+  // 成品 app 只有在 workspaceEmbedSrc 的同源闸门通过时才内嵌；
+  // 认不出站 key 的条目由 onOpen 按同源落点导航（拿不到落点就什么都不做）。
   if (activeApp) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col" data-workspace-app-surface={activeApp.id}>
@@ -686,7 +672,7 @@ export function WorkspaceDetail({
             emptyText={tt("暂无网站。")}
             onOpen={(it) => {
               const s = sites.find((x) => x.key === it.id);
-              if (s) openWorkspaceExternal(s.href);
+              if (s) openSiteWorkspace(s.key);
             }}
           />
         )
@@ -713,7 +699,7 @@ export function WorkspaceDetail({
             onOpen={(it) => {
               const app = workspaceApps.find((entry) => entry.id === it.id);
               if (!app) return;
-              const candidate = workspaceEmbedSrc(siteOrigin, {
+              const candidate = workspaceEmbedSrc({
                 agent_id: app.id,
                 site_id: app.site_id,
                 fn_id: app.app_key,
@@ -757,7 +743,7 @@ export function WorkspaceDetail({
       )}
 
       {/* 兜底：完全没有任何 app/skill 且当前在 app/skill tab 时，AgentChat 入口仍可用 */}
-      {!loading && mine.length === 0 && tab !== "site" && homeSiteId === "" && (
+      {!loading && mine.length === 0 && tab !== "site" && (
         <p className="mt-6 text-center text-[12px] text-stone-400">
           {tt("也可以直接到「新建任务」让 OceanLeo agent 帮你做事。")}
         </p>
