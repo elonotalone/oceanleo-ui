@@ -5,12 +5,17 @@ import { useId, useState, type HTMLAttributes, type ReactNode, type Ref, type Bu
 import { useUI } from "../../i18n/ui/useUI";
 import { Modal } from "../../ui";
 import { CARD, CARD_TITLE, CARD_DESC, QUIET, PRIMARY } from "../../pages/settings/personalization/parts";
+import { ImCloseIcon, LEOCHAT_ICON_BUTTON } from "./messages-surface";
 
 export { CARD, CARD_TITLE, CARD_DESC, QUIET, PRIMARY };
-// SettingsModal's non-expanded size. Inline panels also fit their host column.
+// SettingsModal's non-expanded size — only for real settings surfaces (call check, report). Pickers use MessageSettingsDialog,
+// which is a normal-size Modal. Inline panels also fit their host column.
 // Modal also sets w-full; override it explicitly so its scrim padding cannot narrow the Settings size.
 export const MESSAGE_SETTINGS_WIDTH = "!w-[min(1040px,94vw)] max-w-[min(1040px,94vw)] shrink-0";
 export const MESSAGE_SETTINGS_HEIGHT = "h-[min(760px,88vh)]";
+/** Destructive confirm (delete, remove, leave): same shape as PRIMARY, rose like the FloatingMenu danger item. */
+export const DANGER =
+  "rounded-lg bg-rose-600 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-700 active:scale-[0.99] disabled:opacity-60";
 export const MESSAGE_SETTINGS_ROW = "flex items-center justify-between gap-4 rounded-xl border border-neutral-200 bg-white px-4 py-3.5";
 
 export function MessageSettingsHeader({ title, titleId, onClose, onBack, backButtonProps, children }: {
@@ -27,7 +32,7 @@ export function MessageSettingsHeader({ title, titleId, onClose, onBack, backBut
       {onBack && <BackButton {...backButtonProps} data-action="back" onClick={onBack} label={tt("返回")} />}
       <h2 id={titleId} className={`min-w-0 flex-1 truncate ${CARD_TITLE}`}>{title}</h2>
       {children}
-      {onClose && <button type="button" onClick={onClose} aria-label={tt("关闭")} data-action="close-panel" className={QUIET}>×</button>}
+      {onClose && <button type="button" onClick={onClose} aria-label={tt("关闭")} title={tt("关闭")} data-action="close-panel" className={LEOCHAT_ICON_BUTTON}><ImCloseIcon /></button>}
     </div>
   </header>;
 }
@@ -53,17 +58,19 @@ export function MessageSettingsFrame({ title, titleId, onClose, onBack, children
   </div>;
 }
 
-export function MessageSettingsDialog({ title, labelledBy, onClose, children, contentHeight = false }: {
+/** A picker or short list (share a work, share a replay): a normal-size Modal that grows with its content, not the settings frame. */
+export function MessageSettingsDialog({ title, labelledBy, onClose, children }: {
   title: ReactNode;
   labelledBy?: string;
   onClose: () => void;
   children: ReactNode;
+  /** Kept for older callers; every picker now sizes to its content. */
   contentHeight?: boolean;
 }) {
   const id = useId();
   const titleId = labelledBy ?? id;
-  return <Modal onClose={onClose} labelledBy={titleId} className={`${MESSAGE_SETTINGS_WIDTH} ${contentHeight ? "max-h-[min(760px,88vh)]" : MESSAGE_SETTINGS_HEIGHT} overflow-hidden`}>
-    <MessageSettingsFrame title={title} titleId={titleId} onClose={onClose} className={contentHeight ? "max-h-[min(760px,88vh)]" : "h-full"}>
+  return <Modal onClose={onClose} labelledBy={titleId} className="flex max-h-[88vh] max-w-lg flex-col overflow-hidden">
+    <MessageSettingsFrame title={title} titleId={titleId} onClose={onClose} className="max-h-[88vh]">
       {children}
     </MessageSettingsFrame>
   </Modal>;
@@ -106,7 +113,7 @@ export function MessageConfirmDialog({ title, body, confirmLabel = "确认", can
         <button type="button" disabled={busy} data-confirm-ok onClick={async () => {
           setBusy(true);
           try { await onConfirm(); } finally { setBusy(false); }
-        }} className={PRIMARY}>{tt(confirmLabel)}</button>
+        }} className={danger ? DANGER : PRIMARY}>{tt(confirmLabel)}</button>
       </div>
     </div>
   </MessagePromptDialog>;

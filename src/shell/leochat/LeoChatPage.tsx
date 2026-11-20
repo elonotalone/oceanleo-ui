@@ -12,7 +12,8 @@ import { TaskWorkspaceShell, useTaskWorkspaceState } from "../TaskWorkspaceShell
 import { BaySignInPrompt } from "../bay/shell/BayMine";
 import { setBaySiteKey } from "../bay/shell/bay-state";
 import { hostState, tabOfView, useMessagesHost } from "../messages/host-state";
-import { ensureMessagesSurfaceStyles } from "../messages/messages-surface";
+import { LEOCHAT_ICON_BUTTON } from "../messages/messages-surface";
+import { OPEN_TASK_PANEL_EVENT } from "../forward";
 import { useLeoChatUnread } from "../messages/notices/use-notices";
 import { consumeCallDeepLink } from "../messages/call/incoming/deep-link";
 import { LeoChatBody } from "./leochat-body";
@@ -60,6 +61,10 @@ function useWide(): boolean {
 }
 
 const NO_CHAT_TABS = ["bay", "leochat"] as const;
+/** 引用卡片在右侧栏里以只读消息打开（合同 §2.4 `onOpenQuote` 的默认事件）。 */
+const OPEN_QUOTE_PANEL_EVENT = "oceanleo:open-quote-panel";
+/** 页头标题：与任务页标题同一套字。 */
+const PAGE_TITLE = "truncate text-[13px] font-medium text-stone-700";
 
 export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
   const tt = useUI();
@@ -75,9 +80,17 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
     setBaySiteKey(siteKey);
   }, [siteKey]);
 
+  // 会话里的任务卡片 / 引用卡片、转发到任务（合同 §2.3、§2.4）：右侧栏在这一页打开，栏里画什么由右侧栏自己接同一个事件。
+  const setRightOpen = workspace.setRightOpen;
   useEffect(() => {
-    ensureMessagesSurfaceStyles();
-  }, []);
+    const open = () => setRightOpen(true);
+    window.addEventListener(OPEN_TASK_PANEL_EVENT, open);
+    window.addEventListener(OPEN_QUOTE_PANEL_EVENT, open);
+    return () => {
+      window.removeEventListener(OPEN_TASK_PANEL_EVENT, open);
+      window.removeEventListener(OPEN_QUOTE_PANEL_EVENT, open);
+    };
+  }, [setRightOpen]);
 
   useEffect(() => hostState().claimSurface("page"), []);
 
@@ -99,15 +112,15 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
       aria-label={tt(workspace.rightOpen ? "收起" : "展开")}
       aria-expanded={workspace.rightOpen}
       title={tt(workspace.rightOpen ? "收起" : "展开")}
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-500 hover:bg-stone-100">
+      className={LEOCHAT_ICON_BUTTON}>
       <IconRightPanelToggle className="h-4 w-4" />
     </button>
   );
 
   const listHeader = (
-    <div data-leochat-list-header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-stone-200 px-3 py-2">
-      <h1 className="text-[15px] font-semibold text-stone-900">LeoChat</h1>
-      <div className="flex items-center gap-1">
+    <div data-leochat-list-header className="flex shrink-0 flex-nowrap items-center gap-1 px-3 py-2">
+      <h1 className={`${PAGE_TITLE} mr-auto min-w-0`}>LeoChat</h1>
+      <div className="flex shrink-0 items-center gap-1">
         <LeoChatTabs
           active={tabOfView(state.view)}
           onSelect={(view) => hostState().setView(view)}
@@ -134,8 +147,8 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
           <LeoChatBody wide={wide} listHeader={listHeader} />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center justify-between px-3 py-2">
-              <h1 className="text-[15px] font-semibold text-stone-900">LeoChat</h1>
+            <div className="flex items-center justify-between gap-1 px-3 py-2">
+              <h1 className={PAGE_TITLE}>LeoChat</h1>
               {sidebarToggle}
             </div>
             {pageState === "pending" ? <RoutePageSkeleton variant="list" label={tt("正在加载…")} /> : <BaySignInPrompt text={tt("登录后查看聊天和联系人")} />}
