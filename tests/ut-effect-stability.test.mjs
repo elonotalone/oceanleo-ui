@@ -48,7 +48,7 @@ export async function resumeLibraryUpload(){}
 const {AttachmentFileViewer} = await import(await compileModule('src/shell/attachment-file-viewer.tsx', {'../i18n/ui/useUI':ui}));
 const {ConversationView} = await import(await compileModule('src/shell/messages/conversation/ConversationView.tsx', {
   '../../../i18n/ui/useUI':ui, '../../../ui':controls,
-  '../../../lib/im/client':dataModule('export class ImApiError extends Error {}'),
+  '../../../lib/im/client':dataModule('export class ImApiError extends Error {} export async function imFetch() { return {}; }'),
   '../../../lib/im/people-api':dataModule('export function conversationDisplayTitle(c){return c.title;} export function visiblePersonName(p){return p.display_name||"";} export async function blockUser(){}'),
   '../../../lib/im/messages-api':dataModule(`export const messagesApi={
     async me(){return {profile:{user_id:'viewer'}};},
@@ -239,8 +239,8 @@ test('attachment fallback error changes language without fetching again',async()
 });
 
 // Session / sites wave 2026-11-21: a message's "Forward" no longer opens a conversation-list dialog; it opens the
-// Forward page of the header's Forward / Copy menu (the ForwardPicker loads its own targets).
-test('message Forward opens the Forward page of the header menu without loading a conversation list',async()=>{
+// Forward page of the header's Forward / Copy menu. The only list read is the ForwardPicker's own target load (once).
+test('message Forward opens the Forward page of the header menu; only the picker reads the conversation list, once',async()=>{
   let reads=0;
   globalThis.__utForwardRequest=()=>{reads++;return {items:[]};};
   // Opening the menu mounts the shared popover, whose motion styles jsdom 20 cannot parse (as device-settings-dialog).
@@ -250,8 +250,9 @@ test('message Forward opens the Forward page of the header menu without loading 
   try {
     await act(async()=>root.render(React.createElement(LocaleContext.Provider,{value:'en'},React.createElement(ConversationView,{conversationId:'current',layout:'docked'}))));
     await settle();
+    assert.equal(reads,0,'nothing is listed before Forward is pressed');
     await act(async()=>host.querySelector('[data-ut-forward]').click());await settle();
-    assert.equal(reads,0);
+    assert.equal(reads,1,'the ForwardPicker loads chats and sessions once');
     assert.ok(document.querySelector('[data-forward-copy-page="forward"]'),'forward page of the header menu');
     assert.equal(host.querySelector('[data-forward-copy-entry]').getAttribute('data-forward-copy-entry'),'active');
   } finally {await act(async()=>root.unmount());host.remove();console.error=oldError;delete globalThis.__utForwardRequest;}

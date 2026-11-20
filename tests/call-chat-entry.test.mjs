@@ -396,6 +396,7 @@ const viewStubs = {
       constructor(status, code, message) { super(message); this.status = status; this.code = code; }
     }
     (globalThis.__W08V ??= {}).ImApiError = ImApiError;
+    export async function imFetch() { return {}; }
   `),
   "../../../lib/im/people-api": dataModule(`
     export function conversationDisplayTitle(c) { return c?.title ?? ""; }

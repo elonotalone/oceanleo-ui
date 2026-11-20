@@ -250,8 +250,12 @@ test('destination mapping keeps material/listing/revision, Library and managed-p
  assert.deepEqual(resolve('/bay?listingId=seller-1'),{version:1,tab:'bay',url:'https://oceanleo.com/bay?listingId=seller-1',view:'materials',itemId:'listing:seller-1',revisionId:undefined});
  assert.equal(resolve('/bay?asset=library:cover-1').itemId,'library:cover-1');
  assert.equal(resolve('/library?item=art-1&revisionId=rev-2').revisionId,'rev-2');
- assert.equal(resolve('/s/image/library?item=art-1').itemId,'art-1');
- assert.equal(resolve('https://music.oceanleo.cn/settings/privacy').section,'privacy');
+ // Session / sites wave 2026-11-21: library deep links are /workspace, /workspace/<site>, /workspace/<site>/<app>.
+ assert.equal(resolve('/workspace/image/editor?tab=library&item=art-1').itemId,'art-1');
+ assert.equal(resolve('https://oceanleo.cn/settings/privacy').section,'privacy');
+ // Sub-site hosts and the /s/<site> form are gone: neither routes any more.
+ assert.equal(resolve('https://music.oceanleo.cn/settings/privacy'),null);
+ assert.equal(resolve('/s/image/library?item=art-1'),null);
  assert.equal(resolve('/devices?deviceId=device-1').deviceId,'device-1');
  for(const href of ['https://oceanleo.app/library?item=evil','https://oceanleo.com.evil.org/library?item=evil','javascript:alert(1)','https://example.org/library?item=x'])assert.equal(resolve(href),null);
 });
@@ -271,7 +275,7 @@ const {BayOrderCard}=await import(await compileModule('src/shell/bay/orders/BayO
 test('artifact cards open the sidebar; order cards use Bay navigation when Bay is omitted',async()=>{
  const page=await mount(React.createElement(LeoChatPage,{siteKey:'oceanleo'}));
  const cards=await mount(React.createElement('div',null,
-   React.createElement(ArtifactCardView,{card:{type:'artifact',id:'artifact-1',title:'Report',open_path:'https://music.oceanbizs.com/library?item=artifact-1&revisionId=revision-2'}}),
+   React.createElement(ArtifactCardView,{card:{type:'artifact',id:'artifact-1',title:'Report',open_path:'https://oceanbizs.com/library?item=artifact-1&revisionId=revision-2'}}),
    React.createElement(BayOrderCard,{contractId:'order-1',compact:true})));
  const received=[];const receive=(event)=>received.push(event.detail.action);
  window.addEventListener(WORKSPACE_ACTION_EVENT,receive);
@@ -309,11 +313,19 @@ test('task hosts keep their LeoChat card and can open message content in that sa
 
 test('F4: only exact product hosts and default ports route into the workspace',()=>{
  const resolve=(href,origin='https://oceanleo.com')=>workspaceActionForHref(href,origin);
+ // Session / sites wave 2026-11-21: only a family's portal host is a product page.
  for(const href of [
-   'https://oceanleo.com:443/library?item=x', 'https://slide.oceanleo.com/library?item=x',
-   'https://3d.oceanbizs.com/library?item=x','https://e-commerce.oceanleo.cn/library?item=x',
-   'https://aitools.oceanleo.com/library?item=x',
+   'https://oceanleo.com:443/library?item=x','https://oceanleo.com/library?item=x',
+   'https://oceanleo.cn/library?item=x','https://oceanbizs.com/library?item=x',
  ])assert.equal(resolve(href)?.tab,'mine',href);
+ // Former sub-site hosts are refused (every family, including the labels that used to be special).
+ for(const href of [
+   'https://music.oceanleo.com/library?item=x','https://image.oceanleo.cn/library?item=x',
+   'https://ppt.oceanbizs.com/library?item=x','https://slide.oceanleo.com/library?item=x',
+   'https://3d.oceanbizs.com/library?item=x','https://e-commerce.oceanleo.cn/library?item=x',
+   'https://aitools.oceanleo.com/library?item=x','https://music.oceanleo.com/bay?listingId=x',
+   'https://music.oceanleo.com/settings/privacy','https://music.oceanleo.com/projects/p1',
+ ])assert.equal(resolve(href),null,href);
  for(const href of [
    'https://unknown.oceanleo.com/library?item=x','https://api.oceanleo.com/library?item=x',
    'https://nested.music.oceanleo.com/library?item=x','https://music-oceanleo.com/library?item=x',
@@ -326,16 +338,21 @@ test('F4: only exact product hosts and default ports route into the workspace',(
    'https://person@oceanleo.com/library?item=x',
  ])assert.equal(resolve(href),null,href);
  // Being the caller origin never promotes an unknown/content host or custom port.
- for(const origin of ['https://unknown.oceanleo.com','https://oceanleo.app','https://oceanleo.com:444'])assert.equal(resolve('/library?item=x',origin),null,origin);
+ for(const origin of ['https://unknown.oceanleo.com','https://oceanleo.app','https://oceanleo.com:444','https://music.oceanleo.com','https://image.oceanleo.cn'])assert.equal(resolve('/library?item=x',origin),null,origin);
  assert.equal(resolve('/library?item=x','http://oceanleo.com:80')?.tab,'mine');
 });
 
-test('F4: Library compatibility and merged routes match only their exact supported path shapes',()=>{
+test('F4: Library deep links match only their exact supported path shapes; the /s/<site> form is gone',()=>{
  const resolve=(path)=>workspaceActionForHref(path,'https://oceanleo.com');
- for(const path of ['/library/?item=x','/workspace?tab=library&item=x','/workspace/invitation?tab=library&item=x','/s/ppt/library?item=x','/s/threed/bay?listingId=x'])assert.ok(resolve(path),path);
+ // Session / sites wave 2026-11-21: /workspace = desk, /workspace/<site>, /workspace/<site>/<app> (with tab=library&item=).
+ for(const path of ['/library/?item=x','/workspace?tab=library&item=x','/workspace/invitation?tab=library&item=x','/workspace/invitation/editor?tab=library&item=x','/workspace/ppt/slides?tab=library&item=x'])assert.equal(resolve(path)?.tab,'mine',path);
+ assert.equal(resolve('/workspace/ppt/slides?tab=library&item=x&revisionId=r1').revisionId,'r1');
  for(const path of [
    '/unrelated?tab=library&item=x','/?tab=library&item=x','/account/login?tab=library&item=x',
-   '/bay/extra?tab=library&item=x','/workspace/app/extra?tab=library&item=x',
+   '/bay/extra?tab=library&item=x','/workspace/app/extra/more?tab=library&item=x',
+   '/workspace/ppt/slides?item=x','/workspace/ppt/slides?tab=library','/workspace/ppt/slides?tab=files&item=x',
+   '/workspace/PPT?tab=library&item=x','/workspace/-ppt?tab=library&item=x','/workspace/ppt//?tab=library&item=x',
+   '/s/ppt/library?item=x','/s/threed/bay?listingId=x','/s/image/library?item=x',
    '/workspace/%2F?tab=library&item=x','/library//?item=x','/library/extra?item=x',
    '/history/extra?item=x','/projects/a/extra','/projects/%2F','/projects/a.b',
    '/settings/privacy/extra','/devices/%2F','/browser/extra',
@@ -349,12 +366,13 @@ test('F4: rejected hosts, ports and unrelated paths remain new-tab links in mess
    'https://oceanleo.com:8443/library?item=x',
    'https://oceanleo.app/library?item=x',
    'https://oceanleo.com/other?tab=library&item=x',
+   'https://music.oceanleo.com/library?item=x',
  ];
  const messages=await mount(React.createElement('div',null,...renderMessageBody(urls.join(' '))));
  assert.equal(messages.container.querySelectorAll('a').length,urls.length);
  for(const link of messages.container.querySelectorAll('a'))assert.equal(link.getAttribute('target'),'_blank');
- const cards=await mount(React.createElement('div',null,...[urls[0],urls[1],urls[3]].map((open_path,index)=>React.createElement(ArtifactCardView,{key:index,card:{type:'artifact',id:'x',title:'File',open_path}}))));
- assert.equal(cards.container.querySelectorAll('a').length,3);
+ const cards=await mount(React.createElement('div',null,...[urls[0],urls[1],urls[3],urls[4]].map((open_path,index)=>React.createElement(ArtifactCardView,{key:index,card:{type:'artifact',id:'x',title:'File',open_path}}))));
+ assert.equal(cards.container.querySelectorAll('a').length,4);
  for(const link of cards.container.querySelectorAll('a'))assert.equal(link.getAttribute('target'),'_blank');
  await cards.close();await messages.close();
 });
@@ -365,7 +383,8 @@ test('F5: a validated LeoDev host routes only its own recognized URLs, retaining
  const other='https://p-abcdef0123456789abcdef0123456789.dev.oceanleo.com';
  for(const href of ['/library?item=owned',`${dev}:443/library?item=owned`])assert.equal(workspaceActionForHref(href,dev)?.tab,'mine',href);
  assert.equal(workspaceActionForHref('/bay?listingId=owned',dev)?.itemId,'listing:owned');
- assert.equal(workspaceActionForHref('/s/ppt/library?item=owned',dev)?.tab,'mine');
+ assert.equal(workspaceActionForHref('/workspace/ppt/slides?tab=library&item=owned',dev)?.tab,'mine');
+ assert.equal(workspaceActionForHref('/s/ppt/library?item=owned',dev),null);
  assert.equal(workspaceActionForHref(`${other}/library?item=owned`,dev),null);
  assert.equal(workspaceActionForHref(`${dev}/library?item=owned`,'https://oceanleo.com'),null);
  for(const origin of [

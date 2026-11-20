@@ -47,7 +47,7 @@ test("pinned inbox and conversation badges render their localized status in all 
   const { InboxRow } = await import(await compileModule("src/shell/messages/InboxRow.tsx", {
     "../../i18n/ui/useUI": ui,
     "../../lib/im/people-api": dataModule("export function conversationDisplayTitle(item) { return item.title; }"),
-    "./groups/GroupAvatar": dataModule("export function GroupAvatar() { return null; }"),
+    "./groups/GroupAvatar": dataModule("export function GroupAvatar() { return null; } export function PersonAvatar() { return null; }"),
   }));
   const { PinnedBar } = await import(await compileModule("src/shell/messages/conversation/PinnedBar.tsx", {
     "../../../i18n/ui/useUI": ui,

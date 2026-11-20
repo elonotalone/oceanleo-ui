@@ -148,7 +148,12 @@ const STUBS = {
   "../../../i18n/ui/useUI": uiHookStub,
   "../../../ui": uiPrimitivesStub,
   "../../../lib/im/client": imClientStub,
-  "../../../contracts/domain-family": dataModule('export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }'),
+  // 其余导出走真模块，只把门户钉死。
+  "../../../contracts/domain-family": dataModule(`
+    export * from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
+    export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
+    export function portalHref(path) { return "https://oceanleo.com" + path; }
+  `),
   "../realtime/hooks": imHooksStub,
   "../report/ReportDialog": nullComponentStub("ReportDialog"),
   "../nav-source/route-boundary": nullComponentStub("RoutePageSkeleton"),

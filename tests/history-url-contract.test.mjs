@@ -35,7 +35,9 @@ test("HistoryDetail 刷新动态路由时直接从 pathname 恢复，不依赖�
     source,
     /const sel =\s*historySessionIdFromPath\(detailPathname\) \|\| taskIdFromPath\(detailPathname\) \|\| detailTaskQuery \|\| selected/,
   );
-  assert.match(source, /siteId && session\.site_id !== siteId/);
+  // Session / sites wave 2026-11-21: every site's tasks and sessions open on the main site; no site-mismatch refusal.
+  assert.doesNotMatch(source, /siteId && session\.site_id !== siteId/);
+  assert.doesNotMatch(source, /task\.site_id !== siteId/);
 });
 
 test("历史任务把已读标题直接交给 AgentChat，首帧不回退到 computer label", () => {

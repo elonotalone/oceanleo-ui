@@ -133,7 +133,7 @@ const { SearchView }=await import(await compileModule("src/shell/messages/search
 const composerStub=dataModule(`import React from ${JSON.stringify(reactUrl)};export function Composer(){return React.createElement('textarea',{'data-real-draft':''})}`);
 const { ConversationView }=await import(await compileModule("src/shell/messages/conversation/ConversationView.tsx",{
   ...searchStubs,
-  "../../../lib/im/client":dataModule('export class ImApiError extends Error{}'),
+  "../../../lib/im/client":dataModule('export class ImApiError extends Error{} export async function imFetch() { return {}; }'),
   "../../../lib/im/people-api":dataModule('export function conversationDisplayTitle(c){return c.title}export function visiblePersonName(p){return p.display_name}'),
   "../../../lib/im/inbox-api":dataModule('export async function fetchConversations(){return {items:[]}}'),
   "./conversation-store":dataModule('export function getConversationStore(){return globalThis.__csStore}export function unreadBoundary(){return null}'),

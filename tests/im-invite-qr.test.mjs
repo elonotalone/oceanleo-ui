@@ -55,7 +55,9 @@ const imClientStub = dataModule(`
   export async function imFetch(path, init = {}) { return globalThis.__IM.fetch(path, init); }
 `);
 // 本家门户固定为 https://oceanleo.com（不依赖运行环境的域名配置）。
+// 其余导出（主机判定、cookie 域等）走真模块，只把门户钉死。
 const domainFamilyStub = dataModule(`
+  export * from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
   export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
   export function portalHref(path) { return "https://oceanleo.com" + path; }
 `);
