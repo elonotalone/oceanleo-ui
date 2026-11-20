@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { getFrame, getHistoryWindow, openFrames, type AcpCatalog, type AcpFrameRow, type AcpFramesState, type AcpLinkState } from "../../lib/acp-frames-api";
+import { getFrame, getFrames, getHistoryWindow, openFrames, type AcpCatalog, type AcpFrameRow, type AcpFrames, type AcpFramesState, type AcpLinkState } from "../../lib/acp-frames-api";
 import { readTaskConversationAnchor } from "../task-open-cache";
 
 export type AcpFramesView = {
@@ -17,15 +17,70 @@ export type AcpFramesView = {
   hasMoreAfter: boolean;
   jumpingLatest: boolean;
   jumpToLatest: () => Promise<void>;
+  /**
+   * Read every stored row after the newest one this page has (the socket may have missed them) and add them; when it
+   * did miss some, reconnect the socket too. Also runs when the tab becomes visible again.
+   */
+  catchUp: () => Promise<void>;
 };
 const noop = async () => undefined;
-const IDLE: AcpFramesView = { rows: [], state: "idle", link: null, configState: null, hasMore: false, loadingEarlier: false, capped: false, loadEarlier: noop, hasMoreAfter: false, jumpingLatest: false, jumpToLatest: noop, expandRow: noop };
+const IDLE: AcpFramesView = { rows: [], state: "idle", link: null, configState: null, hasMore: false, loadingEarlier: false, capped: false, loadEarlier: noop, hasMoreAfter: false, jumpingLatest: false, jumpToLatest: noop, expandRow: noop, catchUp: noop };
 const FLUSH_MS = 16;
+const CATCH_UP_PAGE = 500;
+const CATCH_UP_PAGES = 20;
+
+/** Rows not yet in `current`, merged in id order (null when nothing is new). */
+function mergeRows(current: readonly AcpFrameRow[], incoming: readonly AcpFrameRow[]): AcpFrameRow[] | null {
+  const known = new Set(current.map((row) => row.id));
+  const fresh = incoming.filter((row) => !known.has(row.id));
+  return fresh.length ? [...current, ...fresh].sort((a, b) => a.id - b.id) : null;
+}
 
 /** Read stored history from the route id; the live connection is an independent effect. */
 export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFramesView {
   const [view, setView] = useState<{ taskId: string; value: AcpFramesView }>({ taskId: "", value: IDLE });
   const [tail, setTail] = useState<{ taskId: string; after: number } | null>(null);
+  const viewRef = useRef(view);
+  const tailRef = useRef(tail);
+  useLayoutEffect(() => { viewRef.current = view; tailRef.current = tail; }, [view, tail]);
+  const socketRef = useRef<{ taskId: string; socket: AcpFrames } | null>(null);
+  const catching = useRef<{ taskId: string; promise: Promise<void> } | null>(null);
+  const catchUp = useCallback((): Promise<void> => {
+    if (!taskId) return Promise.resolve();
+    if (catching.current?.taskId === taskId) return catching.current.promise;
+    const promise = (async () => {
+      const shown = viewRef.current.taskId === taskId ? viewRef.current.value.rows : [];
+      const start = tailRef.current?.taskId === taskId ? tailRef.current.after : null;
+      // Before the first window has loaded there is nothing to catch up to; with no window at all the socket
+      // already replays every row from the start.
+      if (start === null || start === 0 && !shown.length) return;
+      let after = shown.reduce((max, row) => Math.max(max, row.id), start);
+      const found: AcpFrameRow[] = [];
+      for (let page = 0; page < CATCH_UP_PAGES; page++) {
+        const rows = await getFrames(taskId, after, CATCH_UP_PAGE);
+        if (!Array.isArray(rows) || !rows.length) break;
+        found.push(...rows);
+        after = rows.reduce((max, row) => Math.max(max, row.id), after);
+        if (rows.length < CATCH_UP_PAGE) break;
+      }
+      if (!found.length) return;
+      setView((current) => {
+        if (current.taskId !== taskId) return current;
+        const rows = mergeRows(current.value.rows, found);
+        return rows ? { taskId, value: { ...current.value, rows } } : current;
+      });
+      // Stored rows the socket never delivered: it is behind or dead, open a new one from its cursor.
+      if (socketRef.current?.taskId === taskId) socketRef.current.socket.resync();
+    })().finally(() => { if (catching.current?.promise === promise) catching.current = null; });
+    catching.current = { taskId, promise };
+    return promise;
+  }, [taskId]);
+  useEffect(() => {
+    if (!taskId || typeof document === "undefined") return;
+    const onVisible = () => { if (document.visibilityState === "visible") void catchUp().catch(() => undefined); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [taskId, catchUp]);
   const expandRow = useCallback(async (rowId: number) => {
     if (!taskId) return;
     const full = await getFrame(taskId, rowId);
@@ -55,7 +110,7 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
     const controller = new AbortController();
     const fallback = () => {
       if (closed) return;
-      setView({ taskId, value: { ...IDLE, state: "connecting", expandRow } });
+      setView({ taskId, value: { ...IDLE, state: "connecting", expandRow, catchUp } });
       setTail({ taskId, after: 0 });
     };
     const loadEarlier = (): Promise<void> => {
@@ -87,7 +142,7 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
     const attachWindow = (page: Awaited<ReturnType<typeof getHistoryWindow>>, rows: AcpFrameRow[]) => {
       before = page.next_before;
       windowVersion += 1;
-      setView({ taskId, value: { rows, state: "connecting", link: page.link ?? null, configState: page.config_state ?? null, hasMore: page.has_more, loadingEarlier: false, capped: page.capped, loadEarlier, expandRow, hasMoreAfter: Boolean(page.has_more_after), jumpingLatest: false, jumpToLatest } });
+      setView({ taskId, value: { rows, state: "connecting", link: page.link ?? null, configState: page.config_state ?? null, hasMore: page.has_more, loadingEarlier: false, capped: page.capped, loadEarlier, expandRow, hasMoreAfter: Boolean(page.has_more_after), jumpingLatest: false, jumpToLatest, catchUp } });
       setTail({ taskId, after: page.tail_id });
     };
     const fillForward = async (page: Awaited<ReturnType<typeof getHistoryWindow>>) => {
@@ -113,7 +168,7 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
       anchor = undefined;
       attachWindow(page, page.rows);
     };
-    setView({ taskId, value: { ...IDLE, state: "connecting", loadEarlier, expandRow, jumpToLatest } });
+    setView({ taskId, value: { ...IDLE, state: "connecting", loadEarlier, expandRow, jumpToLatest, catchUp } });
     setTail(null);
     getHistoryWindow(taskId, { anchor, turns: 8, signal: controller.signal }).then(async (page) => {
       if (closed) return;
@@ -156,11 +211,12 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
     return () => { closed = true;
       committed.current = committed.current.filter((waiter) => { if (waiter.taskId !== taskId) return true; waiter.resolve(); return false; });
       controller.abort(); };
-  }, [taskId, expandRow]);
+  }, [taskId, expandRow, catchUp]);
   const canStream = nativeHint || (view.taskId === taskId && view.value.rows.length > 0);
   useEffect(() => {
     if (!taskId || !canStream || tail?.taskId !== taskId) return;
     const socket = openFrames(taskId, tail.after);
+    socketRef.current = { taskId, socket };
     let pending: AcpFrameRow[] = [];
     let timer: ReturnType<typeof setTimeout> | null = null;
     const flush = () => {
@@ -169,9 +225,8 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
       if (!rows.length) return;
       setView((current) => {
         if (current.taskId !== taskId) return current;
-        const known = new Set(current.value.rows.map((row) => row.id));
-        const fresh = rows.filter((row) => !known.has(row.id));
-        return fresh.length ? { taskId, value: { ...current.value, rows: [...current.value.rows, ...fresh].sort((a, b) => a.id - b.id) } } : current;
+        const merged = mergeRows(current.value.rows, rows);
+        return merged ? { taskId, value: { ...current.value, rows: merged } } : current;
       });
     };
     const unsubscribe = socket.rows$.subscribe((event) => {
@@ -187,7 +242,10 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
             : { ...current.value, link: event.link },
       });
     });
-    return () => { unsubscribe(); if (timer !== null) clearTimeout(timer); socket.close(); };
+    return () => {
+      unsubscribe(); if (timer !== null) clearTimeout(timer); socket.close();
+      if (socketRef.current?.socket === socket) socketRef.current = null;
+    };
   }, [taskId, canStream, tail]);
   return taskId && view.taskId === taskId ? view.value : IDLE;
 }

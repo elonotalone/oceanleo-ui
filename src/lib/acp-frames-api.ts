@@ -234,11 +234,18 @@ export interface AcpFrames {
   readonly state: AcpFramesState;
   /** Rows in commit order, socket state and agent link changes. */
   readonly rows$: { subscribe(listener: (event: AcpFramesEvent) => void): () => void };
+  /** Drop the current socket and open a new one now, from the last row delivered. */
+  resync(): void;
   close(): void;
 }
 
 const RETRY_FIRST_MS = 1_000;
 const RETRY_MAX_MS = 10_000;
+/**
+ * The gateway sends `{ping}` every few seconds (25 s at most). A socket that has heard nothing for this long is dead
+ * even when the browser never saw it close (network drop, sleep): 2026-11-20 a page missed a turn's end this way.
+ */
+const FRAMES_SILENT_MS = 30_000;
 
 /** Bearer token in the query string, as the other task sockets. */
 export async function framesWsUrl(taskId: string, after: number): Promise<string> {
@@ -258,6 +265,8 @@ function frameRow(value: unknown): AcpFrameRow | null {
  * The task's frames socket (`WS /v1/tasks/{id}/frames`): the backlog after
  * `after`, then each committed row. A drop sets `disconnected` and reconnects
  * after 1 s, doubling to 10 s, from the last row delivered. It never sends anything.
+ * A socket silent for `FRAMES_SILENT_MS` counts as dropped; going online, or the tab becoming visible while the socket
+ * is down or silent, reconnects at once.
  */
 export function openFrames(taskId: string, after = 0): AcpFrames {
   const listeners = new Set<(event: AcpFramesEvent) => void>();
@@ -268,6 +277,7 @@ export function openFrames(taskId: string, after = 0): AcpFrames {
   let generation = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let delay = RETRY_FIRST_MS;
+  let heard = Date.now();
 
   const emit = (event: AcpFramesEvent) => { for (const listener of [...listeners]) listener(event); };
   const setState = (next: AcpFramesState) => {
@@ -287,8 +297,21 @@ export function openFrames(taskId: string, after = 0): AcpFrames {
     setState("disconnected");
     retry();
   };
+  const restart = () => {
+    if (closed) return;
+    const current = socket;
+    generation += 1;
+    socket = null;
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    delay = RETRY_FIRST_MS;
+    current?.close();
+    void connect();
+  };
+  const silent = () => Date.now() - heard > FRAMES_SILENT_MS;
   const connect = async () => {
     if (closed) return;
+    heard = Date.now();
     setState("connecting");
     const current = ++generation;
     let url: string;
@@ -300,10 +323,12 @@ export function openFrames(taskId: string, after = 0): AcpFrames {
     next.onopen = () => {
       if (current !== generation || closed) { next.close(); return; }
       delay = RETRY_FIRST_MS;
+      heard = Date.now();
       setState("connected");
     };
     next.onmessage = (event) => {
       if (current !== generation || closed) return;
+      heard = Date.now();
       let message: Record<string, unknown> | null = null;
       try { message = record(JSON.parse(String(event.data))); } catch { return; }
       if (!message || typeof message.ping === "number") return;
@@ -322,6 +347,15 @@ export function openFrames(taskId: string, after = 0): AcpFrames {
     next.onerror = () => { if (current === generation && !closed) next.close(); };
     next.onclose = () => dropped(current);
   };
+  // A connecting socket that never opens is dead too (its close may never arrive).
+  const watchdog = setInterval(() => { if (socket && silent()) restart(); }, FRAMES_SILENT_MS / 3);
+  const onOnline = () => restart();
+  const onVisible = () => {
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    if (state !== "connected" || silent()) restart();
+  };
+  if (typeof window !== "undefined") window.addEventListener("online", onOnline);
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
   void connect();
   return {
     get state() { return state; },
@@ -331,9 +365,13 @@ export function openFrames(taskId: string, after = 0): AcpFrames {
         return () => { listeners.delete(listener); };
       },
     },
+    resync: restart,
     close() {
       closed = true;
       generation += 1;
+      clearInterval(watchdog);
+      if (typeof window !== "undefined") window.removeEventListener("online", onOnline);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
       if (timer !== null) clearTimeout(timer);
       timer = null;
       const current = socket;

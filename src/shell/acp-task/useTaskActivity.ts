@@ -9,6 +9,8 @@ export type TaskActivitySnapshot = {
   session_id: string | null;
   activity_state: "working" | "waiting_user" | "idle";
   working: boolean;
+  /** `received_at` of the newest stored frame the gateway's state is computed from. */
+  last_activity_at?: string | null;
   background_state: TaskBackgroundState;
   background_active_count: number;
   background_summary?: string;
@@ -30,7 +32,8 @@ export function useTaskActivity(taskId: string | null, intervalMs = 5000): {
   activity: TaskActivitySnapshot | null;
   loading: boolean;
   error: Error | null;
-  refresh: () => Promise<void>;
+  /** Read now; resolves with the fresh snapshot (null when the read failed or there is no task). */
+  refresh: () => Promise<TaskActivitySnapshot | null>;
 } {
   const [activity, setActivity] = useState<TaskActivitySnapshot | null>(null);
   const [loading, setLoading] = useState(Boolean(taskId));
@@ -38,15 +41,17 @@ export function useTaskActivity(taskId: string | null, intervalMs = 5000): {
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
   const refresh = useCallback(async () => {
-    if (!taskId) { setActivity(null); setLoading(false); return; }
+    if (!taskId) { setActivity(null); setLoading(false); return null; }
     setLoading(true);
     try {
       const next = await request<TaskActivitySnapshot>(`/v1/tasks/${encodeURIComponent(taskId)}/activity`);
-      if (!mounted.current) return;
+      if (!mounted.current) return null;
       setActivity(next); setError(null);
+      return next;
     } catch (caught) {
-      if (!mounted.current) return;
+      if (!mounted.current) return null;
       setError(caught instanceof Error ? caught : new Error(String(caught)));
+      return null;
     } finally {
       if (mounted.current) setLoading(false);
     }

@@ -39,6 +39,7 @@ test("a late socket subscriber receives both link and config state without anoth
 const { useAcpFrames } = await import(await compileModule("src/shell/acp-task/useAcpFrames.ts", {
   "../../lib/acp-frames-api": dataModule(`
     export async function getFrame(){ throw new Error("unexpected full frame"); }
+    export async function getFrames(){ return []; }
     export async function getHistoryWindow(taskId) { return {
       rows: [], tail_id: 100, next_before: null, has_more: false, capped: false,
       link: "attached", config_state: {models: {currentModelId: taskId + "-model"}}
