@@ -224,3 +224,27 @@ test("all UI languages translate WebRTC recovery, path and round-trip copy", asy
     if (["en", "de", "es", "es-419", "fr", "it", "pt-BR", "pt-PT", "vi", "tr"].includes(locale)) for (const source of copy) assert.doesNotMatch(dict[source], /[一-鿿]/);
   }
 });
+
+test("Windows administrator-window notice is shown as itself, never as input reconnecting, and does not break a drag", async () => {
+  const view = await mount(); await view.frame();
+  const video = view.video(); video.getBoundingClientRect = () => ({ left: 100, top: 50, width: 640, height: 360 });
+  const pointer = async (type, x) => act(async () => {
+    const event = new window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: 230, button: 0 });
+    Object.defineProperties(event, { pointerId: { value: 1 }, pointerType: { value: "mouse" } });
+    view.screen().querySelector("[data-remote-stage]").dispatchEvent(event);
+  });
+  await pointer("pointerdown", 420);
+  // The host repeats its notice in every ~1 s status report while frames keep arriving.
+  for (let i = 0; i < 3; i++) {
+    await act(async () => view.handlers().media(descriptor, { state: "publishing", error: "input_target_elevated" }));
+    assert.doesNotMatch(view.screen().textContent, /输入正在重新连接/);
+    assert.match(view.screen().querySelector("[data-remote-input-status]")?.textContent ?? "", /以管理员身份运行/);
+    await view.frame();
+    assert.match(view.screen().querySelector("[data-remote-input-status]")?.textContent ?? "", /以管理员身份运行/, "frames do not make the notice blink");
+  }
+  await pointer("pointerup", 460);
+  assert.deepEqual(view.log.inputs.at(-1), { kind: "pointer_up", x: .5625, y: .5, button: "left" }, "the held button is still released on the computer");
+  await act(async () => view.handlers().media(descriptor, { state: "publishing" }));
+  assert.equal(view.screen().querySelector("[data-remote-input-status]"), null, "the notice goes once the host clears it");
+  assert.deepEqual(view.log.closes, []);
+});

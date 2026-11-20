@@ -83,7 +83,8 @@ export async function openRemoteWebRtcStream(
   };
   const finish = (reason: string, notify = true) => {
     if (ended || ending) return;
-    if (inputFault(reason)) { handlers.webrtcState?.("input_reconnecting"); return; }
+    // The peer replaces its input channel; it alone decides when "input is reconnecting" is shown.
+    if (inputFault(reason)) { peer?.recoverInput(reason); return; }
     ending = true;
     initialPeer?.pc.close(); initialPeer = undefined;
     if (createdSocket) { createdSocket.socket.close(); createdSocket = null; }

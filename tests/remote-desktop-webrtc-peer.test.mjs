@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {descriptor,FakePeer,FakeVideo,harness,settle,WALL} from './helpers/remote-desktop-webrtc.mjs';
-import {WebRtcRemoteDesktopViewer} from '../src/api/remote-desktop-webrtc.ts';
+import {WebRtcRemoteDesktopViewer,WEBRTC_INPUT_NOTICE_MS} from '../src/api/remote-desktop-webrtc.ts';
 
 test('viewer offers recvonly video with reliable input/control, unreliable move and low playout delay',async t=>{
   const h=await harness(t);await h.viewer.start();const pc=h.viewer.pc;
@@ -119,7 +119,8 @@ test('descriptor received earlier consumes lease time before engine construction
 test('host capture status leaves lifetime to API; input bye recovers input; terminal bye retains explicit reason',async t=>{
   const h=await harness(t);await h.viewer.start();h.open();const pc=h.viewer.pc;
   pc.channel('rd-ctl').message({t:'rd.capture_failed',reason:'capture_failed'});assert.equal(pc.closed,0);
-  await h.viewer.signal({k:'bye',reason:'input_failed'});assert.equal(pc.closed,0);assert.equal(h.states.at(-1).state,'input_reconnecting');
+  await h.viewer.signal({k:'bye',reason:'input_failed'});assert.equal(pc.closed,0);assert.equal(pc.channel('rd-input').closeCount,1);
+  await h.advance(WEBRTC_INPUT_NOTICE_MS);assert.equal(h.states.at(-1).state,'input_reconnecting','replacement still not open after the grace period');
   await h.viewer.signal({k:'bye',reason:'capture_recovery_failed'});assert.deepEqual(h.terminals,['capture_recovery_failed']);assert.equal(pc.closed,1);
 });
 test('late async answer/candidate exceptions and observer throws do not stop direct peer',async t=>{

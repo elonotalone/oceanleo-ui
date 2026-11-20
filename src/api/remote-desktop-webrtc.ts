@@ -46,6 +46,8 @@ const terminalByeReasons = new Set([
   "input_consent_revoked", "capture_recovery_failed",
 ]);
 const swallow = (fn: () => void): void => { try { fn(); } catch { /* observers cannot stop media */ } };
+/** "Input is reconnecting" shows only after an input channel has been down this long without a break. */
+export const WEBRTC_INPUT_NOTICE_MS = 1000;
 
 /** Explicit development-only TURN acceptance switch; never changes a public viewer. */
 function viewerIcePolicy(): RTCIceTransportPolicy {
@@ -115,6 +117,8 @@ export class WebRtcRemoteDesktopViewer {
   private telemetry: WebRtcTelemetry;
   private channels = new Map<Label, RTCDataChannel>();
   private recovery = new Map<Label, { due: number; backoff: number }>();
+  /** Since when at least one input channel has been in recovery; reset as soon as all are open. */
+  private inputDownSince: number | undefined;
   private pendingSignals: WebRtcSignal[] = [];
   private candidates: RTCIceCandidateInit[] = [];
   private video: HTMLVideoElement | null = null;
@@ -536,6 +540,7 @@ export class WebRtcRemoteDesktopViewer {
   private channelFault(label: Label, _reason: string): void {
     if (this.ended) return;
     if (label === "rd-ctl") this.pathProbe.reset();
+    this.telemetry.laneFault();
     const previous = this.recovery.get(label);
     const backoff = previous?.backoff ?? 200;
     this.recovery.set(label, { due: this.now() + backoff, backoff: Math.min(2000, backoff * 2) });
@@ -629,6 +634,8 @@ export class WebRtcRemoteDesktopViewer {
   releaseForHandoff(): Promise<void> { return this.replacement ? this.replacement.releaseForHandoff() : this.input.releaseForHandoff(); }
   finishHandoff(): void { if (this.replacement) this.replacement.finishHandoff(); else this.input.finishHandoff(); }
   lastSequence(): number { return this.replacement?.lastSequence() ?? this.input.lastSequence; }
+  /** A signalling-side input fault: replace the reliable input channel on this same peer. */
+  recoverInput(reason: string): void { if (this.replacement) this.replacement.recoverInput(reason); else this.channelFault("rd-input", reason); }
   attachVideo(video: HTMLVideoElement | null): void {
     if (this.replacement) return this.replacement.attachVideo(video);
     const attachment = ++this.videoAttachment; this.unverifiedFrames.clear();
@@ -720,9 +727,13 @@ export class WebRtcRemoteDesktopViewer {
   }
   private updateState(): void {
     const pictureFault = this.pictureRebuilding || this.disconnectedAt !== undefined || this.peerRetryDue !== undefined || Boolean(this.connection && ["failed", "closed"].includes(this.connection.connectionState));
-    this.emitState(pictureFault ? "picture_reconnecting" : this.recovery.size ? "input_reconnecting" : this.hasFrame ? "playing" : "connecting");
+    if (!this.recovery.size) this.inputDownSince = undefined;
+    else this.inputDownSince ??= this.now();
+    // A channel replaced within the grace period is not shown; once shown, the notice stays until every channel is open again.
+    const inputDown = this.inputDownSince !== undefined && this.now() - this.inputDownSince >= WEBRTC_INPUT_NOTICE_MS;
+    this.emitState(pictureFault ? "picture_reconnecting" : inputDown ? "input_reconnecting" : this.hasFrame ? "playing" : "connecting");
   }
-  private emitState(state: WebRtcViewerState): void { this.state = state; swallow(() => this.options.onState(state, this.telemetry.path)); }
+  private emitState(state: WebRtcViewerState): void { this.state = state; this.telemetry.inputNotice(state === "input_reconnecting"); swallow(() => this.options.onState(state, this.telemetry.path)); }
   private tick(): void {
     if (this.ended) return;
     const now = this.now();
@@ -746,6 +757,7 @@ export class WebRtcRemoteDesktopViewer {
       // Give DCEP time to open. Retiring a connecting replacement every 200ms can starve a slow path.
       retry.due = now + Math.max(2000, retry.backoff); retry.backoff = Math.min(2000, retry.backoff * 2); this.createChannel(label);
     }
+    if (this.inputDownSince !== undefined && this.state !== "input_reconnecting" && this.state !== "picture_reconnecting" && now - this.inputDownSince >= WEBRTC_INPUT_NOTICE_MS) this.updateState();
     if (this.answerDue !== undefined && now >= this.answerDue && !this.creating && !this.negotiatingPeer && this.connection?.connectionState !== "connected") {
       this.answerDue = undefined; this.peerRetryDue = now;
     }

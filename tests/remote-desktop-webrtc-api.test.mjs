@@ -199,8 +199,12 @@ test("lease renews at sixty seconds and updates ICE on the same peer despite clo
 
 test("input failures remain recoverable; explicit capture and authority endings use closed state", async t => {
   const h = setup(t); const v = await open(h); const peer = Peer.all[0];
+  const inputs = () => peer.channels.filter(channel => channel.label === "rd-input");
+  const first = inputs().at(-1);
   v.socket.message({ type: "state", state: "active", media: descriptor(), media_status: { state: "failed", error: "input_failed" } });
-  assert.equal(peer.closed, false); assert.ok(v.peerStates.includes("input_reconnecting")); assert.deepEqual(v.errors, []);
+  assert.equal(peer.closed, false); assert.equal(first.readyState, "closed", "the peer retires its reliable input channel"); assert.deepEqual(v.errors, []);
+  await h.tick(200); assert.notEqual(inputs().at(-1), first, "and opens a replacement on the same peer");
+  assert.ok(!v.peerStates.includes("input_reconnecting"), "a replacement that opens at once is never announced");
   v.socket.message({ type: "state", state: "closed", error: "input_ack_unknown" });
   assert.equal(peer.closed, false); assert.ok(!v.states.some(([state]) => state === "closed"));
   for (const code of ["host_input_executor_failed", "webrtc_data_channel_lost", "data_channel_lost", "control_send_failed"]) {

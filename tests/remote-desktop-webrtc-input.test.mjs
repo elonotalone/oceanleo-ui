@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {FakeVideo,harness} from './helpers/remote-desktop-webrtc.mjs';
+import {WEBRTC_INPUT_NOTICE_MS} from '../src/api/remote-desktop-webrtc.ts';
 
 for(const label of ['rd-input','rd-fast','rd-ctl'])for(const failure of ['close','error'])test(`${label} ${failure}: picture continues, only failed channel is replaced, release_all sent`,async t=>{
   const h=await harness(t);await h.viewer.start();h.open();const pc=h.viewer.pc;h.viewer.send({kind:'key_down',key:'Shift'});h.receipt(h.viewer.lastSequence());
-  const old=pc.channel(label);old[failure]();assert.equal(pc.closed,0);assert.equal(h.states.at(-1).state,'input_reconnecting');
+  const old=pc.channel(label);const shown=h.states.length;old[failure]();assert.equal(pc.closed,0);
   const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,receiveTime:90});assert.equal(h.frames.length,1);
   await h.advance(200);const replacement=pc.channel(label);assert.notEqual(replacement,old);replacement.open();
+  assert.equal(h.states.slice(shown).some(s=>s.state==='input_reconnecting'),false,'a channel replaced within the grace period is never announced');
+  assert.equal(h.states.at(-1).state,'playing');
   assert.equal(pc.closed,0);assert.equal(h.viewer.gen,1);assert.equal(h.terminals.length,0);
   assert.ok(pc.channels.filter(c=>c.label==='rd-input').flatMap(c=>c.sent).some(message=>message.a?.kind==='release_all'));
 });
@@ -17,8 +20,11 @@ test('ambiguous send failure never replays the failed action or closes the peer'
 });
 test('missing reliable receipt and host executor rejection recover channel on the same connection',async t=>{
   const h=await harness(t);await h.viewer.start();h.open();const pc=h.viewer.pc;h.viewer.send({kind:'keypress',key:'A'});
-  await h.advance(1500);assert.equal(pc.closed,0);assert.equal(h.states.at(-1).state,'input_reconnecting');await h.advance(200);pc.channel('rd-input').open();h.receipt(h.viewer.lastSequence());
-  h.viewer.send({kind:'keypress',key:'B'});h.receipt(h.viewer.lastSequence(),'rejected',{reason:'input_executor_failed'});assert.equal(pc.closed,0);assert.equal(h.states.at(-1).state,'input_reconnecting');
+  await h.advance(1500);assert.equal(pc.closed,0);assert.equal(pc.channel('rd-input').closeCount,1,'the silent reliable channel is retired');
+  await h.advance(200);pc.channel('rd-input').open();h.receipt(h.viewer.lastSequence());assert.notEqual(h.states.at(-1).state,'input_reconnecting');
+  const before=pc.channels.filter(c=>c.label==='rd-input').length;
+  h.viewer.send({kind:'keypress',key:'B'});h.receipt(h.viewer.lastSequence(),'rejected',{reason:'input_executor_failed'});assert.equal(pc.closed,0);
+  await h.advance(200);assert.equal(pc.channels.filter(c=>c.label==='rd-input').length,before+1,'executor failure replaces the reliable channel');
 });
 test('unreliable move receipts may disappear without causing input recovery',async t=>{
   const h=await harness(t);await h.viewer.start();h.open();const pc=h.viewer.pc;h.viewer.send({kind:'move',x:.2,y:.4});await h.advance(2000);
@@ -74,4 +80,20 @@ test('control channel reconnect delays do not cascade into reliable input timeou
 });
 test('explicit stream reattachment starts sequence above the prior engine floor',async t=>{
   const h=await harness(t,{sequenceFloor:123});await h.viewer.start();h.open();h.viewer.send({kind:'keypress',key:'A'});assert.equal(h.viewer.lastSequence(),124);assert.equal(h.viewer.pc.channel('rd-input').sent[0].seq,124);
+});
+test('input notice: shown only after the input channel stays down for the grace period, cleared when it opens again',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const pc=h.viewer.pc;const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:100,receiveTime:90});
+  assert.equal(h.states.at(-1).state,'playing');const shown=h.states.length;
+  pc.channel('rd-input').close();
+  await h.advance(WEBRTC_INPUT_NOTICE_MS-100);video.frame({expectedDisplayTime:200,receiveTime:190});
+  assert.equal(h.states.slice(shown).some(s=>s.state==='input_reconnecting'),false,'not yet: frames keep the picture state');
+  await h.advance(100);assert.equal(h.states.at(-1).state,'input_reconnecting','sustained outage is announced without waiting for a frame');
+  video.frame({expectedDisplayTime:300,receiveTime:290});assert.equal(h.states.at(-1).state,'input_reconnecting','new frames cannot hide a real outage');
+  const replacement=pc.channel('rd-input');replacement.open();assert.equal(h.states.at(-1).state,'playing','confirmed open channel clears it at once');
+});
+test('input notice does not flap while a channel is repeatedly replaced within the grace period',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const pc=h.viewer.pc;const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:100,receiveTime:90});
+  const shown=h.states.length;
+  for(let i=0;i<10;i++){pc.channel('rd-fast').error();await h.advance(200);pc.channel('rd-fast').open();video.frame({expectedDisplayTime:200+i,receiveTime:190+i});await h.advance(800);}
+  assert.equal(h.states.slice(shown).some(s=>s.state==='input_reconnecting'),false);
 });

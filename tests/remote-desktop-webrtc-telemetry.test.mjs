@@ -92,3 +92,18 @@ test('late exact RTP capture timestamps use presentation time and clock offset, 
  const report=t.report(true);assert.equal(report.video.frames_rendered,1);assert.deepEqual(report.video.picture_age,{n:1,p50:50,p95:50,max:50});
  assert.equal(report.video.picture_age_source,'captureTime');assert.equal(report.video.picture_age_by_source.receiveTime.n,1);
 });
+test('window report counts replaced input channels and the time the input notice was on screen, omitted when zero',()=>{
+  let now=0,wall=WALL;const telemetry=new WebRtcTelemetry({sessionId:'sid',clickedAt:0,now:()=>now,wallNow:()=>wall});
+  const quiet=telemetry.report(false);assert.equal('lane_faults' in quiet.input,false);assert.equal('notice_ms' in quiet.input,false);
+  telemetry.laneFault();telemetry.inputNotice(false);now=1000;telemetry.laneFault();telemetry.inputNotice(true);now=1500;telemetry.inputNotice(true);now=2500;
+  const first=telemetry.report(false);assert.equal(first.input.lane_faults,2);assert.equal(first.input.notice_ms,1500);
+  now=3000;telemetry.inputNotice(false);now=4000;
+  const second=telemetry.report(false);assert.equal(second.input.notice_ms,500);assert.equal('lane_faults' in second.input,false);
+  const total=telemetry.report(true,'viewer_left');assert.equal(total.input.lane_faults,2);assert.equal(total.input.notice_ms,2000);
+});
+test('a sustained outage in the live viewer is reported once per replaced channel with its notice time',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const pc=h.viewer.pc;const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:100,receiveTime:90});
+  pc.channel('rd-input').close();await h.advance(3000);pc.channel('rd-input').open();h.receipt(h.viewer.lastSequence());await h.advance(10000);
+  const report=h.reports.map(r=>r.report??r).find(r=>r.input?.lane_faults);assert.ok(report,'a window carries the fault');
+  assert.equal(report.input.lane_faults,1);assert.ok(report.input.notice_ms>=1500&&report.input.notice_ms<=2100,String(report.input.notice_ms));
+});

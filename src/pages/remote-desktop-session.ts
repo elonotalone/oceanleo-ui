@@ -131,11 +131,8 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
 
   useEffect(() => () => { if (dcRetry.current) clearTimeout(dcRetry.current); }, []);
   const reconnectDataChannel = useCallback((reason = "media_data_channel_unavailable") => {
-    if (model.getSnapshot().mediaMode === "webrtc") {
-      clearLocalInput();
-      setMediaNotice("输入正在重新连接，画面继续显示。");
-      return;
-    }
+    // WebRTC input recovers inside the peer, which alone shows "input is reconnecting" (after a grace period).
+    if (model.getSnapshot().mediaMode === "webrtc") { clearLocalInput(); return; }
     if (dcRetry.current || dcRecovering.current || closedRef.current) return;
     dcRecovering.current = true;
     disconnect();
@@ -304,7 +301,8 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
             if (abort.signal.aborted) return;
             acceptMediaStatus(status);
             if (media?.transport === "artc-v1" && media.data_channel_input === false) { laneRef.current = null; streamRef.current?.attachDataChannel?.(null); }
-            if (transport === "webrtc-v1" && webRtcInputFault(status?.error)) { reconnectDataChannel(status?.error); return; }
+            // A WebRTC host's status error is a notice about the input target (administrator window, lock screen),
+            // never about the peer's input channel: show the notice below, keep the local input state.
             if (status?.state === "failed" && status.error !== "screen_locked") { end(status.error || "media_capture_or_publish_failed"); return; }
             // Video is fine but input cannot reach the target (admin window, lock screen): say so, keep the session.
             const notice = remoteDesktopNoticeCopy(status?.error);

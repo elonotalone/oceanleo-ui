@@ -22,14 +22,15 @@ export interface WebRtcQualityReport {
   v: 1; transport: "webrtc-v1"; media: "webrtc"; device_id: string; session_id: string;
   attempt: number; end_reason: string; duration_ms: number; reconnects: number; media_renewals: number;
   steps: Partial<Record<"session_created_ms" | "descriptor_received_ms" | "offer_sent_ms" | "answer_received_ms" | "ice_connected_ms" | "first_frame_decoded_ms" | "first_frame_presented_ms", number>>;
-  input: { ws_count: number; dc_count: number; sent_executed?: WebRtcPercentiles };
+  /** lane_faults: input channels replaced; notice_ms: time "input is reconnecting" was shown. Sent only when non-zero. */
+  input: { ws_count: number; dc_count: number; sent_executed?: WebRtcPercentiles; lane_faults?: number; notice_ms?: number };
   video: { picture_age?: WebRtcPercentiles; picture_age_source: WebRtcPictureAgeSource; picture_age_by_source?: Partial<Record<"captureTime" | "receiveTime", WebRtcPercentiles>>; frames_rendered: number; freeze_count: number; freeze_ms: number };
   path?: WebRtcPath; env: QualityEnvironment;
   window_start_ms: number; viewer: { t: "rd.viewer_report"; v: 1; seq: number }; publisher?: Record<string, number>;
 }
 type Histogram = Map<number, number>;
-interface Bucket { input: Histogram; ages: Histogram; captureTime: Histogram; receiveTime: Histogram; frames: number; freezes: number; freezeMs: number; writes: number }
-const bucket = (): Bucket => ({ input: new Map(), ages: new Map(), captureTime: new Map(), receiveTime: new Map(), frames: 0, freezes: 0, freezeMs: 0, writes: 0 });
+interface Bucket { input: Histogram; ages: Histogram; captureTime: Histogram; receiveTime: Histogram; frames: number; freezes: number; freezeMs: number; writes: number; laneFaults: number; noticeMs: number }
+const bucket = (): Bucket => ({ input: new Map(), ages: new Map(), captureTime: new Map(), receiveTime: new Map(), frames: 0, freezes: 0, freezeMs: 0, writes: 0, laneFaults: 0, noticeMs: 0 });
 const integer = (n: number, max = 86_400_000): number => Math.round(Math.max(0, Math.min(max, n)));
 export function webRtcPercentiles(values: readonly number[]): WebRtcPercentiles | undefined {
   const sorted = values.filter(n => Number.isFinite(n) && n >= 0).map(n => integer(n, 600_000)).sort((a, b) => a - b);
@@ -79,6 +80,19 @@ export class WebRtcTelemetry {
   }
   step(name: keyof WebRtcQualityReport["steps"], at = this.options.now()): void { if (this.steps[name] === undefined) this.steps[name] = integer(at - this.options.clickedAt, 600_000); }
   written(): void { this.total.writes++; this.window.writes++; }
+  laneFault(): void { this.total.laneFaults++; this.window.laneFaults++; }
+  private noticeSince: number | undefined;
+  /** Called with every viewer state; accumulates how long "input is reconnecting" was on screen. */
+  inputNotice(shown: boolean): void {
+    this.flushNotice();
+    this.noticeSince = shown ? this.noticeSince ?? this.options.now() : undefined;
+  }
+  private flushNotice(): void {
+    if (this.noticeSince === undefined) return;
+    const now = this.options.now(), elapsed = Math.max(0, now - this.noticeSince);
+    for (const b of [this.total, this.window]) b.noticeMs += elapsed;
+    this.noticeSince = now;
+  }
   receipt(write: WebRtcInputWrite, receipt: WebRtcInputReceipt): void {
     if (receipt.status !== "executed" || write.action.kind === "release_all") return;
     const offset = this.clock.offset(this.options.now());
@@ -137,11 +151,12 @@ export class WebRtcTelemetry {
     if (age >= 0 && age < 600_000) this.add("captureTime", age);
   }
   report(final: boolean, reason = "active"): WebRtcQualityReport {
+    this.flushNotice();
     const b = final ? this.total : this.window;
     const result: WebRtcQualityReport = {
       v: 1, transport: "webrtc-v1", media: "webrtc", device_id: this.options.deviceId ?? "", session_id: this.options.sessionId,
       attempt: 1, end_reason: reason, duration_ms: integer(this.options.now() - this.options.clickedAt), reconnects: this.reconnects, media_renewals: 0,
-      steps: { ...this.steps }, input: { ws_count: 0, dc_count: b.writes, sent_executed: histogramPercentiles(b.input) },
+      steps: { ...this.steps }, input: { ws_count: 0, dc_count: b.writes, sent_executed: histogramPercentiles(b.input), ...(b.laneFaults ? { lane_faults: integer(b.laneFaults, 10_000_000) } : {}), ...(b.noticeMs >= 1 ? { notice_ms: integer(b.noticeMs, 10_000_000) } : {}) },
       video: { picture_age: histogramPercentiles(b.captureTime.size ? b.captureTime : b.ages), picture_age_source: b.captureTime.size ? "captureTime" : b.receiveTime.size ? "receiveTime" : "unknown", picture_age_by_source: { captureTime: histogramPercentiles(b.captureTime), receiveTime: histogramPercentiles(b.receiveTime) }, frames_rendered: b.frames, freeze_count: b.freezes, freeze_ms: integer(b.freezeMs) },
       path: this.path ? { ...this.path } : undefined, env: qualityEnvironment(), window_start_ms: integer(this.windowStart, Number.MAX_SAFE_INTEGER),
       viewer: { t: "rd.viewer_report", v: 1, seq: ++this.sequence }, publisher: this.publisher,
