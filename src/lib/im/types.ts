@@ -57,8 +57,9 @@ export interface ImLastMessage {
   sender_kind: ImSenderKind;
   kind: ImMessageKind;
   preview: string;
-  /** Structured preview label (session / sites wave): i18n key (`image`, `file`, `task`, `quote`, …) + data text. */
-  preview_label?: { label_key: string; text: string } | null;
+  /** Structured preview label (session / sites wave): i18n key (`image`, `file`, `task`, `quote`, …) + data text;
+   *  the server sends `label_key: null` for a plain-text message. */
+  preview_label?: { label_key: string | null; text: string } | null;
   created_at: string;
 }
 

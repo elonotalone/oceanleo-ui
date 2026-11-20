@@ -15,7 +15,7 @@ export interface ProjectSession {
   created_by: string | null;
   last_message_at: string | null;
   /** Locale-neutral text, or a structured `{label_key, text}` the UI translates. */
-  last_preview: string | { label_key: string; text: string } | null;
+  last_preview: string | { label_key: string | null; text: string } | null;
   unread: number;
   members_count: number;
   can_write: boolean;

@@ -9,8 +9,8 @@ export interface PreviewLabel {
   text: string;
 }
 
-/** 服务端新加的字段；`lib/im/types.ts` 的 ImLastMessage 还没有它时按这个形状读。 */
-export type ImLastMessageWithLabel = ImLastMessage & { preview_label?: PreviewLabel | null };
+/** `lib/im/types.ts` 的 ImLastMessage 已带 `preview_label`（纯文字时服务端给 `label_key: null`，labelFrom 当作无标签）。 */
+export type ImLastMessageWithLabel = ImLastMessage;
 
 /** label_key → 词条 key（中文原文；翻译在 im-shell-copy.ts / ss-ul-copy.ts）。 */
 export const PREVIEW_LABEL_COPY: Readonly<Record<string, string>> = {
