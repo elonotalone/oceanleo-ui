@@ -22,6 +22,10 @@ import { SearchView } from "./search/SearchView";
 import { conversationOpenAction, useMessagesHost } from "./host-state";
 import { inboxRowsFor, type InboxView } from "./inbox-view";
 import { runConversationOpen } from "./tasks/open-task";
+import { ensureStartTaskSelectionAction } from "./tasks/StartTaskSelectionAction";
+
+// 普通会话的多选栏里「用选中的消息开任务」：LeoChat 收件箱一加载就登记（TU1 的选择栏插槽）。
+ensureStartTaskSelectionAction();
 
 export interface InboxProps {
   activeConversationId: string | null;
