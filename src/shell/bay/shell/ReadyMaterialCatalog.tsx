@@ -1,6 +1,7 @@
 "use client";
 
 import { BackButton } from "../../../ui/BackButton";
+import { Breadcrumb } from "../../../ui/Breadcrumb";
 import { BayRecovery } from "./BayRecovery";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "next-intl";
@@ -147,10 +148,12 @@ export function ReadyMaterialCatalog({ siteKey, appId, query, view, sellers, onl
     </div> : null}
     {online ? children : <>
       {selectedCategory && shelf ? <header className="mb-5 space-y-3">
-        <div data-bay-category-title className="flex items-center justify-between gap-3 text-lg font-semibold">
-        <><BackButton href={`?${backSearch}`} onClick={(event) => { event.preventDefault(); choose(shelf); }} label={materialLabel(shelf, locale)} /><span>{materialLabel(shelf, locale)}</span></>
-        <span aria-hidden="true">/</span>
-        <h2 className="text-lg font-semibold">{materialLabel(selectedCategory, locale)}</h2>
+        <div data-bay-category-title className="flex min-w-0 items-center gap-3 text-lg font-semibold">
+          <BackButton href={`?${backSearch}`} onClick={(event) => { event.preventDefault(); choose(shelf); }} label={materialLabel(shelf, locale)} />
+          <Breadcrumb items={[
+            {label: materialLabel(shelf, locale), href: `?${backSearch}`, onClick: (event) => { event.preventDefault(); choose(shelf); }},
+            {label: materialLabel(selectedCategory, locale)},
+          ]} current={<h2 className="truncate text-lg font-semibold">{materialLabel(selectedCategory, locale)}</h2>} />
         </div>
         <div data-bay-taxonomy-filters className="flex flex-wrap gap-2">
           {contentTypes.length ? <BayFilterSelect name="contentType" label={tt("内容类型")} value={filters.contentType} allLabel={tt("全部内容类型")}

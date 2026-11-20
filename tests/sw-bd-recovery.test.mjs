@@ -75,24 +75,35 @@ const catalogStubs={...stubs,'next-intl':dataModule('export const useLocale=()=>
 // data modules cannot resolve bare React: use simple element-free stubs.
 catalogStubs['../../collection-chrome']=dataModule('export const COLLECTION_ACTION_BTN_GHOST=""; export const CollectionCardGrid=()=>null; export const CollectionInfiniteSentinel=()=>null;');
 const {ReadyMaterialCatalog}=await import(await compileModule('src/shell/bay/shell/ReadyMaterialCatalog.tsx',catalogStubs));
-test('category parent/current names share a bold row and back keeps shelf',async()=>{
+test('category trail is a compact left-aligned breadcrumb after the back button; both go back to the shelf',async()=>{
   globalThis.__bdTaxonomy=taxonomy;
   window.history.replaceState({},'', '/bay?type=deck&cat=business');
   const {root,el}=host();
   await act(async()=>root.render(React.createElement(ReadyMaterialCatalog,{siteKey:'oceanleo',query:'',view:'grid',sellers:false,online:false,onOnlineChange:()=>{},onOpen:()=>{},children:null})));
   await flush();
   const row=el.querySelector('[data-bay-category-title]');assert.ok(row);
-  assert.match(row.className,/flex/);assert.match(row.className,/justify-between/);
+  assert.match(row.className,/flex/);assert.doesNotMatch(row.className,/justify-between/);
   assert.match(row.className,/text-lg font-semibold/);
-  assert.ok(row.querySelector('a[data-back-button]'));
-  assert.equal(row.querySelector('a').getAttribute('aria-label'),'Presentations');
-  assert.equal(row.querySelector('a').textContent,'');
-  assert.equal(row.querySelector('a').nextElementSibling.textContent,'Presentations');
-  assert.equal(row.querySelector('h2').textContent,'Business planning');
-  await act(async()=>row.querySelector('a').dispatchEvent(new window.MouseEvent('click',{bubbles:true,cancelable:true})));
+  const back=row.querySelector('a[data-back-button]');assert.ok(back);
+  assert.equal(back.getAttribute('aria-label'),'Presentations');
+  assert.equal(back.textContent,'');
+  const trail=back.nextElementSibling;assert.ok(trail.matches('nav[data-breadcrumb]'),'breadcrumb sits right after the back button');
+  assert.doesNotMatch(trail.className,/justify-between|flex-1/);
+  assert.deepEqual([...trail.querySelectorAll('li')].map(li=>li.textContent),['Presentations','/','Business planning']);
+  assert.equal(trail.querySelector('[data-breadcrumb-current] h2').textContent,'Business planning');
+  const parent=trail.querySelector('a');assert.equal(parent.textContent,'Presentations');
+  await act(async()=>parent.dispatchEvent(new window.MouseEvent('click',{bubbles:true,cancelable:true})));
   assert.equal(new URLSearchParams(window.location.search).get('type'),'deck');
   assert.equal(new URLSearchParams(window.location.search).has('cat'),false);
   await act(async()=>root.unmount());el.remove();
+  window.history.replaceState({},'', '/bay?type=deck&cat=business');
+  const again=host();
+  await act(async()=>again.root.render(React.createElement(ReadyMaterialCatalog,{siteKey:'oceanleo',query:'',view:'grid',sellers:false,online:false,onOnlineChange:()=>{},onOpen:()=>{},children:null})));
+  await flush();
+  await act(async()=>again.el.querySelector('[data-bay-category-title] a[data-back-button]').dispatchEvent(new window.MouseEvent('click',{bubbles:true,cancelable:true})));
+  assert.equal(new URLSearchParams(window.location.search).get('type'),'deck');
+  assert.equal(new URLSearchParams(window.location.search).has('cat'),false);
+  await act(async()=>again.root.unmount());again.el.remove();
 });
 
 const httpStub=dataModule(`export class BayApiError extends Error {constructor(status,code){super(code);this.status=status;this.code=code;}}`);
