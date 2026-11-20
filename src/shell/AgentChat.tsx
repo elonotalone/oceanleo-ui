@@ -3,6 +3,8 @@
 import { AutoRecovery } from "./AutoRecovery";
 
 import { BackButton } from "../ui/BackButton";
+import { Breadcrumb } from "../ui/Breadcrumb";
+import { sameTaskProject, taskProjectHref, taskProjectLink, useNarrowWidth, type TaskProjectLink } from "./task-header-project";
 import { getUserId, AUTH_STATE_EVENT } from "../lib/auth/client";
 
 import { isComputerWorkspaceTask, taskExecutionTarget } from "../lib/execution-target";
@@ -884,6 +886,8 @@ function AgentChatInner({
   const [pollEpoch, setPollEpoch] = useState(0);
   // 「所属 app」展示名：优先 appLabel prop，其次从 task.site_id 解析。
   const [taskSiteId, setTaskSiteId] = useState<string>("");
+  // The project this task belongs to, only for project owners/members (contract §1.4): the top bar's breadcrumb.
+  const [taskProject, setTaskProject] = useState<TaskProjectLink | null>(null);
   // 本次对话「总结」= 后端自动生成的 task.title（首轮收尾时 AI 概括，见 refresh）。
   const [taskTitle, setTaskTitle] = useState<string>(
     () => String(initialTask?.task?.title || initialTitle || ""),
@@ -1051,6 +1055,10 @@ function AgentChatInner({
     });
     setStatus(status);
     if (data.task?.site_id) setTaskSiteId(data.task.site_id);
+    if (data.task && "project" in data.task) {
+      const project = taskProjectLink(data.task);
+      setTaskProject(current => sameTaskProject(current, project) ? current : project);
+    }
     // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
     if (data.task?.title) setTaskTitle(data.task.title);
     const plan = data.task?.plan as { continued_copy?: boolean; _fork_bound?: boolean } | null;
@@ -1146,6 +1154,7 @@ function AgentChatInner({
       setRightOpen(hasOrgPanel);
       setStatus("");
       setTaskSiteId("");
+      setTaskProject(null);
       setTaskTitle("");
       return;
     }
@@ -1163,6 +1172,7 @@ function AgentChatInner({
     setRightOpen(hasOrgPanel);
     setStatus("");
     setTaskSiteId("");
+    setTaskProject(null);
     setTaskTitle("");
     // The host already read this task (history): show it now, no second GET.
     // Only once per task on this mount; later loads read the server again.
@@ -2796,6 +2806,10 @@ function AgentChatInner({
   const [searchIndex, setSearchIndex] = useState(0);
   const [searchHitCount, setSearchHitCount] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // One-row top bar: with search open on a narrow pane the title gives its place to the search field.
+  const headerRef = useRef<HTMLDivElement>(null);
+  const headerNarrow = useNarrowWidth(headerRef, searchOpen);
+  const headerRouter = useRouter();
   // 上一次真的滚过去的是哪一条（query + index），流式期间气泡反复重渲不该再拽视口。
   const searchScrolledRef = useRef("");
   const highlightQuery = searchOpen ? searchQuery.trim() : "";
@@ -3024,24 +3038,47 @@ function AgentChatInner({
   // 单行顶栏（操作员 2026-09-07：图 466f833a 布局 + 3f9d0f8c 图标 + 662b8bb0 搜索态）
   // ---------------------------------------------------------------------
   // 对话区**只有这一行**——它就是 SplitWorkspace 左栏的 PaneHeader：
-  //   [‹ 仅 onBack] [标题 | 首句用户消息 | 新任务] [所属 app] …… [headerExtra] [🔍] [↪] [▯]
+  //   [‹ 仅 onBack] [项目 / 标题 | 首句用户消息 | 新任务] [所属 app] …… [headerExtra] [🔍] [↪] [▯]
+  // 搜索也在这一行里原地展开，顶栏永不换行（2026-11-20 重申：恒定一行）。
   // 最右的 [▯] 右栏开关由 SplitWorkspace 接在本节点之后渲染。原来 onBack 时多出来的那条
   // 原先独立的「‹ 返回 + 总结 + 分享」那一行与正文区浮着的分享键都已并入此处，不再有两行。
   const backTitle = backLabel ?? tt("返回");
-  const summaryNode = (
-    <span
-      className="min-w-0 flex-1 truncate text-[13px] font-medium text-stone-700"
-      title={convoSummary}
-    >
+  // A project task (and only for project owners/members) reads "Project / Task": the project name goes back to
+  // the project page. The title is the only part of the row that shrinks; a narrow pane with search open hides it.
+  const titleText = (
+    <span className="min-w-0 truncate text-[13px] font-medium text-stone-700" title={convoSummary}>
       {convoSummary}
     </span>
+  );
+  const summaryNode = (
+    <div data-agent-chat-title className="flex min-w-0 flex-1 items-center" hidden={searchOpen && headerNarrow}>
+      {taskProject ? (
+        <Breadcrumb
+          className="text-[13px]"
+          items={[
+            {
+              label: taskProject.name,
+              href: taskProjectHref(taskProject.id),
+              onClick: (event) => {
+                const href = taskProjectHref(taskProject.id);
+                if (!href.startsWith("/") || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                event.preventDefault();
+                headerRouter.push(href);
+              },
+            },
+            { label: convoSummary },
+          ]}
+          current={titleText}
+        />
+      ) : titleText}
+    </div>
   );
   const searchControl = searchOpen ? (
     <div
       data-agent-chat-search
       role="search"
-      className="flex min-w-0 items-center gap-0.5"
-      style={{ order: 1, flexBasis: "100%", flexWrap: "wrap" }}
+      className="flex min-w-0 shrink items-center gap-0.5"
+      style={{ minWidth: "10rem" }}
     >
       <span className="relative inline-flex items-center" style={{ display: "inline-grid", maxWidth: "100%", minWidth: 0 }}>
         <span data-search-placeholder-size aria-hidden="true" className="invisible border py-1 pl-6 pr-1.5 text-[12px]" style={{ gridArea: "1 / 1", whiteSpace: "pre" }}>{tt("搜索对话")}</span>
@@ -3127,8 +3164,8 @@ function AgentChatInner({
   );
   const headerNode = (
     <div
+      ref={headerRef}
       data-agent-chat-header
-      style={searchOpen ? { flexWrap: "wrap" } : undefined}
       className="flex w-full min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
     >
       {onBack && (

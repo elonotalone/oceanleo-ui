@@ -224,7 +224,7 @@ for (const pane of ["cloud", "acp"]) test(`${pane} Share selects all on every op
 });
 
 
-test("conversation search sizes from its full placeholder and retains Enter/Escape behavior", async () => {
+test("conversation search sizes from its full placeholder, opens inside the one-row top bar, and retains Enter/Escape behavior", async () => {
   const view=await mount({taskId:"t1"},{task:cloudTask()});
   try {
     await click(view.host.querySelector('button[aria-label="搜索"]'));
@@ -232,8 +232,13 @@ test("conversation search sizes from its full placeholder and retains Enter/Esca
     const input=search.querySelector('input');
     assert.equal(search.querySelector('[data-search-placeholder-size]').textContent,input.placeholder);
     assert.equal(input.style.width,"100%");
-    assert.equal(search.style.flexBasis,"100%");
-    assert.equal(view.host.querySelector('[data-agent-chat-header]').style.flexWrap,"wrap");
+    // Always exactly one row (rulings 2026-11-20 (5), 2026-09-07): no wrap, no full-width basis, no reordering.
+    const header=view.host.querySelector('[data-agent-chat-header]');
+    assert.equal(search.parentElement,header);
+    assert.equal(search.style.flexBasis,"");
+    assert.equal(search.style.order,"");
+    assert.equal(header.style.flexWrap,"");
+    assert.match(header.className,/flex-nowrap/);
     const setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;
     await act(async()=>{setter.call(input,"同比");input.dispatchEvent(new window.Event("input",{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));});
     assert.match(search.querySelector('[data-agent-chat-search-count]').textContent,/1\/[1-9]/);
