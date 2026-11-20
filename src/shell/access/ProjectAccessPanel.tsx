@@ -99,7 +99,6 @@ function ProjectMemberControls({ projectId, members, client, onSaved }: {
           {member.avatar_url ? <img src={member.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
             : <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-full bg-neutral-100 text-sm">{member.initial || "?"}</span>}
           <span className="min-w-0 flex-1"><span className="block truncate text-sm">{name}</span>
-            {member.username && <span className="block truncate text-xs text-[var(--muted)]">@{member.username}</span>}
             {member.status === "invited" && <span className="block text-xs text-[var(--muted)]">{tt(copy.invited)}</span>}
           </span>
           <MenuSelect name={`project-role-${member.id}`} ariaLabel={tt(copy.memberRole, { name })}

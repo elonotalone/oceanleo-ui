@@ -311,16 +311,10 @@ export interface PersonCard {
 }
 export interface PeoplePage { people: PersonCard[]; next_cursor: string | null }
 export interface FollowSuggestionGroup { key: "team" | "project" | "bay"; title_key: string; people: PersonCard[] }
-export interface UsernameState { username: string | null; suggested: string }
+/** `username` is only the system URL key behind the profile link; it is never shown as a name. */
+export interface UsernameState { username: string | null }
 
 export function getUsername(): Promise<UsernameState> { return imFetch("/v1/im/username"); }
-export function setUsername(username: string): Promise<{ username: string }> {
-  return imFetch("/v1/im/username", { method: "PUT", json: { username } });
-}
-export function usernameValid(username: string): boolean { return /^[a-z0-9][a-z0-9_-]{2,31}$/.test(username); }
-export function usernameAvailability(username: string): Promise<{ available: boolean }> {
-  return imFetch(`/v1/im/username/availability?username=${encodeURIComponent(username)}`);
-}
 export async function searchPeople(query: string): Promise<PersonCard[]> {
   const page = await imFetch<{ people: PersonCard[] }>(`/v1/im/users/search?q=${encodeURIComponent(query.trim())}&limit=20`);
   return page.people;

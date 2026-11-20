@@ -156,6 +156,7 @@ const STUBS = {
   "./call/chat/InboxCallBadge": nullComponentStub("InboxCallDecor"),
   "./notices/InboxNoticesRow": nullComponentStub("InboxNoticesRow"),
   "./InboxRow": nullComponentStub("InboxRow"),
+  "../../../lib/account/name-api": dataModule('export async function getAccountName() { return globalThis.__nmAccount ?? { ok: true, state: { name: "Me Myself", canChangeAt: null } }; }'),
   "./InviteQrCode": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function InviteQrCode({url, fileLabel}) { return React.createElement("a", { "data-profile-qr": url, download: fileLabel }, fileLabel); }`),
 };
 // Stub keys are resolved relative to each source; provide equivalent roots for Inbox and PeopleDiscovery.
@@ -163,11 +164,11 @@ const components = {};
 for (const [name, file] of Object.entries({
   PeopleView: "people/PeopleView", NewConversationDialog: "groups/NewConversationDialog",
   ProfileCard: "people/ProfileCard", MemberPicker: "people/MemberPicker",
-  FindPeople: "people/PeopleDiscovery", MyUsername: "people/PeopleDiscovery", Inbox: "Inbox",
+  FindPeople: "people/PeopleDiscovery", MyProfileCard: "people/PeopleDiscovery", Inbox: "Inbox",
 })) {
   components[name] = (await import(await compileModule(`src/shell/messages/${file}.tsx`, STUBS)))[name];
 }
-const { PeopleView, NewConversationDialog, ProfileCard, MemberPicker, FindPeople, MyUsername, Inbox } = components;
+const { PeopleView, NewConversationDialog, ProfileCard, MemberPicker, FindPeople, MyProfileCard, Inbox } = components;
 const { peopleMessageError, sortContacts, useLoader, listFollows } = await import(await compileModule("src/lib/im/people-api.ts", STUBS));
 const { swHuCopy } = await import("../src/i18n/ui/messages/sw-hu-copy.ts");
 const { LOCALES } = await import("../src/i18n/config.ts");
@@ -178,9 +179,7 @@ const profile = p => ({ user_id: p.user_id, display_name: p.name, avatar_url: nu
 const group = { id: "group-1", title: "Design", kind: "group", avatar_url: null };
 function baseRoutes(overrides = {}) {
   return {
-    "GET /v1/im/username": { username: "my_name", suggested: "my_name" },
-    "GET /v1/im/username/availability": { available: true },
-    "PUT /v1/im/username": ({ json }) => ({ username: json.username }),
+    "GET /v1/im/username": { username: "my_name" },
     "GET /v1/im/follows": { people: [bob], next_cursor: null },
     "POST /v1/im/follows": { following: true, mutual: false },
     "DELETE /v1/im/follows/bobby": { following: false },
@@ -235,7 +234,8 @@ test("Contact + opens Find people directly with Follow/Following and profile lin
     await view.click(view.q("[data-leochat-plus]"));
     assert.equal(view.q("[data-leochat-plus-menu]"), null);
     assert.equal(view.q("h2").textContent, "找人");
-    assert.match(view.text(), /我的用户名/);
+    assert.match(view.text(), /我的名片/);
+    assert.match(view.q("[data-my-profile-name]").textContent, /Me Myself/);
     await view.click(button(view, "复制资料链接"));
     assert.equal(globalThis.__copied, "https://oceanleo.com/leochat?find=1&username=my_name");
     await view.click(button(view, "显示二维码"));
@@ -291,45 +291,38 @@ test("request and block errors never become empty lists; contacts survive people
   } finally { view.cleanup(); }
 });
 
-test("username is required first, checks live validity and availability, and saves before discovery", async () => {
-  const { view, fetch } = await open(FindPeople, { onBack() {}, onOpenConversation() {} }, {
-    "GET /v1/im/username": { username: null, suggested: "suggested" },
-    "GET /v1/im/username/availability": ({ path }) => ({ available: !path.includes("taken") }),
-  });
+test("Find people shows the account name and the share link, never a username editor or @handle", async () => {
+  const { view, fetch } = await open(FindPeople, { onBack() {}, onOpenConversation() {} });
   try {
-    assert.equal(view.q("[data-people-discovery]"), null);
-    await view.type(view.q("input"), "X");
-    assert.match(view.text(), /3–32/);
-    assert.equal(view.q("button[type=submit]").disabled, true);
-    await view.type(view.q("input"), "taken"); await delay(330);
-    assert.match(view.text(), /这个用户名已被使用/);
-    assert.equal(view.q("button[type=submit]").disabled, true);
-    await view.type(view.q("input"), "valid_name"); await delay(330);
-    assert.match(view.text(), /这个用户名可以使用/);
-    await act(async () => view.q("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }))); await settle();
-    assert.deepEqual(fetch.calls.find(c => c.method === "PUT").json, { username: "valid_name" });
-    assert.ok(view.q("[data-people-discovery]"));
-    assert.match(view.text(), /@valid_name/);
+    assert.ok(view.q("[data-my-profile-card]"));
+    assert.equal(view.q("[data-my-profile-name]").textContent, "Me Myself");
+    assert.ok(view.q("[data-people-discovery]"), "discovery no longer waits for a chosen username");
+    assert.equal(view.q("[data-my-username]"), null);
+    assert.equal(view.q("form"), null);
+    assert.doesNotMatch(view.text(), /我的用户名|@my_name|@alice|@bobby/);
+    assert.ok(button(view, "复制资料链接"));
+    assert.equal(fetch.calls.filter(c => c.method === "PUT").length, 0);
+    assert.ok(!fetch.calls.some(c => c.path.includes("/v1/im/username/availability")));
   } finally { view.cleanup(); }
 });
 
-test("username availability and save failures remain explicit and keep the draft", async () => {
-  let failCheck = true;
-  const { view } = await open(MyUsername, { value: null, suggested: "valid_name", onSaved: () => assert.fail("failed save") }, {
-    "GET /v1/im/username/availability": () => { if (failCheck) throw apiError(503, "people_unavailable", "pending"); return { available: true }; },
-    "PUT /v1/im/username": () => { throw apiError(409, "username_taken", "taken"); },
-  });
+test("person rows show the name only, without the URL handle", async () => {
+  const { view } = await open(FindPeople, { onBack() {}, onOpenConversation() {} });
   try {
-    await delay(330);
-    assert.match(view.text(), /找人功能暂不可用/);
-    assert.equal(view.q("button[type=submit]").disabled, true);
-    failCheck = false;
-    await view.type(view.q("input"), "other_name"); await delay(330);
-    await act(async () => view.q("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }))); await settle();
-    assert.match(view.text(), /这个用户名已被使用/);
-    assert.equal(view.q("input").value, "other_name");
-    assert.equal(view.q("button[type=submit]").disabled, true);
+    const row = view.q('[data-person="alice"]');
+    assert.ok(row);
+    assert.match(row.textContent, /Alice/);
+    assert.doesNotMatch(row.textContent, /@/);
   } finally { view.cleanup(); }
+});
+
+test("the card hides its name line when the account name cannot be read", async () => {
+  globalThis.__nmAccount = { ok: false, code: "name_unavailable", canChangeAt: null };
+  const { view } = await open(MyProfileCard, { name: null, username: "my_name" });
+  try {
+    assert.equal(view.q("[data-my-profile-name]"), null);
+    assert.ok(button(view, "复制资料链接"));
+  } finally { view.cleanup(); delete globalThis.__nmAccount; }
 });
 
 test("search failure clears previous results; suggestion failure leaves following usable", async () => {
@@ -441,18 +434,6 @@ test("following pagination keeps later people reachable and profile state uses a
   } finally { detail.view.cleanup(); }
 });
 
-test("changing a username saves the edited handle and updates its shared profile link", async () => {
-  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async value => { globalThis.__copied = value; } } });
-  const { view, fetch } = await open(FindPeople, { onBack() {}, onOpenConversation() {} });
-  try {
-    await view.click(button(view, "修改"));
-    await view.type(view.q("[data-my-username] input"), "new_name"); await delay(330);
-    await act(async () => view.q("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }))); await settle();
-    assert.deepEqual(fetch.calls.find(c => c.method === "PUT").json, { username: "new_name" });
-    await view.click(button(view, "复制资料链接"));
-    assert.equal(globalThis.__copied, "https://oceanleo.com/leochat?find=1&username=new_name");
-  } finally { view.cleanup(); }
-});
 
 
 const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
@@ -467,7 +448,7 @@ for (const [label, failure] of [
     globalThis.__FX2_COPY = UI_MESSAGES.en;
     let fail = true;
     const { view, fetch } = await open(FindPeople, { onBack() {}, onOpenConversation() {} }, {
-      "GET /v1/im/username": () => { if (fail) throw failure(); return { username: "my_name", suggested: "my_name" }; },
+      "GET /v1/im/username": () => { if (fail) throw failure(); return { username: "my_name" }; },
     });
     try {
       assert.equal(view.q("h2").textContent, "Find people");
@@ -477,7 +458,7 @@ for (const [label, failure] of [
       fail = false;
       await act(async () => window.dispatchEvent(new window.Event("online")));
       await settle();
-      assert.ok(view.q("[data-my-username]"));
+      assert.ok(view.q("[data-my-profile-card]"));
       assert.ok(view.q("[data-people-discovery]"));
       assert.equal(view.q('[role="alert"]'), null);
       assert.equal(view.q("h2").textContent, "Find people");
@@ -558,29 +539,3 @@ test("following and followers reads back off automatically and pause offline", a
   }
 });
 
-test("username availability recovers automatically and stale recovery cannot overwrite an edited draft", async () => {
-  let fail = true;
-  let release;
-  const { view } = await open(MyUsername, { value: null, suggested: "valid_name", onSaved() {} }, {
-    "GET /v1/im/username/availability": ({ path }) => {
-      if (fail) throw apiError(503, "people_unavailable", "unavailable");
-      if (path.includes("valid_name")) return new Promise(resolve => { release = resolve; });
-      return { available: false };
-    },
-  });
-  try {
-    await delay(330);
-    assert.match(view.text(), /找人功能暂不可用，正在自动恢复/);
-    assert.equal(view.q("input").value, "valid_name");
-    fail = false;
-    await act(async () => window.dispatchEvent(new window.Event("focus"))); await settle();
-    assert.equal(typeof release, "function");
-    await view.type(view.q("input"), "taken_name"); await delay(330);
-    await act(async () => release({ available: true })); await settle();
-    assert.equal(view.q("input").value, "taken_name");
-    assert.match(view.text(), /这个用户名已被使用/);
-    assert.equal(view.q("button[type=submit]").disabled, true);
-    await view.type(view.q("input"), "recovered_name"); await delay(330);
-    assert.equal(view.q('[role="alert"]'), null);
-  } finally { view.cleanup(); }
-});

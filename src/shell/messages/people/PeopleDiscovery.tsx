@@ -1,14 +1,15 @@
 "use client";
 
 import { BackButton } from "../../../ui/BackButton";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { useAutoRecovery } from "../../../lib/auto-recovery";
 import {
-  copyText, errorCodeOf, followPerson, followSuggestions, getUsername, listFollows, openDm,
-  peopleMessageError, profileLink, searchPeople, setUsername, unfollowPerson,
-  useLoader, usernameAvailability, usernameValid, type PersonCard,
+  copyText, followPerson, followSuggestions, getUsername, listFollows, openDm,
+  peopleMessageError, profileLink, searchPeople, unfollowPerson,
+  useLoader, type PersonCard,
 } from "../../../lib/im/people-api";
+import { getAccountName } from "../../../lib/account/name-api";
 import { PersonAvatar } from "../groups/GroupAvatar";
 import { PRIMARY, QUIET } from "../MessageSettingsFrame";
 import { InviteQrCode } from "./InviteQrCode";
@@ -72,7 +73,6 @@ export function PersonRow({ person, mode, onPick, selected, disabled }: { person
       <PersonAvatar name={person.name} src={person.avatar_url} seed={person.user_id} size={32} />
       <button type="button" disabled={person.blocked || disabled} aria-pressed={mode === "select" ? !!selected : undefined} onClick={() => onPick?.({ ...person, following })} className="min-w-0 flex-1 text-left">
         <span className="block truncate text-[13px] font-medium">{person.name}{mode === "select" && selected ? " ✓" : ""}</span>
-        {person.username && <span className="block truncate text-[12px] text-neutral-500">@{person.username}</span>}
         {following && person.follows_me && <span className="text-[11px] text-neutral-500">{tt("互相关注")}</span>}
       </button>
       {mode === "follow" && <button type="button" disabled={busy || person.blocked} onClick={() => void toggle()} className={QUIET}>{tt(following ? "已关注" : "关注")}</button>}
@@ -92,7 +92,7 @@ export function PeopleSuggestions({ mode, onPick, initialQuery = "", selectedIds
   const titles = { team: "同团队的人", project: "同项目的人", bay: "在 LeoBay 聊过的人" };
   const rows = (people: PersonCard[]) => <ul>{people.map(p => <PersonRow key={p.user_id} person={p} mode={mode} selected={selectedIds.includes(p.user_id)} disabled={existingIds.includes(p.user_id)} onPick={onPick} />)}</ul>;
   return <div data-people-discovery>
-    <input type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label={tt("搜索用户名或名字")} placeholder={tt("搜索用户名或名字")} className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px]" />
+    <input type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label={tt("按名称搜索用户")} placeholder={tt("按名称搜索用户")} className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px]" />
     {query.trim() ? <section data-people-search>
       {search.loading || query.trim() !== debounced ? <p role="status">{tt("加载中…")}</p> : search.error ? <PeopleFailure error={search.error} /> : search.data?.length ? rows(search.data) : <p className="py-2 text-[12px] text-neutral-500">{tt("没有找到。")}</p>}
     </section> : <>
@@ -112,83 +112,38 @@ export function PeopleSuggestions({ mode, onPick, initialQuery = "", selectedIds
   </div>;
 }
 
-export function MyUsername({ value, suggested, onSaved }: { value: string | null; suggested: string; onSaved: (username: string) => void }) {
+/** Your share card: the account name people see, plus the link and QR that open your card. */
+export function MyProfileCard({ name, username }: { name: string | null; username: string | null }) {
   const tt = useUI();
-  const [draft, setDraft] = useState(value ?? suggested);
-  const [editing, setEditing] = useState(!value);
-  const [availability, setAvailability] = useState<"checking" | "available" | "taken" | "invalid" | "error">("checking");
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<boolean | null>(null);
   const [qr, setQr] = useState(false);
-  const [saveError, setSaveError] = useState(false);
-  const checkTicket = useRef(0);
-  async function checkAvailability() {
-    const mine = checkTicket.current;
-    try {
-      const result = await usernameAvailability(draft);
-      if (mine === checkTicket.current) { setAvailability(result.available ? "available" : "taken"); setError(null); }
-    } catch (e) {
-      if (mine === checkTicket.current) { setError(e); setAvailability("error"); }
-    }
-  }
-  useAutoRecovery(editing && availability === "error", checkAvailability, draft);
-  useEffect(() => {
-    ++checkTicket.current;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    setError(null); setSaveError(false);
-    if (editing) {
-      if (!usernameValid(draft)) setAvailability("invalid");
-      else if (draft === value) setAvailability("available");
-      else { setAvailability("checking"); timer = setTimeout(() => void checkAvailability(), 300); }
-    }
-    return () => { ++checkTicket.current; clearTimeout(timer); };
-  }, [draft, editing, value]);
-  async function save() {
-    if (busy || availability !== "available") return;
-    setBusy(true); setError(null); setSaveError(false);
-    try { const result = await setUsername(draft); onSaved(result.username); setDraft(result.username); setEditing(false); setQr(false); setCopied(null); }
-    catch (e) {
-      setError(e); setSaveError(true);
-      if (errorCodeOf(e) === "username_taken") setAvailability("taken");
-      if (errorCodeOf(e) === "username_invalid") setAvailability("invalid");
-    } finally { setBusy(false); }
-  }
-  return <section data-my-username className="mb-3 border-b border-neutral-100 pb-3">
-    <h3 className="mb-2 text-[13px] font-medium">{tt("我的用户名")}</h3>
-    {editing ? <form onSubmit={e => { e.preventDefault(); void save(); }}>
-      {!value && <p className="mb-2 text-[12px] text-neutral-500">{tt("先设置用户名，方便别人找到你。")}</p>}
-      <label className="block text-[12px]">{tt("用户名")}<input value={draft} maxLength={32} autoComplete="off" spellCheck={false} onChange={e => setDraft(e.target.value)} className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px]" /></label>
-      <p role="status" className="py-2 text-[12px] text-neutral-500">{tt(({ checking: "正在检查用户名…", available: "这个用户名可以使用。", taken: "这个用户名已被使用。", invalid: "用户名需为 3–32 位小写字母、数字、下划线或连字符，并以字母或数字开头。", error: "无法检查用户名。" })[availability])}</p>
-      <button type="submit" disabled={busy || availability !== "available"} className={PRIMARY}>{tt("保存")}</button>
-      {value && <button type="button" className={QUIET} onClick={() => { setEditing(false); setDraft(value); setError(null); }}>{tt("取消")}</button>}
-    </form> : <>
-      <p className="text-[13px]">@{value}</p>
-      <button type="button" className={QUIET} onClick={() => setEditing(true)}>{tt("修改")}</button>
-      <button type="button" className={QUIET} onClick={async () => setCopied(await copyText(profileLink(value!)))}>{tt("复制资料链接")}</button>
+  return <section data-my-profile-card className="mb-3 border-b border-neutral-100 pb-3">
+    <h3 className="mb-2 text-[13px] font-medium">{tt("我的名片")}</h3>
+    {name && <p data-my-profile-name className="text-[13px]">{name}</p>}
+    {username && <>
+      <button type="button" className={QUIET} onClick={async () => setCopied(await copyText(profileLink(username)))}>{tt("复制资料链接")}</button>
       <button type="button" className={QUIET} aria-expanded={qr} onClick={() => setQr(!qr)}>{tt(qr ? "隐藏二维码" : "显示二维码")}</button>
       {copied !== null && <p role="status" className="text-[12px]">{tt(copied ? "已复制" : "请手动复制上面的链接。")}</p>}
-      {copied === false && <input readOnly aria-label={tt("资料链接")} value={profileLink(value!)} className="w-full" />}
-      {qr && <InviteQrCode url={profileLink(value!)} fileLabel={tt("我的资料二维码")} />}
+      {copied === false && <input readOnly aria-label={tt("资料链接")} value={profileLink(username)} className="w-full" />}
+      {qr && <InviteQrCode url={profileLink(username)} fileLabel={tt("我的资料二维码")} />}
     </>}
-    {error != null && <PeopleFailure error={error} action={saveError ? "other" : undefined} />}
   </section>;
 }
 
 export function FindPeople({ onBack, onOpenConversation }: { onBack: () => void; onOpenConversation: (id: string) => void }) {
   const tt = useUI();
   const username = useLoader(getUsername, []);
-  const [saved, setSaved] = useState<string | null>(null);
+  const account = useLoader(getAccountName, []);
   const [error, setError] = useState<unknown>(null);
-  const value = saved ?? username.data?.username ?? null;
+  const name = account.data?.ok ? account.data.state.name : null;
   const initialQuery = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("username") ?? "";
   return <PeoplePage title={tt("找人")} onBack={onBack}>
     {username.loading ? <p role="status">{tt("加载中…")}</p> : username.error ? <PeopleFailure error={username.error} /> : <>
-      <MyUsername value={value} suggested={username.data?.suggested ?? ""} onSaved={setSaved} />
-      {value && <PeopleSuggestions mode="follow" initialQuery={initialQuery} onPick={async person => {
+      <MyProfileCard name={name} username={username.data?.username ?? null} />
+      <PeopleSuggestions mode="follow" initialQuery={initialQuery} onPick={async person => {
         setError(null);
         try { const id = await openDm(person.user_id); if (id) onOpenConversation(id); } catch (e) { setError(e); }
-      }} />}
+      }} />
     </>}
     {error != null && <PeopleFailure error={error} action="other" />}
   </PeoplePage>;
