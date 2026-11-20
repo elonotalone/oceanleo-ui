@@ -244,3 +244,100 @@ test("API failures stay loading and automatically recover the same app", async (
     delete globalThis.__bayInspirationTest;
   }
 });
+
+// Wave 2026-11-21 (UH): image on top, title + one line, whole card fills the composer, no "Use Inspiration" link.
+const pictured = { ...inspiration, id: "inspiration-2", title: "Pictured", prompt: "Draw a poster\nwith a cat", params: {}, image_url: "https://example.org/insp.webp" };
+const plain = { ...inspiration, id: "inspiration-3", title: "Plain", params: { hint: "Short hint" }, image_url: null };
+
+async function mountPanel(props, scope, data, fn) {
+  const f = composerFixture();
+  document.body.append(f.split);
+  const urls = [], original = globalThis.fetch;
+  globalThis.__bayInspirationTest = { scope, focus: { agentVisible: true, focusAgent: () => true } };
+  globalThis.fetch = async url => { urls.push(url); return response(typeof data === "function" ? data(url) : data); };
+  const root = createRoot(f.right);
+  try {
+    await act(async () => root.render(h(InspirationPanel, props)));
+    await act(async () => new Promise(resolve => setTimeout(resolve, 10)));
+    await fn(f, urls);
+  } finally {
+    await act(async () => root.unmount());
+    f.split.remove();
+    globalThis.fetch = original;
+    delete globalThis.__bayInspirationTest;
+  }
+}
+
+test("inspiration card: image on top, title, one line, whole card fills the composer, no link or section noise", async () => {
+  await mountPanel({ siteKey: "website", appId: "landing" }, null, { items: [pictured, plain], total: 2 }, async (f) => {
+    const card = f.right.querySelector('[data-inspiration-card="inspiration-2"]');
+    const parts = [...card.querySelectorAll("[data-media-card-main], [data-media-card-image], [data-media-card-title], [data-media-card-line]")];
+    assert.deepEqual(parts.map(node => Object.keys(node.dataset).find(key => key.startsWith("mediaCard"))),
+      ["mediaCardMain", "mediaCardImage", "mediaCardTitle", "mediaCardLine"]);
+    assert.equal(card.querySelector("img").getAttribute("src"), pictured.image_url);
+    assert.equal(card.querySelector("img").getAttribute("loading"), "lazy");
+    assert.equal(card.querySelector("[data-media-card-line]").textContent, "Draw a poster with a cat");
+    // Null image: the same card without the image area; hint is the line.
+    const bare = f.right.querySelector('[data-inspiration-card="inspiration-3"]');
+    assert.equal(bare.querySelector("[data-media-card-image]"), null);
+    assert.equal(bare.querySelector("[data-media-card-line]").textContent, "Short hint");
+    assert.doesNotMatch(f.right.textContent, /使用灵感|Use Inspiration/);
+    assert.doesNotMatch(f.right.textContent, /Start/, "section label is gone");
+    assert.equal(f.right.querySelectorAll("[data-inspiration-card] button").length, 2, "one button per card");
+    // jsdom drops aspect-ratio / max() styles; the 3:2 markup is pinned by the server render in home-asset-cards.test.mjs.
+    assert.ok(f.right.querySelector("[data-inspiration-grid]"));
+    await act(async () => card.querySelector("button[data-inspiration-id]").click());
+    await act(async () => new Promise(resolve => setTimeout(resolve, 20)));
+    assert.equal(f.text, pictured.prompt);
+    assert.match(f.right.textContent, /已填入对话输入框/);
+  });
+});
+
+test("Load more appends the next page instead of replacing it", async () => {
+  const many = Array.from({ length: 41 }, (_, i) => ({ ...inspiration, id: `i-${i}`, title: `T${i}` }));
+  const page = url => {
+    const offset = Number(new URL(url).searchParams.get("offset"));
+    const limit = Number(new URL(url).searchParams.get("limit"));
+    return { items: many.slice(offset, offset + limit), total: many.length };
+  };
+  await mountPanel({ siteKey: "website", appId: "landing" }, null, page, async (f, urls) => {
+    assert.equal(f.right.querySelectorAll("[data-inspiration-card]").length, 40);
+    assert.equal(f.right.querySelector("[data-inspiration-panel]").textContent.includes("上一页"), false);
+    const more = f.right.querySelector("button[data-inspiration-more]");
+    assert.ok(more, "styled Load more button");
+    assert.match(more.className, /rounded-lg border/);
+    await act(async () => more.click());
+    await act(async () => new Promise(resolve => setTimeout(resolve, 10)));
+    assert.equal(new URL(urls.at(-1)).searchParams.get("offset"), "40");
+    assert.equal(f.right.querySelectorAll("[data-inspiration-card]").length, 41);
+    assert.equal(f.right.querySelector("button[data-inspiration-more]"), null);
+  });
+});
+
+test("browse mode lists static cards; image falls back to params.imageUrl from an older server", async () => {
+  const legacy = { ...inspiration, id: "legacy", params: { imageUrl: "https://example.org/legacy.webp" } };
+  await mountPanel({ browse: true }, null, { items: [legacy], total: 1 }, async (f, urls) => {
+    assert.equal(new URL(urls[0]).searchParams.get("siteKey"), null);
+    const card = f.right.querySelector('[data-inspiration-card="legacy"]');
+    assert.equal(card.querySelector("button"), null);
+    assert.equal(card.querySelector("img").getAttribute("src"), "https://example.org/legacy.webp");
+    assert.match(card.textContent, /website \/ landing/);
+  });
+});
+
+test("inspiration card scope comes only from InspirationProvider", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  globalThis.__bayInspirationTest = { scope: null, focus: null };
+  try {
+    await act(async () => root.render(h(WorkspaceHome, {
+      slots: ["preview"], panels: { bay: false, leochat: false }, onOpenSlot() {}, onOpenPanel() {},
+    })));
+    assert.equal(host.querySelector('[data-workspace-card="template"]'), null);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    delete globalThis.__bayInspirationTest;
+  }
+});
