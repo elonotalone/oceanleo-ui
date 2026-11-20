@@ -9,7 +9,6 @@ import { WORKSPACE_SLOT_LABELS } from "./result-canvas-view";
 import { BayIcon } from "./bay/shell/bay-icons";
 import { useImUnread } from "./messages/realtime/hooks";
 import { useInspirationContext } from "./inspirations/inspiration-context";
-import { useOptionalWorkspaceSession } from "./workspace-session-context";
 
 const InspirationPanel = lazy(() => import("./inspirations/InspirationPanel").then(module => ({ default: module.InspirationPanel })));
 
@@ -160,16 +159,14 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
   const unread = useImUnread();
   const chatCount = imOn ? unread?.total ?? 0 : 0;
   const previewCount = props.previewCount ?? 0;
-  const explicitScope = useInspirationContext();
-  const workspace = useOptionalWorkspaceSession();
-  const scope = explicitScope?.siteKey && explicitScope.appId ? explicitScope
-    : workspace ? { siteKey: workspace.siteId, appId: workspace.appId } : null;
+  // Scope comes only from the site pack's InspirationProvider (site/app from its own path), never from a host or session.
+  const provided = useInspirationContext();
+  const scope = provided?.siteKey && provided.appId ? provided : null;
   const scopeKey = JSON.stringify([scope?.siteKey, scope?.appId]);
   const [inspirationView, setInspirationView] = useState({ scope: scopeKey, open: false });
   if (inspirationView.scope !== scopeKey) setInspirationView({ scope: scopeKey, open: false });
   const inspirationOpen = inspirationView.scope === scopeKey && inspirationView.open;
-  // The card owns its API-backed view, independent of legacy GuideProvider tabs.
-  // Keep it available on main-site app consoles as well as sub-site consoles.
+  // The card owns its API-backed view, independent of legacy GuideProvider tabs, on every pack's app console.
   const slots = scope?.siteKey && scope.appId && !props.slots.includes("template")
     ? ["template" as const, ...props.slots] : props.slots;
   if (inspirationOpen) return <section data-workspace-inspirations className="flex min-h-0 flex-1 flex-col">

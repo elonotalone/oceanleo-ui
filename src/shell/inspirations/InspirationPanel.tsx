@@ -3,10 +3,15 @@ import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { gatewayBase } from "../../lib/auth/config";
+import { resolvePublicAssetMedia } from "../../lib/asset-delivery";
 import { useConsoleAgentFocus } from "../SplitWorkspace";
 import { useInspirationContext } from "./inspiration-context";
-import { fetchInspirations, type BayInspiration } from "./inspiration-api";
+import { fetchInspirations, inspirationImage, inspirationLine, type BayInspiration } from "./inspiration-api";
 import { fillInspirationWhenReady } from "./inspiration-fill";
+import { MEDIA_CARD_PANEL_GRID_STYLE, MediaCard } from "./MediaCard";
+
+/** Cards per request; "Load more" appends the next page. */
+export const INSPIRATION_PAGE = 40;
 
 export function InspirationPanel({ siteKey, appId, browse = false }: { siteKey?: string; appId?: string; browse?: boolean }) {
   const context = useInspirationContext();
@@ -15,30 +20,44 @@ export function InspirationPanel({ siteKey, appId, browse = false }: { siteKey?:
   return <InspirationPanelContent key={JSON.stringify([site, app, browse])} siteKey={site} appId={app} browse={browse} />;
 }
 
+function cardImage(item: BayInspiration): string | null {
+  const raw = inspirationImage(item);
+  return raw ? resolvePublicAssetMedia(raw, { purpose: "thumb" }) || null : null;
+}
+
 function InspirationPanelContent({ siteKey: site, appId: app, browse }: { siteKey?: string; appId?: string; browse: boolean }) {
   const tt = useUI();
   const context = useInspirationContext();
   const focus = useConsoleAgentFocus();
   const panel = useRef<HTMLDivElement | null>(null);
   const pending = useRef<AbortController | null>(null);
+  // The parent keys this component by site/app, so pages only ever accumulate for one scope.
   const [offset, setOffset] = useState(0);
-  const [resource, setResource] = useState<{ key: string; items: BayInspiration[]; total: number; error: boolean } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [loaded, setLoaded] = useState<{ items: BayInspiration[]; total: number }>({ items: [], total: 0 });
+  const [settled, setSettled] = useState<{ key: string; error: boolean } | null>(null);
   const [fillMessage, setFillMessage] = useState("");
-  const [reload, setReload] = useState(0);
   const canLoad = browse || Boolean(site && app);
-  const requestKey = JSON.stringify([site, app, offset, reload]);
-  const current = resource?.key === requestKey ? resource : null;
-  const items = current?.items ?? [];
-  const total = current?.total ?? 0;
-  const loading = canLoad && !current;
-  const error = current?.error ?? false;
+  const requestKey = JSON.stringify([offset, attempt]);
+  const done = settled?.key === requestKey ? settled : null;
+  const loading = canLoad && !done;
+  const error = done?.error ?? false;
+  const { items, total } = loaded;
   useEffect(() => () => pending.current?.abort(), []);
   useEffect(() => {
     if (!canLoad) return;
     const controller = new AbortController();
-    void fetchInspirations(gatewayBase(), { siteKey: site, appId: app, offset }, controller.signal)
-      .then(data => { if (!controller.signal.aborted) setResource({ key: requestKey, items: data.items, total: data.total, error: false }); })
-      .catch(() => { if (!controller.signal.aborted) setResource({ key: requestKey, items: [], total: 0, error: true }); });
+    void fetchInspirations(gatewayBase(), { siteKey: site, appId: app, offset, limit: INSPIRATION_PAGE }, controller.signal)
+      .then(data => {
+        if (controller.signal.aborted) return;
+        setLoaded(previous => {
+          if (!offset) return { items: data.items, total: data.total };
+          const seen = new Set(previous.items.map(item => item.id));
+          return { items: [...previous.items, ...data.items.filter(item => !seen.has(item.id))], total: data.total };
+        });
+        setSettled({ key: requestKey, error: false });
+      })
+      .catch(() => { if (!controller.signal.aborted) setSettled({ key: requestKey, error: true }); });
     return () => controller.abort();
   }, [site, app, offset, requestKey, canLoad]);
   async function fill(item: BayInspiration) {
@@ -53,26 +72,26 @@ function InspirationPanelContent({ siteKey: site, appId: app, browse }: { siteKe
     if (controller.signal.aborted) return;
     setFillMessage(tt(result === "inserted" ? "已填入对话输入框" : "请打开此应用的对话后重试。"));
   }
+  const more = !loading && !error && offset + INSPIRATION_PAGE < total && items.length < total;
   return <div ref={panel} data-inspiration-panel className="space-y-3 p-3">
-    <p className="text-xs text-stone-500">{tt("平台灵感")}</p>
-    {!browse && (!site || !app) ? <p>{tt("选择一个应用查看灵感。")}</p> : null}
-    {loading ? <span className="v-spinner" role="status" aria-label={tt("加载中")} /> : error ? <AutoRecovery identity="src/shell/inspirations/InspirationPanel.tsx:0" recover={() => setReload(n => n + 1)} /> : !items.length && (browse || (site && app)) ? <p className="text-sm text-stone-500">{tt("此应用暂无平台灵感。")}</p> : null}
-    {items.map(item => browse ? <article key={item.id} className="rounded-xl border border-stone-200 p-3">
-      <p className="text-xs text-stone-500">{item.site_key} / {item.app_id} · {item.section}</p>
-      <h3 className="mt-1 text-sm font-medium">{item.title}</h3>
-      <p className="mt-2 whitespace-pre-wrap text-sm">{item.prompt}</p>
-    </article> : <button key={item.id} type="button" data-inspiration-id={item.id} onClick={() => void fill(item)}
-      className="block w-full rounded-xl border border-stone-200 p-3 text-left hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-stone-300">
-      <span className="block text-xs text-stone-500">{item.section}</span>
-      <strong className="mt-1 block text-sm font-medium">{item.title}</strong>
-      <span className="mt-1 line-clamp-3 text-xs text-stone-500">{item.params.hint || item.prompt}</span>
-      <span className="mt-2 block text-sm underline">{tt("使用灵感")}</span>
-    </button>)}
-    <p role="status" className="text-xs text-stone-500">{fillMessage}</p>
-    {total > 200 ? <div className="flex items-center gap-3 text-sm">
-      <button type="button" disabled={!offset || loading} onClick={() => setOffset(n => Math.max(0, n - 200))}>{tt("上一页")}</button>
-      <span>{offset + 1}–{Math.min(offset + 200, total)} / {total}</span>
-      <button type="button" disabled={offset + 200 >= total || loading} onClick={() => setOffset(n => n + 200)}>{tt("下一页")}</button>
+    <p className="text-[11px] text-stone-400">{tt("平台灵感")}</p>
+    {!browse && (!site || !app) ? <p className="text-sm text-stone-500">{tt("选择一个应用查看灵感。")}</p> : null}
+    {items.length ? <div data-inspiration-grid style={MEDIA_CARD_PANEL_GRID_STYLE}>
+      {items.map(item => browse
+        ? <MediaCard key={item.id} title={item.title} image={cardImage(item)}
+            line={`${item.site_key} / ${item.app_id} · ${inspirationLine(item)}`}
+            hooks={{ "data-inspiration-card": item.id }} />
+        : <MediaCard key={item.id} title={item.title} image={cardImage(item)} line={inspirationLine(item)}
+            onClick={() => void fill(item)}
+            hooks={{ "data-inspiration-card": item.id }} buttonHooks={{ "data-inspiration-id": item.id }} />)}
     </div> : null}
+    {loading ? <span className="v-spinner" role="status" aria-label={tt("加载中")} />
+      : error ? <AutoRecovery identity="src/shell/inspirations/InspirationPanel.tsx:0" recover={() => setAttempt(n => n + 1)} />
+      : !items.length && canLoad ? <p className="text-sm text-stone-500">{tt("此应用暂无平台灵感。")}</p> : null}
+    <p role="status" className="text-xs text-stone-500">{fillMessage}</p>
+    {more ? <button type="button" data-inspiration-more onClick={() => setOffset(n => n + INSPIRATION_PAGE)}
+      className="w-full rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300">
+      {tt("加载更多")}
+    </button> : null}
   </div>;
 }

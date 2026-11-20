@@ -116,7 +116,28 @@ test("no empty prompt chips; every asset still has an independent native keyboar
   assert.equal(doc.querySelectorAll("[data-home-asset-ref] button[data-app-card-main]").length, 2);
   assert.equal(doc.querySelectorAll("button button, [role=button]").length, 0);
   assert.match(doc.querySelector("[data-app-card-main]").getAttribute("aria-label"), /^Open asset:/);
-  assert.match(doc.querySelector("[data-home-asset-ref]").className, /focus-within.*translate-y-0/);
+  // The prompt chip is reachable by keyboard and is shown on focus (not only on hover).
+  assert.match(doc.querySelector("[data-app-card-primary]").className, /focus-visible:opacity-100/);
+  assert.match(doc.querySelector("[data-app-card-primary]").className, /group-focus-within:opacity-100/);
+});
+
+test("home card is image on top (3:2), then title, then one line; the card button comes first", () => {
+  const doc = new window.DOMParser().parseFromString(render({ sections:[{id:"image", items:[image]}] }), "text/html");
+  const tile = doc.querySelector('[data-home-asset-ref="platform:same"] [data-media-card]');
+  assert.ok(tile, "shared media card renders the home asset");
+  assert.ok(tile.hasAttribute("data-home-app-card"), "home acceptance hook kept");
+  const order = [...tile.querySelectorAll("[data-media-card-main], [data-media-card-image], [data-media-card-title], [data-media-card-line]")]
+    .map((node) => Object.keys(node.dataset).find((key) => key.startsWith("mediaCard")));
+  assert.deepEqual(order, ["mediaCardMain", "mediaCardImage", "mediaCardTitle", "mediaCardLine"]);
+  assert.match(tile.querySelector("[data-media-card-image]").getAttribute("style"), /aspect-ratio:\s*3\s*\/\s*2/);
+  const img = tile.querySelector("[data-media-card-image] img");
+  assert.equal(img.getAttribute("loading"), "lazy");
+  assert.match(img.className, /object-cover/);
+  assert.equal(tile.querySelector("[data-media-card-title]").textContent, image.title);
+  assert.equal(tile.querySelector("[data-media-card-line]").textContent, "Actual asset");
+  assert.match(tile.querySelector("[data-media-card-line]").className, /truncate/);
+  assert.equal(tile.querySelectorAll("img").length, 1, "no second hover image layer");
+  assert.equal(tile.querySelector("button").hasAttribute("data-app-card-main"), true);
 });
 
 test("card previews use the public resolver's exact asset paths and purpose for every family", () => {

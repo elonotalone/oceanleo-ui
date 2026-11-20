@@ -4,8 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { DomainFamily } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
 import { resolvePublicAssetMedia } from "../lib/asset-delivery";
-import { brandColorFor } from "../lib/brand-color";
-import { APP_CARD_GRID_CLASS, AppCardFrame, AppCardShell, AppCardText, AppCardThumb } from "./app-card-shell";
+import { MEDIA_CARD_HOME_GRID_CLASS, MediaCard } from "./inspirations/MediaCard";
 import { AddPromptModal, PromptCardModal } from "./HomePromptModals";
 import { loadCustomPromptCards, promptCardsForSite, saveCustomPromptCards, type PromptCard } from "./home-cards";
 import { homeAssetCardKey, homeAssetSections, type HomeAssetRef, type HomeAssetSection, type HomeAssetSectionId } from "./home-asset-cards-model";
@@ -13,7 +12,9 @@ import { homeAssetCardKey, homeAssetSections, type HomeAssetRef, type HomeAssetS
 import { groupAppMaterials, materialThumbnail, type AppMaterial, type AppMaterialGroup } from "./AppMaterialsPanel";
 
 const SECTION_COPY = { video: "视频素材", image: "图片素材", website: "网站素材", essay: "文章素材" } as const;
-const SECTION_ICONS = { video: "🎬", image: "🖼️", website: "🌐", essay: "📄" } as const;
+/** Home hooks kept from the old left-image card: V1 and the site regressions scan them. */
+const HOME_CARD_HOOKS = { "data-app-card": true, "data-app-card-variant": "home", "data-home-app-card": true } as const;
+const HOME_CARD_BUTTON_HOOKS = { "data-app-card-main": true, "data-home-app-card-main": true } as const;
 
 export interface HomeAssetCardsProps {
   /** Pass GET /v1/home/assets.sections; fetching/retry belongs to the host. */
@@ -73,13 +74,11 @@ export function HomeAssetCards({ sections, siteId, materials, appNames, onOpenAp
     return <section className="w-full" data-home-asset-cards data-home-app-materials={siteId}>
       {loading && <p role="status" className="py-3 text-sm text-stone-500">{tt("正在加载首页素材…")}</p>}
       {error && <p role="alert" className="py-3 text-sm text-stone-500">{tt("首页素材暂时无法加载，请稍后重试。")}</p>}
-      <div className={APP_CARD_GRID_CLASS}>
-        {apps.map((group) => <div key={group.appId} data-home-material-app={group.appId}>
-          <AppCardShell variant="home" accent={accent}
-            app={{ id: group.appId, name: group.name, tagline: group.materials[0]?.summary, icon: "📄" }}
-            image={materialThumbnail(group.materials[0], family)}
-            cardActionLabel={group.name}
-            onCardClick={() => onOpenApp?.(group)} primaryAction={null} />
+      <div className={MEDIA_CARD_HOME_GRID_CLASS}>
+        {apps.map((group) => <div key={group.appId} data-home-material-app={group.appId} className="min-w-0">
+          <MediaCard title={tt(group.name)} line={group.materials[0]?.summary ? tt(group.materials[0].summary) : undefined}
+            image={materialThumbnail(group.materials[0], family)} actionLabel={tt(group.name)}
+            onClick={() => onOpenApp?.(group)} hooks={HOME_CARD_HOOKS} buttonHooks={HOME_CARD_BUTTON_HOOKS} />
         </div>)}
       </div>
       {!apps.length && !loading && !error && <p className="py-3 text-sm text-stone-400">{tt("暂无可用素材")}</p>}
@@ -115,17 +114,15 @@ export function HomeAssetCards({ sections, siteId, materials, appNames, onOpenAp
         <section key={id} id={`${instanceId}-${id}`} role="tabpanel" tabIndex={0}
           aria-labelledby={`${instanceId}-${id}-tab`} className="scroll-mt-4 pt-5 focus-visible:outline focus-visible:outline-2" data-home-asset-section={id}>
           <h2 id={`${instanceId}-${id}-heading`} className="mb-3 text-sm font-semibold text-stone-800">{tt(SECTION_COPY[id])}</h2>
-          <div className={APP_CARD_GRID_CLASS}>
+          <div className={MEDIA_CARD_HOME_GRID_CLASS}>
             {items.map((item) => (
-              <div key={homeAssetCardKey(item.ref)} data-home-asset-ref={homeAssetCardKey(item.ref)}
-                className="[&:focus-within_[data-app-card-actions]]:translate-y-0">
-                <AppCardShell variant="home" accent={accent}
-                  app={{ id: homeAssetCardKey(item.ref), name: item.title, tagline: item.summary, icon: SECTION_ICONS[id] }}
+              <div key={homeAssetCardKey(item.ref)} data-home-asset-ref={homeAssetCardKey(item.ref)} className="min-w-0">
+                <MediaCard title={tt(item.title)} line={item.summary ? tt(item.summary) : undefined}
                   image={resolvePublicAssetMedia(item.preview.key || item.preview.url || "", { purpose: "thumb", family })}
-                  cardActionLabel={tt("打开素材：{title}", { title: item.title })}
-                  onCardClick={() => onOpenAsset(item.ref)}
-                  primaryAction={item.promptText?.trim() ? { label: tt("prompt"), onClick: () => onPick(item.promptText!) } : null}
-                />
+                  actionLabel={tt("打开素材：{title}", { title: item.title })}
+                  onClick={() => onOpenAsset(item.ref)}
+                  action={item.promptText?.trim() ? { label: tt("prompt"), onClick: () => onPick(item.promptText!) } : null}
+                  hooks={HOME_CARD_HOOKS} buttonHooks={HOME_CARD_BUTTON_HOOKS} />
               </div>
             ))}
           </div>
@@ -136,17 +133,16 @@ export function HomeAssetCards({ sections, siteId, materials, appNames, onOpenAp
       ))}
       <section aria-labelledby={`${instanceId}-prompts`} className="pt-5" data-home-custom-prompts>
         <h2 id={`${instanceId}-prompts`} className="mb-3 text-sm font-semibold text-stone-800">{tt("我的 prompt")}</h2>
-        <div className={APP_CARD_GRID_CLASS}>
+        <div className={MEDIA_CARD_HOME_GRID_CLASS}>
           {custom.map((card) => (
-            <AppCardFrame key={card.id} variant="home" actionLabel={card.title} onAction={() => onPick(card.prompt)}
-              actions={<button type="button" onClick={() => setEditing(card)} aria-label={tt("编辑 prompt：{title}", { title: card.title })}
-                className="absolute right-1.5 top-1.5 rounded-md bg-white/90 p-1 text-stone-500 focus-visible:outline focus-visible:outline-2">✎</button>}>
-              <AppCardThumb icon={card.icon || "✨"} color={brandColorFor(card.id)} alt={card.title} />
-              <AppCardText name={card.title} tagline={card.desc || card.prompt} />
-            </AppCardFrame>
+            <MediaCard key={card.id} title={card.title} line={card.desc || card.prompt} icon={card.icon || "✨"}
+              onClick={() => onPick(card.prompt)}
+              hooks={HOME_CARD_HOOKS} buttonHooks={HOME_CARD_BUTTON_HOOKS}
+              extra={<button type="button" onClick={() => setEditing(card)} aria-label={tt("编辑 prompt：{title}", { title: card.title })}
+                className="absolute right-1.5 top-1.5 rounded-lg bg-white/90 p-1.5 text-stone-500 hover:text-stone-800 focus-visible:outline focus-visible:outline-2">✎</button>} />
           ))}
           <button type="button" onClick={() => setAdding(true)} data-home-add-prompt
-            className="flex min-h-[100px] items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-white/60 p-3 text-[13px] text-stone-500 focus-visible:outline focus-visible:outline-2">
+            className="flex min-h-[64px] items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-white/60 p-3 text-[13px] text-stone-500 focus-visible:outline focus-visible:outline-2">
             <span aria-hidden="true">＋</span>{tt("添加 prompt")}
           </button>
         </div>
