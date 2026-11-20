@@ -37,6 +37,7 @@ import type { AssetRef, AssetSurface } from "./asset-detail/types";
 import type { WorkspaceLibraryEntry } from "./workspace-library-model";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import { WORKSPACE_ACTION_EVENT } from "./workspace-actions";
+import { useTaskChildPaneOpener } from "./result-canvas-view-state";
 import type { LibraryItem, LibraryKind } from "./library-data";
 import { editorCapabilityFor } from "./workbench-routes";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
@@ -282,6 +283,11 @@ export function TaskWorkspaceShell({
   const open = effectiveLibrary ? effectiveLibrary.open ?? state.rightOpen : true;
   const everOpenedRef = useRef(open);
   if (open) everOpenedRef.current = true;
+  // A sub task / task opened from the main column shows beside it, even before the right pane first mounted.
+  const mainAnchorRef = useRef<HTMLSpanElement>(null);
+  useTaskChildPaneOpener(mainAnchorRef, () => {
+    if (effectiveLibrary) (effectiveLibrary.onOpenChange ?? state.setRightOpen)(true);
+  });
   const canvasNode =
     lazyRight && !everOpenedRef.current ? null : state.appMaterials ? (
       <AppMaterialsPanel group={state.appMaterials} accent={canvas?.accent}
@@ -308,7 +314,7 @@ export function TaskWorkspaceShell({
       {...split}
       workspaceInstanceId={workspaceInstanceId}
       className={`${className} ${closedPlain ? TASK_WORKSPACE_PLAIN_CLOSED_CLASS : ""}`.trim()}
-      left={left}
+      left={<>{left}<span ref={mainAnchorRef} hidden data-task-child-anchor="" /></>}
       right={<Suspense fallback={<WorkspacePaneSkeleton />}>{renderRight ? renderRight(canvasNode) : canvasNode}</Suspense>}
       library={effectiveLibrary}
     />

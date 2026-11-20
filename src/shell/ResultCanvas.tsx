@@ -41,12 +41,13 @@ import {
   workspaceSlotForLegacyId,
   workspaceMaterialsActionFromSearch,
   dispatchWorkspaceAction,
+  revealWorkspacePane,
   workspaceMaterialAssetRef,
   type WorkspaceActionEnvelope,
   type WorkspaceSlotId,
 } from "./workspace-actions";
 import { useWorkspaceSlotState } from "./result-canvas-slot-state";
-import { useWorkspaceViewState } from "./result-canvas-view-state";
+import { useWorkspaceViewState, type TaskOpenOrigin, type WorkspaceTaskRequest } from "./result-canvas-view-state";
 import { useBayEnabled } from "./bay/shell/bay-state";
 import { useImEnabled } from "../lib/im/client";
 import { BayPanel } from "./bay/panel";
@@ -117,6 +118,12 @@ const MyTasksWorkspacePanel = lazy(() => import("./workspace-panels/MyTasksWorks
 const DevicesWorkspacePanel = lazy(() => import("./workspace-panels/DevicesWorkspacePanel").then((module) => ({ default: module.DevicesWorkspacePanel })));
 const ProjectsWorkspacePanel = lazy(() => import("./workspace-panels/ProjectsWorkspacePanel").then((module) => ({ default: module.ProjectsWorkspacePanel })));
 const SettingsWorkspacePanel = lazy(() => import("./workspace-panels/SettingsWorkspacePanel").then((module) => ({ default: module.SettingsWorkspacePanel })));
+const TaskStackPanel = lazy(() => import("./workspace-panels/TaskStackPanel").then((module) => ({ default: module.TaskStackPanel })));
+
+/** Below Tailwind `md` the split stacks; a task opened beside the main column takes the whole screen there. */
+function narrowScreen(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches;
+}
 
 export interface CanvasTab extends LegacyWorkspaceSurfaceTab {}
 
@@ -177,6 +184,11 @@ export interface ResultCanvasProps {
   leoChatRequestNonce?: string | null;
   /** Controlled right-pane visibility, used to distinguish open from closed LeoChat toggles. */
   workspaceOpen?: boolean;
+  /**
+   * Open these sub tasks / tasks in the right panel's task stack (each nonce once): the task page passes
+   * `[this sub task]` beside its parent task, and a card in the main column replaces the stack this way.
+   */
+  taskStackRequest?: WorkspaceTaskRequest | null;
   /** Server-issued exact binding context for the Primary material shelf. */
   materialContext?: ArtifactContextRef;
   /**
@@ -268,6 +280,7 @@ export function ResultCanvas({
   siteId = "",
   leoChatRequestNonce = null,
   workspaceOpen,
+  taskStackRequest = null,
   materialContext,
   openItem,
   openEntry,
@@ -305,7 +318,11 @@ export function ResultCanvas({
   const instanceId = workspaceInstanceId || libraryPanelInstanceId;
   const [tasksVisited, setTasksVisited] = useState(false);
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
-  const taskPageReturnRef = useRef(false);
+  /** A file opened from a task shown in this panel returns there: My tasks, or the task stack. */
+  const taskPageReturnRef = useRef<"tasks" | "task" | null>(null);
+  const canvasRootRef = useRef<HTMLDivElement>(null);
+  // Narrow screens: the task stack took the whole screen; leaving it gives the main column back.
+  const taskMaximizedRef = useRef(false);
   const [taskEntryRequest, setTaskEntryRequest] = useState<TaskWorkspaceOpenEntry | null>(null);
   const taskOpenSequence = useRef(0);
   const libraryPanelOwnerRef = useRef(
@@ -594,10 +611,50 @@ export function ResultCanvas({
   const panels = useMemo(() => ({ bay: bayOn && showBay, leochat: imOn && showLeoChat, tasks: showMyTasks, devices: true, projects: true, settings: true }), [bayOn, imOn, showBay, showLeoChat, showMyTasks]);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  const { view, openSlot, openPanel, goHome, bayRequest, chatRequest, openChat } = useWorkspaceViewState({
+  // A click inside this right pane pushes onto the stack; a click in this split's main column replaces it.
+  // Any other click belongs to another workspace. A request made in code counts as the main column.
+  const taskOrigin = useCallback((target: Element | null): TaskOpenOrigin | null => {
+    const root = canvasRootRef.current;
+    if (!root?.isConnected) return null;
+    if (!target) return "main";
+    if (root.contains(target)) return "panel";
+    const split = root.closest("[data-workspace-split]");
+    return split && split.contains(target) ? "main" : null;
+  }, []);
+  const rightSlotRef = useRef(rightSlot);
+  rightSlotRef.current = rightSlot;
+  const revealTaskStack = useCallback(() => {
+    // After this commit: on mount the split's own listener (a parent effect) is not registered yet.
+    queueMicrotask(() => revealWorkspacePane(instanceId));
+    const slot = rightSlotRef.current;
+    if (slot && narrowScreen()) {
+      taskMaximizedRef.current = true;
+      slot.setRightMaximized(true);
+    }
+  }, [instanceId]);
+  const { view, openSlot, openPanel, goHome, bayRequest, chatRequest, openChat, taskStack, openTask, popTask } = useWorkspaceViewState({
     selected, layer, setLayer, panelAction, select, panels,
     onHome: () => onChangeRef.current?.("home"),
+    taskOrigin,
+    taskRequest: taskStackRequest,
+    onTaskReveal: revealTaskStack,
   });
+  const taskTop = taskStack[taskStack.length - 1] || null;
+  const backFromTask = useCallback(() => {
+    // Narrow screens: Back from the last entry returns to the task in the main column.
+    if (taskStack.length <= 1 && taskMaximizedRef.current) {
+      taskMaximizedRef.current = false;
+      rightSlotRef.current?.setRightMaximized(false);
+      rightSlotRef.current?.closeRightPane?.();
+    }
+    popTask();
+  }, [popTask, taskStack.length]);
+  useEffect(() => {
+    if (view === "task" || !taskMaximizedRef.current) return;
+    taskMaximizedRef.current = false;
+    rightSlotRef.current?.setRightMaximized(false);
+  }, [view]);
+  const pushTask = useCallback((entry: { kind: "agent_task" | "room"; id: string; title: string }) => openTask(entry, "panel"), [openTask]);
   const bayPanelRequest = useMemo(() => bayRequest
     ? { ...bayRequest, href: panelAction?.action.url }
     : null, [bayRequest, panelAction?.action.url]);
@@ -674,18 +731,19 @@ export function ResultCanvas({
   }
   const entryRequest = useWorkspaceEntryRequest(taskEntryRequest || latestEntryRequest.current.request, openResolvedEntry);
   const returnToTask = useCallback(() => {
-    if (!taskPageReturnRef.current) return false;
-    taskPageReturnRef.current = false;
+    const returnView = taskPageReturnRef.current;
+    if (!returnView) return false;
+    taskPageReturnRef.current = null;
     setTaskEntryRequest(null);
     setActiveCanvasEntry(null);
     setActiveActionContext(undefined);
     setForegroundSuspended(true);
     setArtifactSaveError("");
-    openPanel("tasks");
+    openPanel(returnView);
     return true;
   }, [openPanel]);
-  const openTaskAction = useCallback((envelope: WorkspaceActionEnvelope) => {
-    taskPageReturnRef.current = true;
+  const openTaskAction = useCallback((envelope: WorkspaceActionEnvelope, returnView: "tasks" | "task" = "tasks") => {
+    taskPageReturnRef.current = returnView;
     const ref = envelope.action.tab === "mine" ? workspaceMaterialAssetRef(envelope.action) : null;
     if (ref) {
       setTaskEntryRequest({ nonce: `task-entry:${++taskOpenSequence.current}`, mode: envelope.action.intent === "edit" ? "edit" : "preview", ref, surface: "task" });
@@ -695,12 +753,17 @@ export function ResultCanvas({
       dispatchWorkspaceAction({ ...envelope, instanceId });
     }
   }, [instanceId]);
-  const openTaskItem = useCallback((item: LibraryItem, mode: "preview" | "edit" = "preview") => {
-    taskPageReturnRef.current = true;
+  const openTaskItem = useCallback((item: LibraryItem, mode: "preview" | "edit" = "preview", returnView: "tasks" | "task" = "tasks") => {
+    taskPageReturnRef.current = returnView;
     setTaskEntryRequest(null);
     if (mode === "edit") openCanvasItem(item);
     else openCanvasEntry(workspaceEntryFromLibraryItem(item));
   }, [openCanvasEntry, openCanvasItem]);
+  const taskStackHost = useMemo(() => ({
+    instanceId,
+    onOpenAction: (envelope: WorkspaceActionEnvelope) => openTaskAction(envelope, "task"),
+    onOpenItem: (item: LibraryItem, mode?: "preview" | "edit") => openTaskItem(item, mode, "task"),
+  }), [instanceId, openTaskAction, openTaskItem]);
   const bayBackRef = useRef<(() => void) | null>(null);
   const chatBackRef = useRef<(() => void) | null>(null);
   const projectsBackRef = useRef<(() => void) | null>(null);
@@ -729,6 +792,10 @@ export function ResultCanvas({
   }, [view, projectRequest?.nonce]);
   const handleBack = useCallback(() => {
     if (returnToTask()) return;
+    if (view === "task") {
+      backFromTask();
+      return;
+    }
     if (view === "mine" && projectLibraryReturnRef.current) {
       projectLibraryReturnRef.current = false;
       setForegroundSuspended(true);
@@ -738,15 +805,17 @@ export function ResultCanvas({
     const inner = view === "bay" ? (bayRequest?.view === "materials" ? null : bayBackRef.current) : view === "leochat" ? chatBackRef.current : view === "projects" ? projectsBackRef.current : null;
     if (inner) inner();
     else goHome();
-  }, [goHome, openPanel, view, bayRequest?.view, returnToTask]);
+  }, [goHome, openPanel, view, bayRequest?.view, returnToTask, backFromTask]);
   const [bayVisited, setBayVisited] = useState(false);
   const [chatVisited, setChatVisited] = useState(false);
   const [projectsVisited, setProjectsVisited] = useState(false);
   useEffect(() => { if (view === "tasks") setTasksVisited(true); }, [view]);
+  const [taskStackVisited, setTaskStackVisited] = useState(false);
+  useEffect(() => { if (view === "task") setTaskStackVisited(true); }, [view]);
   useEffect(() => { if (view === "bay") setBayVisited(true); }, [view]);
   useEffect(() => { if (view === "leochat") setChatVisited(true); }, [view]);
   useEffect(() => { if (view === "projects") setProjectsVisited(true); }, [view]);
-  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("项目配置") : view === "settings" ? tt("Settings") : view === "tasks" ? tt("侧栏任务") : tt(WORKSPACE_SLOT_LABELS[view]);
+  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("项目配置") : view === "settings" ? tt("Settings") : view === "tasks" ? tt("侧栏任务") : view === "task" ? (taskTop?.title || tt("任务")) : tt(WORKSPACE_SLOT_LABELS[view]);
 
   const selectedTemplateTab = workspaceSurfacePrimaryTab(
     surfaceModel,
@@ -1019,7 +1088,7 @@ export function ResultCanvas({
   useWorkbenchOpenClaim(foregroundVisible || !rightSlot);
   const chatPanelActive = !foregroundVisible && view === "leochat" && workspaceOpen !== false;
   const rightMainContent = (
-    <div className="relative h-full min-h-0 overflow-hidden" data-workspace-view={view}>
+    <div ref={canvasRootRef} className="relative h-full min-h-0 overflow-hidden" data-workspace-view={view}>
       <div
         data-result-canvas-slot-stack
         className={`h-full min-h-0 ${foregroundVisible || openingEntry ? "hidden" : "block"}`}
@@ -1081,6 +1150,11 @@ export function ResultCanvas({
             {managedContent.tasks}
           </div>
         ) : null}
+        {taskStackVisited || view === "task" ? (
+          <div data-workspace-managed-panel="task" hidden={view !== "task"} inert={view !== "task" || undefined} className="h-full min-h-0 overflow-hidden">
+            {taskTop ? <TaskStackPanel stack={taskStack} onPush={pushTask} onBack={backFromTask} host={taskStackHost} /> : null}
+          </div>
+        ) : null}
         {(view === "devices" || view === "settings") ? (
           <div data-workspace-managed-panel={view} className="h-full min-h-0 overflow-auto">
             {managedContent[view]}
@@ -1118,7 +1192,8 @@ export function ResultCanvas({
   // insertion drawers own their data/UI independently of this sidebar.
   useLayoutEffect(() => {
     if (!rightSlot) return;
-    if (view === "tasks" && taskDetailOpen && !foregroundVisible && !openingEntry) {
+    // An open task (My tasks detail, or the task stack) carries its own header with Back and its title.
+    if (((view === "tasks" && taskDetailOpen) || (view === "task" && taskTop)) && !foregroundVisible && !openingEntry) {
       rightSlot.setRightEditorHeader(false);
       rightSlot.setRightLabel(null);
       rightSlot.setRightFrameless(true);
@@ -1163,6 +1238,7 @@ export function ResultCanvas({
     };
   }, [
     taskDetailOpen,
+    taskTop,
     foregroundVisible,
     openingEntry,
     foregroundSuspended,
@@ -1187,7 +1263,7 @@ export function ResultCanvas({
 
   return (
     <StandaloneWorkspaceFrame
-      header={view === "home" || (view === "tasks" && taskDetailOpen) ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />}
+      header={view === "home" || (view === "tasks" && taskDetailOpen) || (view === "task" && taskTop) ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />}
       className={className}
     >
       {rightMainContent}

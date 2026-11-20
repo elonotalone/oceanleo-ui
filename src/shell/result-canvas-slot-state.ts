@@ -35,8 +35,8 @@ export interface WorkspaceSlotStateInput {
   onChange?: (id: string) => void;
 }
 
-/** 右侧栏此刻给人看的是哪一层。`slot` = 看 `selected`。 */
-export type WorkspaceLayer = "home" | "slot" | WorkspacePanelId | WorkspaceManagedPanelId;
+/** 右侧栏此刻给人看的是哪一层。`slot` = 看 `selected`；`task` = 任务栈顶那一项（sub task 或 task）。 */
+export type WorkspaceLayer = "home" | "slot" | WorkspacePanelId | WorkspaceManagedPanelId | "task";
 
 /** 受控 `active` 的这两个值表示「卡片首页」，不对应任何槽位。 */
 export function isWorkspaceHomeId(id: string | undefined): boolean {
@@ -295,7 +295,8 @@ export function useWorkspaceSlotState({
       const detail = (event as CustomEvent<WorkspaceActionEnvelope>).detail;
       if (detail?.instanceId && detail.instanceId !== instanceId) return;
       const action = normalizeWorkspaceAction(detail?.action);
-      if (!action || ignoredTabs?.includes(action.tab)) return;
+      // `task` only reveals the pane (the task stack has its own request path); it never parses as an action.
+      if (!action || action.tab === "task" || ignoredTabs?.includes(action.tab)) return;
       const envelope = {
         nonce: String(detail?.nonce || Date.now()),
         action,
@@ -330,7 +331,7 @@ export function useWorkspaceSlotState({
   useEffect(() => {
     if (!externalAction) return;
     const action = normalizeWorkspaceAction(externalAction.action);
-    if (!action || ignoredTabs?.includes(action.tab)) return;
+    if (!action || action.tab === "task" || ignoredTabs?.includes(action.tab)) return;
     if (action.tab === "bay") {
       if (action.view === "materials") pinExplicitSlot("materials");
       setPanelAction({ nonce: externalAction.nonce, action });

@@ -17,13 +17,37 @@ export type WorkspacePanelId = "bay" | "leochat";
 
 /** 右侧栏此刻显示的是什么：卡片首页、某个槽位，或上面那两块之一。 */
 export type WorkspaceManagedPanelId = "devices" | "projects" | "settings" | "tasks";
-export type WorkspaceViewId = "home" | WorkspaceSlotId | WorkspacePanelId | WorkspaceManagedPanelId;
+export type WorkspaceViewId = "home" | WorkspaceSlotId | WorkspacePanelId | WorkspaceManagedPanelId | "task";
+
+/**
+ * One level of the right panel's task stack: a sub task (agent run) or a task (people's conversation).
+ * The top entry is shown; Back pops. Same shape as the `oceanleo:open-task-child` event detail.
+ */
+export interface WorkspaceTaskEntry {
+  kind: "agent_task" | "room";
+  id: string;
+  title: string;
+}
+
+/** Opening a child from anywhere (`openTaskChild` in `task-room/open-child.ts` dispatches it, cancelable). */
+export const OPEN_TASK_CHILD_EVENT = "oceanleo:open-task-child";
+
+/** The event detail as trusted UI data: a known kind, an id, a bounded title. Anything else is ignored. */
+export function normalizeTaskEntry(value: unknown): WorkspaceTaskEntry | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const kind = raw.kind === "agent_task" || raw.kind === "room" ? raw.kind : null;
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  if (!kind || !id || id.length > 80 || !/^[A-Za-z0-9_-]+$/.test(id)) return null;
+  const title = typeof raw.title === "string" ? raw.title.trim().slice(0, 200) : "";
+  return { kind, id, title };
+}
 
 /**
  * 一条 action 能指向哪里：可见槽位及 materials 兼容输入，加上 `bay`（agent 的「找真人」工具让右侧栏显示相关服务）。
  * LeoChat 没有 agent 入口，所以不在这里。
  */
-export type WorkspaceActionTab = WorkspaceSlotId | "bay" | Exclude<WorkspaceManagedPanelId, "tasks"> | "leochat";
+export type WorkspaceActionTab = WorkspaceSlotId | "bay" | Exclude<WorkspaceManagedPanelId, "tasks"> | "leochat" | "task";
 
 /**
  * What the receiver should do with `itemId` once it resolves it.
@@ -370,6 +394,17 @@ export function workspaceActionForHref(href: string, origin: string): WorkspaceA
   if (managed) return { version: 2, tab: managed[1] as "settings" | "devices", section: managed[2] || params.get("section") || undefined, deviceId: params.get("deviceId") || undefined };
   if (path === "/browser") return { version: 2, tab: "devices", section: "cloud-browser" };
   return null;
+}
+
+let revealSequence = 0;
+
+/**
+ * Ask the split that hosts this workspace to show its right pane (it opens on any workspace action for
+ * its instance). `tab: "task"` is deliberately not in `WORKSPACE_ACTION_TABS`: no receipt can send it and
+ * every action receiver ignores it, so this only reveals the pane the task stack is already in.
+ */
+export function revealWorkspacePane(instanceId: string): boolean {
+  return dispatchWorkspaceAction({ instanceId, nonce: `task-reveal:${++revealSequence}`, action: { version: 2, tab: "task" } });
 }
 
 let messageLinkSequence = 0;
