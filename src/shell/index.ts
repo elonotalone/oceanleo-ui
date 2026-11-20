@@ -718,3 +718,6 @@ export { LiveMaterialSearch } from "./bay/asset/LiveMaterialSearch";
 // Project sessions and the cards a session shows (session / sites wave 2026-11-21).
 export { ProjectSessionView, TaskCardView, QuoteCardView, QuoteMessagesPanel, openQuotePanel, OPEN_QUOTE_PANEL_EVENT, type ProjectSessionViewProps, type TaskCardViewProps, type QuoteCardViewProps, type OpenQuotePanelDetail } from "./task-room";
 export { projectSessionsApi, createProjectSessionsApi, type ProjectSession, type ProjectSessionsUnread, type ProjectSessionsResult, type ProjectSessionsFailure } from "../lib/project-sessions-api";
+
+// Forward chat messages to a task, a chat or a session (session / sites wave 2026-11-21).
+export { ForwardPicker, openTaskPanel, OPEN_TASK_PANEL_EVENT, type ChatBundle, type ForwardPickerProps, type OpenTaskPanelDetail } from "./forward";

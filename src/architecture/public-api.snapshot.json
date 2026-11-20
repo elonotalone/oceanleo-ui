@@ -1462,18 +1462,6 @@
         },
         {
           "kind": "named",
-          "name": "currentFamilyHasSubsite",
-          "importedName": "currentFamilyHasSubsite",
-          "source": "./domain-family"
-        },
-        {
-          "kind": "named",
-          "name": "currentFamilySubsiteOrigin",
-          "importedName": "currentFamilySubsiteOrigin",
-          "source": "./domain-family"
-        },
-        {
-          "kind": "named",
           "name": "DEFAULT_DOMAIN_FAMILY",
           "importedName": "DEFAULT_DOMAIN_FAMILY",
           "source": "./domain-family"
@@ -1518,12 +1506,6 @@
           "kind": "named",
           "name": "familyForHost",
           "importedName": "familyForHost",
-          "source": "./domain-family"
-        },
-        {
-          "kind": "named",
-          "name": "familyHasSubsite",
-          "importedName": "familyHasSubsite",
           "source": "./domain-family"
         },
         {
@@ -5517,6 +5499,12 @@
         },
         {
           "kind": "named",
+          "name": "createProjectSessionsApi",
+          "importedName": "createProjectSessionsApi",
+          "source": "../lib/project-sessions-api"
+        },
+        {
+          "kind": "named",
           "name": "CreateSkillModal",
           "importedName": "CreateSkillModal",
           "source": "./CreateSkillModal"
@@ -5538,12 +5526,6 @@
           "name": "CreateSkillTeamModalProps",
           "importedName": "CreateSkillTeamModalProps",
           "source": "./CreateSkillModal"
-        },
-        {
-          "kind": "named",
-          "name": "createTaskRoomsApi",
-          "importedName": "createTaskRoomsApi",
-          "source": "../lib/task-rooms-api"
         },
         {
           "kind": "named",
@@ -5718,6 +5700,12 @@
           "name": "formatLibraryUpdatedAt",
           "importedName": "formatLibraryUpdatedAt",
           "source": "./library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "ForwardPicker",
+          "importedName": "ForwardPicker",
+          "source": "./forward"
         },
         {
           "kind": "named",
@@ -6591,9 +6579,15 @@
         },
         {
           "kind": "named",
-          "name": "OPEN_TASK_CHILD_EVENT",
-          "importedName": "OPEN_TASK_CHILD_EVENT",
+          "name": "OPEN_QUOTE_PANEL_EVENT",
+          "importedName": "OPEN_QUOTE_PANEL_EVENT",
           "source": "./task-room"
+        },
+        {
+          "kind": "named",
+          "name": "OPEN_TASK_PANEL_EVENT",
+          "importedName": "OPEN_TASK_PANEL_EVENT",
+          "source": "./forward"
         },
         {
           "kind": "named",
@@ -6603,9 +6597,15 @@
         },
         {
           "kind": "named",
-          "name": "openTaskChild",
-          "importedName": "openTaskChild",
+          "name": "openQuotePanel",
+          "importedName": "openQuotePanel",
           "source": "./task-room"
+        },
+        {
+          "kind": "named",
+          "name": "openTaskPanel",
+          "importedName": "openTaskPanel",
+          "source": "./forward"
         },
         {
           "kind": "named",
@@ -6825,6 +6825,18 @@
         },
         {
           "kind": "named",
+          "name": "projectSessionsApi",
+          "importedName": "projectSessionsApi",
+          "source": "../lib/project-sessions-api"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectSessionView",
+          "importedName": "ProjectSessionView",
+          "source": "./task-room"
+        },
+        {
+          "kind": "named",
           "name": "ProjectTabItem",
           "importedName": "ProjectTabItem",
           "source": "./project-workspace"
@@ -6915,6 +6927,18 @@
         },
         {
           "kind": "named",
+          "name": "QuoteCardView",
+          "importedName": "QuoteCardView",
+          "source": "./task-room"
+        },
+        {
+          "kind": "named",
+          "name": "QuoteMessagesPanel",
+          "importedName": "QuoteMessagesPanel",
+          "source": "./task-room"
+        },
+        {
+          "kind": "named",
           "name": "readPending",
           "importedName": "readPending",
           "source": "./acp-task"
@@ -6954,12 +6978,6 @@
           "name": "registerGamePreviewHost",
           "importedName": "registerGamePreviewHost",
           "source": "./game-preview-host"
-        },
-        {
-          "kind": "named",
-          "name": "registerMessageSelectionAction",
-          "importedName": "registerMessageSelectionAction",
-          "source": "./messages/conversation/selection-actions"
         },
         {
           "kind": "named",
@@ -7371,18 +7389,6 @@
         },
         {
           "kind": "named",
-          "name": "SummonDialog",
-          "importedName": "SummonDialog",
-          "source": "./task-room"
-        },
-        {
-          "kind": "named",
-          "name": "TASK_ROOMS_UNAVAILABLE",
-          "importedName": "TASK_ROOMS_UNAVAILABLE",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "named",
           "name": "TASK_WORKSPACE_PLAIN_CLOSED_CLASS",
           "importedName": "TASK_WORKSPACE_PLAIN_CLOSED_CLASS",
           "source": "./TaskWorkspaceShell"
@@ -7428,18 +7434,6 @@
           "name": "taskQuoteHref",
           "importedName": "taskQuoteHref",
           "source": "./TaskActionsMenu"
-        },
-        {
-          "kind": "named",
-          "name": "taskRoomsApi",
-          "importedName": "taskRoomsApi",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "named",
-          "name": "TaskRoomView",
-          "importedName": "TaskRoomView",
-          "source": "./task-room"
         },
         {
           "kind": "named",
@@ -7716,12 +7710,6 @@
           "name": "useTaskPending",
           "importedName": "useTaskPending",
           "source": "./acp-task"
-        },
-        {
-          "kind": "named",
-          "name": "useTaskRoom",
-          "importedName": "useTaskRoom",
-          "source": "./task-room"
         },
         {
           "kind": "named",
@@ -8185,6 +8173,12 @@
         },
         {
           "kind": "type",
+          "name": "ChatBundle",
+          "importedName": "ChatBundle",
+          "source": "./forward"
+        },
+        {
+          "kind": "type",
           "name": "ConsoleFunction",
           "importedName": "ConsoleFunction",
           "source": "./OperatorConsole"
@@ -8248,6 +8242,12 @@
           "name": "FileLibraryProps",
           "importedName": "FileLibraryProps",
           "source": "./FileLibrary"
+        },
+        {
+          "kind": "type",
+          "name": "ForwardPickerProps",
+          "importedName": "ForwardPickerProps",
+          "source": "./forward"
         },
         {
           "kind": "type",
@@ -8329,18 +8329,6 @@
         },
         {
           "kind": "type",
-          "name": "MessageSelectionAction",
-          "importedName": "MessageSelectionAction",
-          "source": "./messages/conversation/selection-actions"
-        },
-        {
-          "kind": "type",
-          "name": "MessageSelectionContext",
-          "importedName": "MessageSelectionContext",
-          "source": "./messages/conversation/selection-actions"
-        },
-        {
-          "kind": "type",
           "name": "MyDevicesActionConsoleProps",
           "importedName": "MyDevicesActionConsoleProps",
           "source": "./LocalActionConsole"
@@ -8359,9 +8347,15 @@
         },
         {
           "kind": "type",
-          "name": "OpenTaskChildDetail",
-          "importedName": "OpenTaskChildDetail",
+          "name": "OpenQuotePanelDetail",
+          "importedName": "OpenQuotePanelDetail",
           "source": "./task-room"
+        },
+        {
+          "kind": "type",
+          "name": "OpenTaskPanelDetail",
+          "importedName": "OpenTaskPanelDetail",
+          "source": "./forward"
         },
         {
           "kind": "type",
@@ -8398,6 +8392,42 @@
           "name": "PendingSettle",
           "importedName": "PendingSettle",
           "source": "./acp-task"
+        },
+        {
+          "kind": "type",
+          "name": "ProjectSession",
+          "importedName": "ProjectSession",
+          "source": "../lib/project-sessions-api"
+        },
+        {
+          "kind": "type",
+          "name": "ProjectSessionsFailure",
+          "importedName": "ProjectSessionsFailure",
+          "source": "../lib/project-sessions-api"
+        },
+        {
+          "kind": "type",
+          "name": "ProjectSessionsResult",
+          "importedName": "ProjectSessionsResult",
+          "source": "../lib/project-sessions-api"
+        },
+        {
+          "kind": "type",
+          "name": "ProjectSessionsUnread",
+          "importedName": "ProjectSessionsUnread",
+          "source": "../lib/project-sessions-api"
+        },
+        {
+          "kind": "type",
+          "name": "ProjectSessionViewProps",
+          "importedName": "ProjectSessionViewProps",
+          "source": "./task-room"
+        },
+        {
+          "kind": "type",
+          "name": "QuoteCardViewProps",
+          "importedName": "QuoteCardViewProps",
+          "source": "./task-room"
         },
         {
           "kind": "type",
@@ -8509,80 +8539,8 @@
         },
         {
           "kind": "type",
-          "name": "SummonPreview",
-          "importedName": "SummonPreview",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "type",
-          "name": "SummonRequest",
-          "importedName": "SummonRequest",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "type",
-          "name": "SummonResult",
-          "importedName": "SummonResult",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "type",
           "name": "TaskCardViewProps",
           "importedName": "TaskCardViewProps",
-          "source": "./task-room"
-        },
-        {
-          "kind": "type",
-          "name": "TaskHandoff",
-          "importedName": "TaskHandoff",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "type",
-          "name": "TaskRoom",
-          "importedName": "TaskRoom",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "type",
-          "name": "TaskRoomChainItem",
-          "importedName": "TaskRoomChainItem",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "type",
-          "name": "TaskRoomChild",
-          "importedName": "TaskRoomChild",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "type",
-          "name": "TaskRoomsFailure",
-          "importedName": "TaskRoomsFailure",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "type",
-          "name": "TaskRoomsResult",
-          "importedName": "TaskRoomsResult",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "type",
-          "name": "TaskRoomState",
-          "importedName": "TaskRoomState",
-          "source": "./task-room"
-        },
-        {
-          "kind": "type",
-          "name": "TaskRoomSummary",
-          "importedName": "TaskRoomSummary",
-          "source": "../lib/task-rooms-api"
-        },
-        {
-          "kind": "type",
-          "name": "TaskRoomViewProps",
-          "importedName": "TaskRoomViewProps",
           "source": "./task-room"
         },
         {
