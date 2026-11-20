@@ -305,8 +305,12 @@ test("进编辑后有主题栏、每个版块有上移 / 下移 / 删除、有�
   assert.match(view.host.textContent, /添加版块/);
   assert.equal(view.host.querySelector("[data-bay-own-profile-form]"), null);
   assert.doesNotMatch(view.host.textContent, /卖家资料/);
-  assert.ok(view.host.querySelector('[data-bay-field="handle"]'));
-  assert.ok(view.host.querySelector('[data-bay-field="display_name"]'));
+  // One account name (wave 2026-11-20 roles, NM): no second name, no handle to edit here.
+  assert.equal(view.host.querySelector('[data-bay-field="handle"]'), null);
+  assert.equal(view.host.querySelector('[data-bay-field="display_name"]'), null);
+  assert.match(view.host.querySelector("[data-bay-account-name]").textContent, /Leo/);
+  assert.ok(view.host.querySelector("[data-bay-account-name-link]"));
+  assert.doesNotMatch(view.host.textContent, /显示名|主页地址|@leo/);
   assert.ok(view.host.querySelector('[data-bay-field="skills"]'));
   assert.ok(view.host.querySelector('[data-bay-field="languages"]'));
   assert.ok(view.host.querySelector('[data-bay-cover-variant="avatar"]'));
@@ -433,12 +437,12 @@ test("保存主页一次写下资料和版面，请求体没有 timezone", async
   const page = ownPage({ page_doc: defaultPageDoc({ display_name: "Leo", headline: "十年品牌设计", bio: "只做品牌" }) });
   const view = await mount(React.createElement(ProfileDetailView, { page, viewerId: "seller-1" }));
   await view.click('[data-bay-page-action="edit"]');
-  const name = view.host.querySelector('[data-bay-field="display_name"] [data-bay-page-editable]');
-  assert.ok(name);
+  const title = view.host.querySelector('[data-bay-page-block-edit="hero"] textarea[aria-label="大标题"]');
+  assert.ok(title);
   await act(() => {
     const proto = window.HTMLTextAreaElement.prototype;
-    Object.getOwnPropertyDescriptor(proto, "value").set.call(name, "Leo Chen");
-    name.dispatchEvent(new Event("input", { bubbles: true }));
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(title, "Leo Chen");
+    title.dispatchEvent(new Event("input", { bubbles: true }));
   });
   const save = view.host.querySelector('[data-bay-page-action="save"]');
   assert.equal(save.disabled, false);
@@ -449,8 +453,8 @@ test("保存主页一次写下资料和版面，请求体没有 timezone", async
   assert.ok(profilePut);
   assert.ok(pagePut);
   assert.equal(Object.prototype.hasOwnProperty.call(profilePut.body, "timezone"), false);
-  assert.equal(profilePut.body.handle, "leo");
-  assert.equal(profilePut.body.display_name, "Leo Chen");
+  assert.equal("handle" in profilePut.body, false);
+  assert.equal("display_name" in profilePut.body, false);
   assert.equal(profilePut.body.headline, "十年品牌设计");
   assert.equal(profilePut.body.bio, "只做品牌");
   assert.deepEqual(profilePut.body.skills, ["Logo"]);
@@ -591,28 +595,24 @@ test("restoring section order clears the dirty state; cancel protects and can di
   await view.unmount();
 });
 
-test("identity validation blocks invalid saves; publication state persists when reopening the builder", async () => {
+test("publication state persists when reopening the builder; the save never carries a name or handle", async () => {
   reset();
   const view = await mount(React.createElement(ProfileDetailView, { page: ownPage(), viewerId: "seller-1", startEditing: true }));
   const save = () => view.host.querySelector('[data-bay-page-action="save"]');
-  await changeText(view, '[data-bay-field="handle"] textarea', "a");
   assert.equal(save().disabled, true);
-  await changeText(view, '[data-bay-field="handle"] textarea', "leo");
-  await changeText(view, '[data-bay-field="display_name"] textarea', "");
-  assert.equal(save().disabled, true);
-  await changeText(view, '[data-bay-field="display_name"] textarea', "Leo Chen");
   await view.click('[data-bay-page-published="true"]');
+  assert.equal(save().disabled, false);
   await view.click('[data-bay-page-action="save"]');
   await flush();
   const profilePut = globalThis.__bayAuthedCalls.find((row) => row.path === "/v1/talent/me");
   assert.equal(profilePut.body.published, false);
-  assert.equal(profilePut.body.display_name, "Leo Chen");
+  assert.equal("display_name" in profilePut.body, false);
+  assert.equal("handle" in profilePut.body, false);
   assert.ok(view.host.querySelector("[data-bay-page-unpublished]"));
-  assert.match(view.host.querySelector("[data-bay-profile-name]").textContent, /Leo Chen/);
+  assert.match(view.host.querySelector("[data-bay-profile-name]").textContent, /Leo/);
   await view.click('[data-bay-page-action="edit"]');
   assert.ok(view.host.querySelector('[data-bay-page-published="false"]'));
   assert.equal(save().disabled, true);
-  assert.equal(view.host.querySelector('[data-bay-field="display_name"] textarea').value, "Leo Chen");
   await view.unmount();
 });
 
@@ -635,16 +635,15 @@ test("a failed page save retains the draft and offers a working retry", async ()
   await view.unmount();
 });
 
-test("sidebar name edits match the saved hero in the live preview and reverting them clears the draft", async () => {
+test("the builder shows the account name read-only and its link opens Account settings", async () => {
   reset();
   const view = await mount(React.createElement(ProfileDetailView, { page: ownPage({ page_doc: defaultPageDoc({ display_name: "Leo" }) }), viewerId: "seller-1", startEditing: true }));
-  const name = '[data-bay-field="display_name"] textarea';
-  await changeText(view, name, "Leo Chen");
-  assert.equal(view.host.querySelector('[data-bay-page-block-edit="hero"] textarea[aria-label="大标题"]').value, "Leo Chen");
-  await view.click('[data-bay-page-preview="preview"]');
-  assert.equal(view.host.querySelector('[data-bay-page-block="hero"] h2').textContent, "Leo Chen");
-  await changeText(view, name, "Leo");
-  assert.equal(view.host.querySelector('[data-bay-page-action="save"]').disabled, true);
-  assert.equal(view.host.querySelector('[data-bay-page-block="hero"] h2').textContent, "Leo");
+  const box = view.host.querySelector("[data-bay-account-name]");
+  assert.ok(box);
+  assert.equal(box.querySelector("textarea, input"), null);
+  assert.match(box.textContent, /主页上显示的是你的账户名称。/);
+  await view.click("[data-bay-account-name-link]");
+  assert.match(window.location.pathname, /settings\/account/);
+  assert.equal(view.host.querySelector('[data-bay-page-identity] textarea'), null, "the canvas name is not editable");
   await view.unmount();
 });

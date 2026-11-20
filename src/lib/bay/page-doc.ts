@@ -439,18 +439,6 @@ export function pageCopyFromDoc(doc: BayPageDoc): { headline: string; bio: strin
   };
 }
 
-/** 页头改了名字、开场大标题还是旧名字时跟着改。大标题已经写成别的句子就不动。 */
-export function syncHeroName(doc: BayPageDoc, previousName: string, nextName: string): BayPageDoc {
-  const prev = previousName.trim();
-  const next = nextName.trim();
-  if (!next || prev === next) return doc;
-  const hero = doc.blocks.find((block) => block.type === "hero");
-  if (!hero) return doc;
-  const title = (hero.title || "").trim();
-  if (title && title !== prev) return doc;
-  return patchBlock(doc, hero.id, { title: next });
-}
-
 /** 整张主页的 CSS 变量（挂在主页根节点的 style 上）。 */
 export function pageThemeVars(theme: BayPageTheme): Record<string, string> {
   const palette = BAY_PAGE_PALETTES[theme.tone] ?? BAY_PAGE_PALETTES.light;

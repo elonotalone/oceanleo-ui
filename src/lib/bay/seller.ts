@@ -91,9 +91,8 @@ export interface BaySellerProfile {
   official?: boolean;
 }
 
+/** The name and the URL handle are the account's (contract §1.1); a profile save never carries them. */
 export interface BaySellerProfileInput {
-  handle: string;
-  display_name: string;
   avatar_url?: string | null;
   headline?: string;
   bio?: string;
@@ -109,15 +108,7 @@ export interface BaySellerProfileInput {
 }
 
 /** 与网关 `HANDLE_RE` 同一条：3–32 位，字母或数字开头，其余小写字母 / 数字 / 下划线 / 连字符。 */
-export const BAY_HANDLE_RE = /^[a-z0-9][a-z0-9_-]{2,31}$/;
-
-export function isBayHandle(value: string): boolean {
-  return BAY_HANDLE_RE.test(value.trim().toLowerCase());
-}
-
 const PROFILE_BODY_KEYS = [
-  "handle",
-  "display_name",
   "avatar_url",
   "headline",
   "bio",

@@ -64,7 +64,7 @@ function FollowingCard({ item }: { item: BayFollowingItem }) {
     <a href={href} className="block p-3">
       {item.cover_url && /^https?:\/\//i.test(item.cover_url) ? <img src={item.cover_url} alt="" loading="lazy" className="h-40 w-full rounded-lg object-cover" /> : null}
       <h3 className="mt-2 text-[14px] font-semibold">{item.title}</h3>
-      <p className="text-sm text-neutral-600">{item.author.name}{item.author.username ? ` @${item.author.username}` : ""}</p>
+      <p className="text-sm text-neutral-600">{item.author.name}</p>
       {!Number.isNaN(date.getTime()) ? <time dateTime={item.created_at} className="text-xs text-neutral-500">{date.toLocaleString()}</time> : null}
     </a>
     <div className="p-3"><BayFollowButton userId={item.author.user_id} username={item.author.username || ""} initialFollowing={item.author.following} /></div>

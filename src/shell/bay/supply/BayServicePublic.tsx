@@ -48,7 +48,6 @@ export function BayServicePublic({ data }: { data: BayServicePublicData }) {
       {seller ? (
         <section data-bay-public-section="seller" className="mt-6 text-[13px] text-neutral-700">
           <p className="font-semibold text-neutral-900">{seller.display_name}</p>
-          {seller.handle ? <p className="text-[12px] text-neutral-500">@{seller.handle}</p> : null}
           {seller.headline ? <p className="mt-1 break-words">{seller.headline}</p> : null}
           <p className="mt-1 text-[12px] text-neutral-500">
             {publicRating(tt, seller.rating_avg, seller.rating_count)}

@@ -15,7 +15,6 @@ import {
   normalizePageDoc,
   pageCopyFromDoc,
   pageThemeVars,
-  syncHeroName,
   patchBlock,
   patchTheme,
   removeBlock,
@@ -248,16 +247,6 @@ test("pageCopyFromDoc：开场副标题是一句话介绍，第一段文字是�
   );
   assert.equal(out.headline, "十年品牌");
   assert.equal(out.bio, "只做品牌");
-});
-
-test("syncHeroName：大标题还是旧名字时跟着改，写成别的句子就不动", () => {
-  const start = defaultPageDoc({ display_name: "Leo", headline: "十年品牌" });
-  const renamed = syncHeroName(start, "Leo", "Leo Chen");
-  assert.equal(renamed.blocks[0].title, "Leo Chen");
-  assert.equal(renamed.blocks[0].subtitle, "十年品牌");
-  const custom = patchBlock(start, start.blocks[0].id, { title: "你好，我是设计师" });
-  assert.equal(syncHeroName(custom, "Leo", "Leo Chen").blocks[0].title, "你好，我是设计师");
-  assert.equal(syncHeroName(start, "Leo", "Leo"), start);
 });
 
 test("page templates preserve existing section identities, copy, uploaded images and version-1 persistence", () => {

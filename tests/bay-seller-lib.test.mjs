@@ -87,7 +87,7 @@ test("更新服务：PUT 全量载荷，不带 posted_site；后端拒绝理由�
   reset(null, () => ({ ok: false, status: 400, error: "HTTP 400", detail: { reason_zh: "标题里有越界表述" } }));
   await assert.rejects(seller.updateMyService("s1", INPUT), (error) => error.message === "标题里有越界表述" && error.status === 400);
   reset(null, () => ({ ok: false, status: 409, error: "这个用户名已被占用，换一个试试" }));
-  await assert.rejects(seller.saveSellerProfile({ handle: "a", display_name: "A" }), /已被占用/);
+  await assert.rejects(seller.saveSellerProfile({ headline: "A" }), /已被占用/);
 });
 
 test("资料保存：PUT /me 只发网关认的字段，不发 timezone（仲裁 #10）", async () => {
@@ -110,7 +110,9 @@ test("资料保存：PUT /me 只发网关认的字段，不发 timezone（仲裁
   assert.equal(call.path, "/v1/talent/me");
   assert.equal("timezone" in call.body, false);
   assert.equal("rating_avg" in call.body, false, "统计字段不回写");
-  assert.deepEqual(Object.keys(call.body).sort(), ["availability", "bio", "display_name", "handle", "headline", "languages", "offplatform_delivery_opt_in", "published", "skills"]);
+  assert.equal("handle" in call.body, false, "the URL handle is the account's, never edited here");
+  assert.equal("display_name" in call.body, false, "the name is the account name (contract §1.1)");
+  assert.deepEqual(Object.keys(call.body).sort(), ["availability", "bio", "headline", "languages", "offplatform_delivery_opt_in", "published", "skills"]);
 });
 
 test("档位替换、暂停、上架、删除走对的接口", async () => {

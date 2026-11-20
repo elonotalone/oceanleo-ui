@@ -124,7 +124,7 @@ test('Following renders empty/find people, cards, unavailable, and loading recov
     };
     const {root,el}=host();await act(async()=>root.render(React.createElement(BayFollowing)));await flush();
     if(state==='empty'){assert.match(el.textContent,/你还没有关注任何人/);assert.equal(el.querySelector('a').getAttribute('href'),'/leochat?find=1');}
-    if(state==='cards'){assert.match(el.textContent,/A real post/);assert.match(el.textContent,/Mira @mira/);assert.ok(el.querySelector('time'));assert.ok(el.querySelector('img'));}
+    if(state==='cards'){assert.match(el.textContent,/A real post/);assert.match(el.textContent,/Mira/); assert.doesNotMatch(el.textContent,/@mira/);assert.ok(el.querySelector('time'));assert.ok(el.querySelector('img'));}
     if(state==='unavailable')assert.match(el.textContent,/关注动态暂不可用/);
     if(state==='temporary'){assert.ok(el.querySelector('[aria-busy="true"]'));assert.doesNotMatch(el.textContent,/你还没有关注/);}
     await act(async()=>root.unmount());el.remove();

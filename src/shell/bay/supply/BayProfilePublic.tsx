@@ -15,7 +15,6 @@ export function BayProfilePublic({ data }: { data: BayProfilePublicData }) {
       <p data-bay-public-name className="text-[22px] font-semibold text-neutral-950">
         {data.display_name}
       </p>
-      <p className="mt-0.5 text-[13px] text-neutral-500">@{data.handle}</p>
       {data.headline ? <p className="mt-2 break-words text-[14px] text-neutral-700">{data.headline}</p> : <p className="mt-2 text-[13px] text-neutral-400">{tt("卖家暂未填写简介。")}</p>}
       {data.bio ? <p className="mt-3 whitespace-pre-wrap break-words text-[14px] leading-6 text-neutral-700">{data.bio}</p> : null}
 

@@ -8,9 +8,8 @@ import {
   BAY_PAGE_PALETTES, BAY_PAGE_TEMPLATES, BAY_PAGE_TONES, BAY_PAGE_TONE_LABELS,
   type BayPageBlockType, type BayPageDoc, type BayPageTemplateId, type BayPageTheme,
 } from "../../../lib/bay/page-doc";
-import { isBayHandle } from "../../../lib/bay/seller";
+import { openSettingsModal } from "../../../pages/settings/settings-tabs";
 import { BayCoverDrop } from "../form/BayCoverDrop";
-import { EditableText } from "./EditableText";
 import type { BayPageIdentity } from "./ProfilePage";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
@@ -118,13 +117,10 @@ export function ProfilePageSettings(props: SettingsProps) {
         <SidebarSection title={tt("个人资料")}>
           <div className="space-y-3">
             <BayCoverDrop url={identity.avatar_url} onUrl={(url) => onIdentity({ avatar_url: url })} variant="avatar" disabled={saving} />
-            <div data-bay-field="display_name"><span className="mb-1.5 block text-[12px] text-neutral-600">{tt("显示名")}</span><EditableText value={identity.display_name} editing onChange={(value) => onIdentity({ display_name: value })} label={tt("显示名")} maxLength={80} className={INPUT} /></div>
-            <div data-bay-field="handle"><span className="mb-1.5 block text-[12px] text-neutral-600">{tt("主页地址")}</span><div className="flex items-center gap-1"><span className="text-[13px] text-neutral-400">@</span><EditableText value={identity.handle} editing onChange={(value) => onIdentity({ handle: value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })} label={tt("主页地址")} maxLength={32} className={INPUT} /></div></div>
+            <div data-bay-account-name><span className="mb-1.5 block text-[12px] text-neutral-600">{tt("名称")}</span><p className="break-words text-[13px] font-medium text-neutral-900">{identity.display_name}</p><p className="mt-1 text-[11px] leading-4 text-neutral-500">{tt("主页上显示的是你的账户名称。")}</p><button type="button" data-bay-account-name-link onClick={() => openSettingsModal("account")} className="mt-1 text-[12px] font-medium text-neutral-700 underline underline-offset-2 hover:text-neutral-900">{tt("在账户设置中修改")}</button></div>
             <div data-bay-field="skills"><TagInput items={identity.skills} label={tt("技能")} onChange={(skills) => onIdentity({ skills })} /></div>
             <div data-bay-field="languages"><TagInput items={identity.languages} label={tt("语言")} onChange={(languages) => onIdentity({ languages })} /></div>
             <p className="text-[11px] text-neutral-500">{tt("多项内容用逗号分隔。")}</p>
-            {!isBayHandle(identity.handle) ? <p role="alert" className="text-[11px] leading-4 text-rose-600">{tt("主页地址要用 3–32 位小写字母、数字、下划线或连字符，以字母或数字开头。")}</p> : null}
-            {!identity.display_name.trim() ? <p role="alert" className="text-[11px] text-rose-600">{tt("显示名不能为空。")}</p> : null}
           </div>
         </SidebarSection>
         <SidebarSection title={tt("页面设计")}>

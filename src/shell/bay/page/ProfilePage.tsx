@@ -741,43 +741,12 @@ export function ProfilePage(props: ProfilePageProps) {
             </span>
             <div className="min-w-0 pb-1">
               <p className="flex flex-wrap items-center gap-2">
-                {editingIdentity ? (
-                  <span data-bay-field="display_name" className="min-w-0">
-                    <EditableText
-                      as="span"
-                      value={displayName}
-                      editing
-                      onChange={(value) => onIdentity?.({ display_name: value })}
-                      maxLength={80}
-                      label={tt("显示名")}
-                      className="break-words text-[22px] font-bold leading-tight tracking-tight sm:text-[26px]"
-                    />
-                  </span>
-                ) : (
-                  <span data-bay-profile-name className="break-words text-[22px] font-bold leading-tight tracking-tight sm:text-[26px]">
-                    {name}
-                  </span>
-                )}
+                <span data-bay-profile-name className="break-words text-[22px] font-bold leading-tight tracking-tight sm:text-[26px]">
+                  {name}
+                </span>
                 {profile.official ? <OfficialBadge /> : null}
               </p>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" style={{ color: "var(--bp-muted)" }}>
-                {editingIdentity ? (
-                  <span className="inline-flex min-w-0 items-baseline gap-0.5" data-bay-field="handle">
-                    <span aria-hidden>@</span>
-                    <EditableText
-                      as="span"
-                      value={handle}
-                      editing
-                      onChange={(value) => onIdentity?.({ handle: value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })}
-                      maxLength={32}
-                      label={tt("主页地址")}
-                      placeholder=""
-                      className="min-w-[8rem] text-[13px]"
-                    />
-                  </span>
-                ) : (
-                  <span>@{handle}</span>
-                )}
                 {profile.official || editing ? null : (
                   <>
                     <span>{ratingShort(tt, profile.rating_avg, profile.rating_count)}</span>

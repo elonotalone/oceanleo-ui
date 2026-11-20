@@ -180,8 +180,10 @@ test("卖家资料不再是第二张表：主页编辑源码没有展开字段�
   assert.doesNotMatch(pane, /BaySellerProfileSection/);
   assert.doesNotMatch(pane, /data-bay-own-profile-form/);
   assert.doesNotMatch(editor, /BayRevealForm/);
-  assert.match(page, /data-bay-field="handle"/);
-  assert.match(page, /data-bay-field="display_name"/);
+  // Wave 2026-11-20 roles (NM): one account name; the page shows it, nobody edits a second name or a handle here.
+  assert.doesNotMatch(page, /data-bay-field="handle"/);
+  assert.doesNotMatch(page, /data-bay-field="display_name"/);
+  assert.match(page, /data-bay-profile-name/);
   assert.match(page, /variant="avatar"/);
   // leobay-projects W05：设置 → LeoBay 只剩付款卡 + 收款账户，「编辑主页」那扇门随卖家资料页签一起删了。
   assert.doesNotMatch(settings, /BaySettingsProfileDoor|BayVettingSection|requestMinePageEdit/);

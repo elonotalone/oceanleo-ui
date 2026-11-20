@@ -7,10 +7,10 @@ import type { BayProfilePage, BayShowcaseItem } from "../../../lib/bay/directory
 import {
   BAY_PAGE_BLOCK_LABELS, BAY_PAGE_MAX_BYTES, BAY_PAGE_PALETTES,
   applyPageTemplate, insertBlock, moveBlock, newBlock, pageDocBytes,
-  patchBlock, patchTheme, removeBlock, samePageDoc, syncHeroName,
+  patchBlock, patchTheme, removeBlock, samePageDoc,
   type BayPageBlock, type BayPageDoc, type BayPageTemplateId,
 } from "../../../lib/bay/page-doc";
-import { addShowcaseWork, isBayHandle, removeShowcaseItem } from "../../../lib/bay/seller";
+import { addShowcaseWork, removeShowcaseItem } from "../../../lib/bay/seller";
 import { pickLibraryWork } from "../needs/LibraryWorkPicker";
 import { BayVettingSection } from "../seller/BayVettingSection";
 import { useBayEnabled, useBaySignedIn } from "../shell/bay-state";
@@ -66,19 +66,12 @@ export function ProfilePageEditor({ page, initial, initialIdentity, saving, erro
   const [showcase, setShowcase] = useState<BayShowcaseItem[]>(() => page.showcase || []);
   const [showcaseBusy, setShowcaseBusy] = useState(false);
   const [showcaseError, setShowcaseError] = useState("");
-  const handleOk = isBayHandle(identity.handle);
   const dirty = !samePageDoc(doc, base) || JSON.stringify(identity) !== JSON.stringify(baseIdentity);
   const tooBig = useMemo(() => pageDocBytes(doc) > BAY_PAGE_MAX_BYTES, [doc]);
-  const canSave = dirty && !saving && !tooBig && handleOk && Boolean(identity.display_name.trim());
+  const canSave = dirty && !saving && !tooBig;
   const canvasPage = useMemo(() => ({ ...page, showcase, profile: { ...page.profile, ...identity, avatar_url: identity.avatar_url || null } }), [page, showcase, identity]);
   const onBlock = (id: string, patch: Partial<BayPageBlock>) => setDoc((current) => patchBlock(current, id, patch));
-  const onIdentity = (patch: Partial<BayPageIdentity>) => {
-    if (patch.display_name !== undefined) {
-      const nextName = patch.display_name;
-      setDoc((current) => syncHeroName(syncHeroName(current, identity.display_name, nextName), baseIdentity.display_name, nextName));
-    }
-    setIdentity((current) => ({ ...current, ...patch }));
-  };
+  const onIdentity = (patch: Partial<BayPageIdentity>) => setIdentity((current) => ({ ...current, ...patch }));
 
   useEffect(() => {
     if (!dirty) return;

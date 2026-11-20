@@ -20,7 +20,7 @@ import {
   type BayProfilePage,
   type BayReview,
 } from "../../../lib/bay/directory";
-import { defaultPageDoc, normalizePageDoc, pageCopyFromDoc, syncHeroName, type BayPageDoc } from "../../../lib/bay/page-doc";
+import { defaultPageDoc, normalizePageDoc, pageCopyFromDoc, type BayPageDoc } from "../../../lib/bay/page-doc";
 import {
   getSellerProfile,
   listMyServices,
@@ -199,12 +199,10 @@ export function ProfileDetailView({ page, viewerId, onChanged, startEditing = fa
     setSaveError("");
     try {
       const seed = isOwnPage(page) ? page.seller : page.profile;
-      const docToSave = syncHeroName(next, seed.display_name || "", identity.display_name);
+      const docToSave = next;
       const copy = pageCopyFromDoc(docToSave);
       await saveSellerProfile(
         sellerProfileBody({
-          handle: identity.handle.trim().toLowerCase(),
-          display_name: identity.display_name.trim(),
           avatar_url: identity.avatar_url || "",
           headline: copy.headline,
           bio: copy.bio,
@@ -221,7 +219,7 @@ export function ProfileDetailView({ page, viewerId, onChanged, startEditing = fa
       );
       const result = await saveSellerPage(docToSave);
       setSavedDoc(normalizePageDoc(result.profile?.page_doc) ?? docToSave);
-      setSavedIdentity({ ...identity, handle: identity.handle.trim().toLowerCase(), display_name: identity.display_name.trim() });
+      setSavedIdentity(identity);
       setPublished(identity.published);
       setPendingSave(null);
       if (!recovering) { leaveEditing(); onChanged?.(); }
@@ -241,8 +239,6 @@ export function ProfileDetailView({ page, viewerId, onChanged, startEditing = fa
       const seller = { ...page.seller, ...savedIdentity };
       await saveSellerProfile(
         sellerProfileBody({
-          handle: seller.handle,
-          display_name: seller.display_name,
           avatar_url: seller.avatar_url || "",
           headline: seller.headline || "",
           bio: seller.bio || "",
